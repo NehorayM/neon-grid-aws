@@ -14,6 +14,7 @@ import re
 MD = "AWS-SAA-C03-Combined.md"
 HTML = "index.html"
 OUT = "course_data.json"
+OUT_EXPLAIN = "explain_data.json"
 
 md = open(MD, encoding="utf-8").read()
 
@@ -207,6 +208,16 @@ for i, m in enumerate(topics):
 
     courses.append({"i": num - 1, "nm": name, "brief": brief, "deep": full, "recap": recap_full})
 
+# ---------------------------------------------------------------- answer-explanation data
+# The question bank ships without explanations, so the app builds them at answer time from
+# the guide's own glossary and the master scenario table. Emitted separately from the course
+# text because every question screen needs it, not just the course reader.
+explain = {
+    "glossary": [{"t": t, "d": d} for t, d in GLOSSARY],
+    "cues": [{"c": c, "a": a} for c, a in SCENARIOS],
+}
+json.dump(explain, open(OUT_EXPLAIN, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+
 data = {"courses": courses}
 json.dump(data, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 
@@ -217,9 +228,16 @@ if '<script id="coursedata"' in html:
     html = re.sub(r'<script id="coursedata" type="application/json">.*?</script>', lambda _: blob, html, count=1, flags=re.S)
 else:
     html = html.replace('<script id="data" type="application/json">', blob + '\n<script id="data" type="application/json">', 1)
+xblob = '<script id="explaindata" type="application/json">' + open(OUT_EXPLAIN, encoding="utf-8").read() + '</script>'
+if '<script id="explaindata"' in html:
+    html = re.sub(r'<script id="explaindata" type="application/json">.*?</script>', lambda _: xblob, html, count=1, flags=re.S)
+else:
+    html = html.replace('<script id="coursedata"', xblob + '\n<script id="coursedata"', 1)
+
 open(HTML, "w", encoding="utf-8").write(html)
 
 print(f"glossary terms parsed: {len(GLOSSARY)} · scenario rows parsed: {len(SCENARIOS)}")
+print(f"explanation data -> {OUT_EXPLAIN} ({os.path.getsize(OUT_EXPLAIN):,} bytes)")
 print(f"{len(courses)} courses -> {OUT} ({os.path.getsize(OUT):,} bytes) and injected into {HTML}")
 print(f"{'#':>3} {'subject':<44} {'brief':>7} {'deep':>7} {'recap':>7}")
 for c in courses:
