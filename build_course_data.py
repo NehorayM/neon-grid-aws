@@ -12,7 +12,7 @@ import os
 import re
 
 MD = "AWS-SAA-C03-Combined.md"
-HTML = "neon_academy (4).html"
+HTML = "index.html"
 OUT = "course_data.json"
 
 md = open(MD, encoding="utf-8").read()
