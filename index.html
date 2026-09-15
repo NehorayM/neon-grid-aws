@@ -13,6 +13,8 @@
   --cyan:#3ce0ff; --mag:#ff4fd8; --lime:#6bff9e; --gold:#ffd75e; --red:#ff5d6c; --violet:#9b6bff;
   --txt:#eaf4ff; --dim:#8aa0bd;
   --safeT:env(safe-area-inset-top,0px); --safeB:env(safe-area-inset-bottom,0px);
+  /* content width: phone-sized by default, widened at the breakpoints below */
+  --colw:470px; --readw:470px; --quizw:560px;
   --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
   --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
 }
@@ -78,16 +80,16 @@ h2.head{font-size:19px;font-weight:800;letter-spacing:.4px;margin-bottom:3px}
 .btn.sm{padding:10px 18px;font-size:13px}
 .btn:disabled{opacity:.4}
 .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-.stack{display:flex;flex-direction:column;gap:10px;width:100%;max-width:470px;margin:0 auto}
+.stack{display:flex;flex-direction:column;gap:10px;width:100%;max-width:var(--colw);margin:0 auto}
 
 /* ---------- home ---------- */
 .hero{display:flex;flex-direction:column;align-items:center;gap:3px;margin-bottom:14px;text-align:center}
-.statstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:470px;margin:0 auto}
+.statstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:var(--colw);margin:0 auto}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:9px 6px;text-align:center}
 .stat b{display:block;font-family:var(--mono);font-size:15px;font-weight:700}
 .stat span{font-size:9.5px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase}
 .secgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;
-  width:100%;max-width:470px;margin:0 auto;padding-bottom:8px}
+  width:100%;max-width:var(--colw);margin:0 auto;padding-bottom:8px}
 .seccard{position:relative;text-align:left;padding:13px 13px 12px;border-radius:18px;overflow:hidden;
   background:linear-gradient(170deg,var(--surface2),var(--surface));
   border:1px solid var(--line);min-height:100px;display:flex;flex-direction:column;gap:6px;
@@ -105,7 +107,7 @@ h2.head{font-size:19px;font-weight:800;letter-spacing:.4px;margin-bottom:3px}
 .mixcard .em{font-size:26px}
 
 /* ---------- quiz ---------- */
-.qwrap{width:100%;max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px;flex:1}
+.qwrap{width:100%;max-width:var(--quizw);margin:0 auto;display:flex;flex-direction:column;gap:12px;flex:1}
 .qtop{display:flex;align-items:center;gap:8px}
 .tag{font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;
   padding:5px 10px;border-radius:8px;background:var(--panel);border:1px solid var(--line);color:var(--dim)}
@@ -183,7 +185,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 @keyframes reelSpin{from{opacity:.25;transform:translateY(-14px)}to{opacity:1;transform:translateY(0)}}
 
 /* shop / achievements */
-.list{display:flex;flex-direction:column;gap:9px;width:100%;max-width:470px;margin:0 auto}
+.list{display:flex;flex-direction:column;gap:9px;width:100%;max-width:var(--colw);margin:0 auto}
 .item{display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:16px;
   background:linear-gradient(170deg,var(--surface2),var(--surface));
   border:1px solid var(--line);text-align:left;box-shadow:0 4px 16px rgba(0,0,0,.22)}
@@ -215,7 +217,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   border-radius:13px;padding:10px 13px;margin-bottom:7px}
 .concept b{font-family:var(--mono);font-size:11px;color:var(--cyan);letter-spacing:.6px}
 .concept span{font-size:12.5px;line-height:1.5;color:var(--txt)}
-.daily{width:100%;max-width:470px;margin:12px auto 0;background:var(--panel);border:1px solid var(--line);
+.daily{width:100%;max-width:var(--colw);margin:12px auto 0;background:var(--panel);border:1px solid var(--line);
   border-radius:14px;padding:10px 14px}
 .daily .t{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin-bottom:6px}
 .daily .track{height:6px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
@@ -233,7 +235,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   border-radius:12px;background:rgba(60,224,255,.12);border:1px solid rgba(60,224,255,.4);color:var(--cyan)}
 
 /* difficulty + charge meter + question timer */
-.diffrow{display:flex;gap:8px;width:100%;max-width:470px;margin:0 auto}
+.diffrow{display:flex;gap:8px;width:100%;max-width:var(--colw);margin:0 auto}
 .diffchip{flex:1;padding:10px 8px;border-radius:14px;background:var(--panel);border:1.5px solid var(--line);
   text-align:center;transition:.15s}
 .diffchip b{display:block;font-size:12.5px;font-weight:800}
@@ -372,7 +374,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .tsub{font-size:11px;color:var(--dim);margin-top:2px}
 
 /* ---- exam readiness ---- */
-.readycard{display:flex;align-items:center;gap:14px;text-align:left;width:100%;max-width:470px;
+.readycard{display:flex;align-items:center;gap:14px;text-align:left;width:100%;max-width:var(--colw);
   margin:0 auto 10px;padding:14px 16px;border-radius:18px;
   background:linear-gradient(120deg,rgba(60,224,255,.13),rgba(155,107,255,.1));
   border:1px solid rgba(60,224,255,.34);box-shadow:0 10px 30px rgba(0,0,0,.3);transition:.16s}
@@ -397,7 +399,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .dv{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:4px}
 
 /* ---- clean card system ---- */
-.card{width:100%;max-width:470px;margin:0 auto 10px;padding:14px 16px;border-radius:18px;
+.card{width:100%;max-width:var(--colw);margin:0 auto 10px;padding:14px 16px;border-radius:18px;
   background:var(--surface);border:1px solid var(--line);
   box-shadow:0 8px 26px rgba(0,0,0,.26)}
 .card.accent-gold{border-color:rgba(255,215,94,.28);background:linear-gradient(168deg,rgba(255,215,94,.09),rgba(255,255,255,.03))}
@@ -409,11 +411,11 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .pillbtn{font-size:11.5px;font-weight:800;padding:7px 14px;border-radius:20px;white-space:nowrap;
   background:linear-gradient(120deg,var(--gold),#ff9d4f);color:#221600}
 .pillbtn:disabled{background:rgba(255,255,255,.07);color:var(--dim)}
-.sechead{width:100%;max-width:470px;margin:18px auto 9px;font-size:11px;font-weight:800;letter-spacing:1.4px;
+.sechead{width:100%;max-width:var(--colw);margin:18px auto 9px;font-size:11px;font-weight:800;letter-spacing:1.4px;
   text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:10px}
 .sechead::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
-.btn.wide{width:100%;max-width:470px;margin:0 auto 10px;display:flex}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:9px;width:100%;max-width:470px;margin:0 auto}
+.btn.wide{width:100%;max-width:var(--colw);margin:0 auto 10px;display:flex}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:9px;width:100%;max-width:var(--colw);margin:0 auto}
 .tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:14px 14px 13px;border-radius:16px;
   background:var(--surface);border:1px solid var(--line);text-align:left;transition:.16s}
 .tile:hover{border-color:var(--line2);background:var(--surface2);transform:translateY(-2px)}
@@ -426,7 +428,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   border-color:rgba(60,224,255,.42)}
 .tile.hero-tile .ic{font-size:27px;margin:0}
 .tile.hero-tile b{font-size:15px}
-.chiprow{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;width:100%;max-width:470px;margin:10px auto 0}
+.chiprow{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;width:100%;max-width:var(--colw);margin:10px auto 0}
 .minichip{font-size:11.5px;font-weight:600;padding:8px 13px;border-radius:20px;
   background:var(--surface);border:1px solid var(--line);color:#cfe2f7;transition:.15s}
 .minichip:hover{border-color:var(--line2)}
@@ -441,7 +443,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .goal.close .gl{color:var(--gold)}
 
 /* panels, quests, login streak, chest */
-.panel{width:100%;max-width:470px;margin:10px auto 0;padding:12px 14px;border-radius:16px;
+.panel{width:100%;max-width:var(--colw);margin:10px auto 0;padding:12px 14px;border-radius:16px;
   background:linear-gradient(170deg,var(--surface2),var(--surface));
   border:1px solid var(--line)}
 .prow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
@@ -459,7 +461,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .qtrack{height:5px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
 .qtrack i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--lime));transition:width .4s}
 .qp{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:3px}
-.search{width:100%;max-width:470px;margin:0 auto 10px;padding:11px 14px;border-radius:14px;
+.search{width:100%;max-width:var(--colw);margin:0 auto 10px;padding:11px 14px;border-radius:14px;
   background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--txt);font-size:13.5px}
 .search::placeholder{color:var(--dim)}
 #gCombo{font-family:var(--mono);font-size:13px;font-weight:800;color:var(--gold);
@@ -504,11 +506,12 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 @keyframes tIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 .backbtn{position:absolute;top:calc(12px + var(--safeT));left:12px;z-index:30;width:36px;height:36px;
   border-radius:50%;background:var(--panel);border:1px solid var(--line);font-size:17px;display:grid;place-items:center}
+
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* ---------- course mode ---------- */
-.crswrap{width:100%;max-width:470px;margin:0 auto}
-.crsrail{display:flex;gap:4px;margin:0 auto 12px;width:100%;max-width:470px}
+.crswrap{width:100%;max-width:var(--readw);margin:0 auto}
+.crsrail{display:flex;gap:4px;margin:0 auto 12px;width:100%;max-width:var(--readw)}
 .crsrail i{flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,.1);transition:background .3s}
 .crsrail i.on{background:linear-gradient(90deg,var(--cyan),var(--violet))}
 .crsrail i.now{background:var(--gold);box-shadow:0 0 10px rgba(255,215,94,.5)}
@@ -547,7 +550,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .mdx table.wide th{white-space:nowrap}
 .mdx td{padding:8px 9px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5}
 .mdx tr:last-child td{border-bottom:0}
-.phasecard{width:100%;max-width:470px;margin:0 auto;text-align:center;
+.phasecard{width:100%;max-width:var(--colw);margin:0 auto;text-align:center;
   background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:22px 18px}
 .phasecard .pem{font-size:42px;line-height:1}
 .phasecard .pnm{font-size:20px;font-weight:900;letter-spacing:.4px;margin-top:8px}
@@ -570,6 +573,78 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .crsrow .cnm{display:block;font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .crsrow .cmeta{display:block;font-size:11px;color:var(--dim);margin-top:2px;line-height:1.4}
 .crsrow .cdone{font-family:var(--mono);font-size:11px;font-weight:800;color:var(--lime);flex:none}
+
+/* ---------- desktop layout ----------
+   The app was built phone-first and pinned every column at 470px, which on a monitor
+   reads as a narrow strip down the middle. These breakpoints widen the columns, spread
+   the tiles across the space, and scale the type up with the viewport. */
+@media (min-width:860px){
+  :root{ --colw:760px; --readw:780px; --quizw:760px; }
+  .screen{ padding-left:28px; padding-right:28px; }
+  .tiles{ grid-template-columns:repeat(3,1fr); gap:11px; }
+  .tile.hero-tile{ grid-column:1/-1; }
+  .qtext{ font-size:18.5px; line-height:1.75; }
+  .opt{ padding:16px 17px; font-size:14.5px; }
+  .mdx{ font-size:15.5px; line-height:1.78; }
+  .mdx h3{ font-size:17px; }
+  .mdx h4{ font-size:15px; }
+  .mdx table{ font-size:13.5px; }
+  .crsbody{ padding:22px 26px 26px; }
+  .phasecard{ padding:30px 26px; }
+  .phasecard .pnm{ font-size:23px; }
+  .phasecard .pdesc{ font-size:14.5px; }
+  .crsrow{ padding:15px 17px; }
+  .crsrow .cnm{ font-size:14.5px; }
+  .crsrow .cmeta{ font-size:12px; }
+}
+@media (min-width:1280px){
+  :root{ --colw:980px; --readw:840px; --quizw:820px; }
+  .tiles{ grid-template-columns:repeat(4,1fr); }
+  .tile.hero-tile{ grid-column:span 2; }
+  .statstrip{ gap:12px; }
+  .mdx{ font-size:16px; line-height:1.8; }
+}
+/* the phone chrome spans the whole window on a monitor; align it to the content column */
+@media (min-width:860px){
+  #nav{ left:50%; right:auto; transform:translateX(-50%); width:min(var(--colw),100%);
+        border-radius:18px 18px 0 0; }
+  #topbar{ padding-left:max(14px,calc(50% - var(--colw)/2)); padding-right:max(14px,calc(50% - var(--colw)/2)); }
+  #toasts{ left:50%; right:auto; transform:translateX(-50%); }
+}
+
+/* the last lines of a read used to show through the sticky Continue button */
+.crsbody{ padding-bottom:26px; }
+#app.reading .crsfoot{ background:linear-gradient(180deg,rgba(5,6,15,0),#05060f 45%,#05060f); }
+#app.reading #topbar{ background:linear-gradient(180deg,#05060f 64%,rgba(5,6,15,0)); }
+#app.reading .crsbody{ padding-bottom:72px; }
+
+/* pointer-driven screens have room for hover affordances the phone build never needed */
+@media (hover:hover) and (min-width:860px){
+  .crsrow:hover{ border-color:var(--line2); background:var(--surface2); }
+  .opt:hover{ border-color:var(--line2); }
+}
+
+/* ---------- reading mode ----------
+   Long-form reading over an animated conic sweep is genuinely hard on the eyes: the
+   background hue shifts under the text while you read it. On the reading screens the
+   motion stops, the grid fades back, and the text sits on a flat opaque surface. */
+#app.reading #grid-bg::before{ display:none; }
+#app.reading #grid-bg::after{ opacity:.08; }
+#app.reading #grid-bg{ background:linear-gradient(180deg,#0a0e1a,#070a13 60%,#05060f); }
+#app.reading .crsbody{
+  background:#0d1220; border-color:rgba(255,255,255,.09);
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset;
+}
+#app.reading .mdx{ color:#e7eef8; }
+#app.reading .mdx strong{ color:#ffffff; }
+#app.reading .mdx h3{ color:#8fd8ea; filter:none; }
+#app.reading .mdx h4{ color:#e59ad6; }
+#app.reading .mdx code{ background:rgba(143,216,234,.13); border-color:rgba(143,216,234,.24); color:#a8e2f2; }
+#app.reading .mdx blockquote{ background:rgba(255,215,94,.075); border-color:rgba(255,215,94,.26); color:#f2e2b4; }
+#app.reading .mdx tbody tr:nth-child(odd) td{ background:rgba(255,255,255,.022); }
+#app.reading .mdx th{ color:#8fd8ea; }
+#app.reading .mdx td{ color:#dfe8f4; }
+
 </style>
 </head>
 <body>
@@ -885,7 +960,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 
   <!-- SIM RESULT -->
   <div id="simDoneScreen" class="screen hidden">
-    <div id="simDone" style="text-align:center;width:100%;max-width:470px;margin:0 auto">
+    <div id="simDone" style="text-align:center;width:100%;max-width:var(--colw);margin:0 auto">
       <div class="bigpct" id="simScore">0%</div>
       <div class="ch-t" id="simVerdict"></div>
       <div class="ch-note" id="simMeta"></div>
@@ -947,7 +1022,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 
   <!-- COURSE: RESULT -->
   <div id="courseDoneScreen" class="screen hidden">
-    <div style="text-align:center;width:100%;max-width:470px;margin:0 auto">
+    <div style="text-align:center;width:100%;max-width:var(--colw);margin:0 auto">
       <div class="crsscore" id="crsDoneScore">0%</div>
       <div class="ch-t" id="crsDoneVerdict"></div>
       <div class="ch-note" id="crsDoneMeta"></div>
@@ -1266,6 +1341,7 @@ let route='homeScreen';
 function go(id){
   SCREENS.forEach(s=>$(s).classList.toggle('hidden',s!==id)); route=id;
   const inGame=(id==='gameScreen');
+  $('app').classList.toggle('reading',id==='courseReadScreen');   // calm the background for long reads
   $('topbar').style.display='flex';                 // the clock is never hidden
   $('topbar').classList.toggle('slim',inGame);
   $('app').classList.toggle('in-game',inGame);
