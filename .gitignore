@@ -1,0 +1,11 @@
+# local backups
+*.bak
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# editor / OS noise
+.DS_Store
+*.swp
