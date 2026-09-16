@@ -32,22 +32,27 @@ security is the only thing stopping one player from reading another's row.
 
 ## 3. Point the app at it
 
-1. In the dashboard: **Settings → API**.
-2. Copy the **Project URL** and the **anon / public** key.
-3. Open `index.html`, find the `SUPA` block near the top of the script, and fill it in:
+1. In the dashboard: **Settings → API Keys**.
+2. Copy the **Publishable key** — it starts with `sb_publishable_`. (Older projects call this
+   the *anon / public* key; both work the same way.) The page says *"Publishable keys can be
+   safely shared publicly"* — that's the one you want.
+3. Get the **Project URL** from **Settings → Data API**, or just take it from your dashboard
+   address: a project at `/project/abcdef123` has the URL `https://abcdef123.supabase.co`.
+4. Open `index.html`, find the `SUPA` block near the top of the script, and fill it in:
 
 ```js
 const SUPA={
   url:'https://YOUR-PROJECT.supabase.co',
-  anonKey:'eyJhbGciOi...'      // the anon / public key
+  anonKey:'sb_publishable_...'   // the Publishable key — never the sb_secret_ one
 };
 ```
 
-4. Commit and push. GitHub Pages redeploys in about a minute.
+5. Commit and push. GitHub Pages redeploys in about a minute.
 
-> **Only ever use the `anon` key here.** The `service_role` key on that same page bypasses
-> row-level security entirely — pasting it into a public page would expose every user's data.
-> The anon key is designed to ship in a browser; that's why it's called publishable.
+> **Only the publishable key goes here.** The **Secret key** on that same page
+> (`sb_secret_…`, formerly `service_role`) bypasses row-level security entirely — pasting it
+> into a public page would hand every user's data to anyone who views source. It belongs in a
+> server, never in a browser.
 
 ## 4. Email confirmation (optional but recommended)
 

@@ -5018,13 +5018,16 @@ function explainMode(){ return !exam&&!sim&&!mock; }
 // Sign-in is optional. Guests keep everything in localStorage exactly as before; signing in
 // mirrors the same profile into a Supabase row so it follows you between devices.
 //
-// The key below is Supabase's *publishable* anon key — it is meant to ship in the page. It is
-// only safe because every row is protected by row-level security (see supabase_setup.sql):
-// a signed-in user can read and write their own row and nothing else. Never paste a
-// service_role key here; that one bypasses RLS entirely.
+// The key below is Supabase's PUBLISHABLE key (sb_publishable_… — older projects call it
+// "anon / public"). It is meant to ship in the page. It is only safe because every row is
+// protected by row-level security (see supabase_setup.sql): a signed-in user can read and
+// write their own row and nothing else.
+//
+// Never put the SECRET key here (sb_secret_… / service_role). That one bypasses RLS and would
+// expose every user's data in a public page.
 const SUPA={
-  url:'',        // e.g. https://abcdefghijklm.supabase.co
-  anonKey:''     // the "anon / public" key from Settings → API
+  url:'',        // Settings → Data API → Project URL, e.g. https://abcdefghijklm.supabase.co
+  anonKey:''     // Settings → API Keys → Publishable key (sb_publishable_…)
 };
 const CLOUD_ON=!!(SUPA.url&&SUPA.anonKey);
 let sb=null, sbUser=null, sbReady=false, lastSync=0, syncing=false, syncTimer=null;
