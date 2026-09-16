@@ -1,0 +1,141 @@
+  <!-- LEARN: SUBJECT PICKER -->
+  <div id="learnPickScreen" class="screen hidden">
+    <button class="backbtn" id="lrnPickBack">‹</button>
+    <div style="text-align:center;margin-bottom:12px">
+      <h2 class="head">🎓 Learn a Subject</h2>
+      <p class="sub">One subject, taught in parts. Read a part → answer a few questions on that part →
+        only move on once you have it. At the end: the full summary, then a ten-question exam on
+        exactly what you just learned.</p>
+    </div>
+    <button class="btn wide hidden" id="lrnResume" style="margin-bottom:12px"></button>
+    <div class="list" id="lrnPickList"></div>
+  </div>
+
+  <!-- LEARN: MODULE MAP -->
+  <div id="learnMapScreen" class="screen hidden">
+    <button class="backbtn" id="lrnMapBack">‹</button>
+    <div class="crswrap">
+      <div class="crsrail" id="lrnRail"></div>
+      <div class="crstop">
+        <span class="tag" id="lrnMapSubject">SUBJECT</span>
+        <span class="crsclock" id="lrnMapClock">0:00</span>
+        <span class="crsclock" id="lrnMapDone">0 / 0</span>
+      </div>
+      <h2 class="head" id="lrnMapTitle" style="margin-bottom:4px"></h2>
+      <p class="sub" id="lrnMapSub" style="margin-bottom:14px"></p>
+      <div class="list" id="lrnMapList"></div>
+      <div class="crsfoot">
+        <button class="btn wide" id="lrnMapGo" style="width:100%">Continue ▸</button>
+        <button class="minichip" id="lrnMapQuit" style="display:block;margin:2px auto 0">Leave this subject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARN: READING A MODULE -->
+  <div id="learnReadScreen" class="screen hidden">
+    <button class="backbtn" id="lrnReadBack">‹</button>
+    <div class="crswrap">
+      <div class="crsrail" id="lrnReadRail"></div>
+      <div class="crstop">
+        <span class="tag" id="lrnReadStep">PART 1 OF 5</span>
+        <span class="tag" id="lrnReadSubject">SUBJECT</span>
+        <span class="crsclock" id="lrnReadClock">0:00</span>
+      </div>
+      <h2 class="head" id="lrnReadTitle" style="margin-bottom:6px"></h2>
+      <div class="lrngoal" id="lrnReadGoal"></div>
+      <div class="lrnredo hidden" id="lrnReadRedo"></div>
+      <div class="crsbody"><div class="mdx" id="lrnReadBody"></div></div>
+      <div class="crsfoot">
+        <button class="btn wide" id="lrnReadGo" style="width:100%">Read…</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARN: CHECK QUESTIONS -->
+  <div id="learnQuizScreen" class="screen hidden">
+    <button class="backbtn" id="lrnQuizBack">‹</button>
+    <div class="crswrap">
+      <div class="crstop">
+        <span class="tag" id="lrnQuizTag">CHECK</span>
+        <span class="tag" id="lrnQuizTitle">MODULE</span>
+        <span class="crsclock" id="lrnQuizClock">0:00</span>
+      </div>
+      <div class="qtrack"><div class="qprog" id="lrnQuizProg"></div></div>
+      <div id="lrnQuizLive">
+        <div class="qcard">
+          <div class="qtop"><span class="qn" id="lrnQuizCount">1/4</span><span class="qn" id="lrnQuizNeed"></span></div>
+          <div class="qtext" id="lrnQuizQ"></div>
+        </div>
+        <div class="opts" id="lrnQuizOpts"></div>
+        <div class="lrnfeed hidden" id="lrnQuizFeed"></div>
+        <div class="crsfoot">
+          <button class="btn wide" id="lrnQuizSubmit" style="width:100%">Check my answer</button>
+        </div>
+      </div>
+      <div id="lrnQuizResult" class="hidden"></div>
+    </div>
+  </div>
+
+  <!-- LEARN: FULL SUBJECT RECAP -->
+  <div id="learnRecapScreen" class="screen hidden">
+    <button class="backbtn" id="lrnRecapBack">‹</button>
+    <div class="crswrap">
+      <div class="crsrail" id="lrnRecapRail"></div>
+      <div class="crstop">
+        <span class="tag">FULL SUMMARY</span>
+        <span class="tag" id="lrnRecapSubject">SUBJECT</span>
+        <span class="crsclock" id="lrnRecapClock">0:00</span>
+      </div>
+      <h2 class="head" id="lrnRecapTitle" style="margin-bottom:6px"></h2>
+      <p class="sub" id="lrnRecapSub" style="margin-bottom:14px"></p>
+      <div class="crsbody"><div class="mdx" id="lrnRecapBody"></div></div>
+      <div class="crsfoot">
+        <button class="btn wide" id="lrnRecapGo" style="width:100%">Read…</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARN: TEN-QUESTION EXAM -->
+  <div id="learnSimScreen" class="screen hidden">
+    <button class="backbtn" id="lrnSimBack">‹</button>
+    <div class="crswrap">
+      <div class="crstop">
+        <span class="tag">EXAM · THIS SUBJECT ONLY</span>
+        <span class="crsclock" id="lrnSimClock">15:00</span>
+      </div>
+      <div class="lrnstrip" id="lrnSimStrip"></div>
+      <div class="qcard">
+        <div class="qtop"><span class="qn" id="lrnSimCount">1/10</span><span class="qn" id="lrnSimPart"></span></div>
+        <div class="qtext" id="lrnSimQ"></div>
+      </div>
+      <div class="opts" id="lrnSimOpts"></div>
+      <div class="crsfoot">
+        <div class="row" style="gap:8px">
+          <button class="btn ghost sm" id="lrnSimPrev">‹ Back</button>
+          <button class="btn" id="lrnSimNext" style="flex:1">Next ›</button>
+        </div>
+        <button class="btn gold wide" id="lrnSimSubmit" style="width:100%;margin-top:9px">Submit exam</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARN: RESULT -->
+  <div id="learnDoneScreen" class="screen hidden">
+    <button class="backbtn" id="lrnDoneBack">‹</button>
+    <div class="crswrap">
+      <div style="text-align:center">
+        <div class="crsscore" id="lrnDoneScore">0%</div>
+        <div class="ch-t" id="lrnDoneVerdict"></div>
+        <div class="ch-note" id="lrnDoneMeta"></div>
+      </div>
+      <div class="sechead">How the subject went</div>
+      <div class="card" id="lrnDoneBreak"></div>
+      <div class="sechead">Every exam question, explained</div>
+      <div id="lrnDoneReview"></div>
+      <div class="row" style="margin:16px 0 0;justify-content:center">
+        <button class="btn" id="lrnDoneNext">Next subject ▸</button>
+        <button class="btn ghost sm" id="lrnDonePractice">Practise this subject</button>
+        <button class="btn ghost sm" id="lrnDoneHome">Home</button>
+      </div>
+    </div>
+  </div>
