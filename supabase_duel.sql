@@ -67,6 +67,10 @@ create policy "read own duels" on public.duels
   for select using (auth.uid() = a or auth.uid() = b or status = 'waiting');
 
 -- ---------------------------------------------------------------- helpers
+-- How long each question is open. Scenario questions run to a hundred words plus four
+-- long options, so 30 seconds was not enough time to read one, let alone think.
+create or replace function public.duel_seconds() returns int
+language sql immutable as $$ select 75; $$;
 create or replace function public.duel_answers(qid int)
 returns text[]
 language plpgsql security definer set search_path = public
@@ -100,8 +104,10 @@ begin
                                    'score', case when iam_a then d.b_score else d.a_score end,
                                    -- only that they answered, never what they chose
                                    'answered', theirs is not null),
+    'secondsTotal', public.duel_seconds(),
     'secondsLeft', case when d.status = 'active' and d.turn_start is not null
-                        then greatest(0, 30 - round(extract(epoch from (now() - d.turn_start))))::int
+                        then greatest(0, public.duel_seconds()
+                                          - round(extract(epoch from (now() - d.turn_start))))::int
                         else null end,
     'winner', d.winner, 'reason', d.reason,
     'youWon', (d.winner is not null and d.winner = me));
@@ -178,7 +184,7 @@ begin
 
   -- a player who walks away forfeits once the clock runs out
   if d.status = 'active' and d.turn_start is not null
-     and now() - d.turn_start > interval '30 seconds' then
+     and now() - d.turn_start > (public.duel_seconds() || ' seconds')::interval then
     if d.a_pick is null and d.b_pick is not null then
       d := public.duel_finish(d, d.b, 'opponent ran out of time');
     elsif d.b_pick is null and d.a_pick is not null then
@@ -196,7 +202,16 @@ create or replace function public.duel_finish(d public.duels, win uuid, why text
 returns public.duels
 language plpgsql security definer set search_path = public
 as $$
+declare cur public.duels;
 begin
+  -- Both players poll duel_state, so two calls can decide the same duel is over at the same
+  -- moment. Without taking the row first, each would pay the pot out and the pair would walk
+  -- away with more chips than they staked.
+  select * into cur from public.duels where id = d.id for update;
+  if cur.id is null then return d; end if;
+  if cur.status = 'done' then return cur; end if;
+  d := cur;
+
   if win is not null then
     update public.wallets set chips = chips + d.stake * 2,
            lifetime_won = lifetime_won + d.stake, updated_at = now()
@@ -207,7 +222,7 @@ begin
     update public.wallets set chips = chips + d.stake where user_id in (d.a, d.b);
   end if;
   update public.duels set status = 'done', winner = win, reason = why, updated_at = now()
-   where id = d.id returning * into d;
+   where id = d.id and status <> 'done' returning * into d;
   insert into public.casino_log (user_id, game, bet, delta, detail)
        values (d.a, 'duel', d.stake,
                case when win = d.a then d.stake when win is null then 0 else -d.stake end,
@@ -317,7 +332,7 @@ do $$
 declare f text;
 begin
   foreach f in array array['duel_find(bigint)','duel_state(uuid)','duel_answer(uuid,text[])',
-                           'duel_leave(uuid)']
+                           'duel_leave(uuid)','duel_seconds()']
   loop
     execute format('revoke all on function public.%s from public, anon;', f);
     execute format('grant execute on function public.%s to authenticated;', f);

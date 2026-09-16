@@ -128,6 +128,48 @@ begin
   perform as_user(B); r := public.duel_find(250);
   perform test_assert((r->>'ok')::boolean = false, 'you cannot stake chips you do not have');
 
+  -- ============ a finished duel cannot be paid out twice ============
+  delete from public.duels;
+  perform set_chips(A, 100); perform set_chips(B, 100);
+  perform as_user(A); r := public.duel_find(50);
+  perform as_user(B); r := public.duel_find(50);
+  select * into d from public.duels order by created_at desc limit 1; did := d.id;
+  right_ans := public.duel_answers(d.q_ids[1]);
+  perform as_user(A); r := public.duel_answer(did, right_ans);
+  perform as_user(B); r := public.duel_answer(did, array['Z']);
+  perform test_assert((select chips from public.wallets where user_id=A) = 150,
+                      'winner paid once');
+  -- calling finish again on the settled duel must be a no-op, not a second pot
+  select * into d from public.duels where id = did;
+  perform public.duel_finish(d, A, 'replay');
+  perform public.duel_finish(d, A, 'replay');
+  perform test_assert((select chips from public.wallets where user_id=A) = 150,
+                      'settling an already finished duel pays nothing extra');
+  perform test_assert((select sum(chips) from public.wallets where user_id in (A,B)) = 200,
+                      'no chips are minted by a repeated settle');
+
+  -- ============ the question clock ============
+  perform test_assert(public.duel_seconds() >= 60,
+                      'a question stays open long enough to read it');
+  delete from public.duels;
+  perform set_chips(A, 100); perform set_chips(B, 100);
+  perform as_user(A); r := public.duel_find(50);
+  perform as_user(B); r := public.duel_find(50);
+  perform test_assert((r->'duel'->>'secondsLeft')::int between public.duel_seconds() - 2
+                      and public.duel_seconds(),
+                      'the clock the client sees matches the server constant');
+
+  -- ============ running out of time forfeits ============
+  select * into d from public.duels order by created_at desc limit 1; did := d.id;
+  right_ans := public.duel_answers(d.q_ids[1]);
+  perform as_user(A); r := public.duel_answer(did, right_ans);   -- alice answers, bob does not
+  update public.duels set turn_start = now() - (public.duel_seconds() + 5 || ' seconds')::interval
+   where id = did;
+  perform as_user(B); r := public.duel_state(did);
+  select * into d from public.duels where id = did;
+  perform test_assert(d.status = 'done' and d.winner = A,
+                      'a player who runs out the clock forfeits to the one who answered');
+
   -- ============ roulette: payouts and conservation ============
   delete from public.duels; delete from public.roulette_bets;
   perform set_chips(A, 1000);

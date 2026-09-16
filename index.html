@@ -1265,7 +1265,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
         <div id="duelLobby">
           <div class="cardhead"><span class="ch-t">⚔️ Question duel</span></div>
           <p class="ch-note">Two players get the same AWS questions. Answer wrong while your
-            opponent answers right and the whole pot is theirs. Five questions, 30 seconds each.</p>
+            opponent answers right and the whole pot is theirs. Five questions, 75 seconds each.</p>
           <div class="divider"></div>
           <div class="minirow"><span class="ch-t" style="font-size:12px">Stake</span></div>
           <div class="betrow" id="duelStakes"></div>
@@ -5779,7 +5779,9 @@ async function bjAct(fn){ const r=await casRpc(fn); if(r){ bjState=r; paintBj();
 // The client renders the question from its own bank by index, but never decides who was
 // right: only the server has the answers, so "answer wrong and the pot is theirs" is
 // something it can actually enforce.
-let duelStake=50, duelId=null, duelPoll=null, duelPicked=new Set(), duelLeft=30, duelTick=null;
+let duelStake=50, duelId=null, duelPoll=null, duelPicked=new Set(), duelTick=null;
+// the server publishes both the countdown and its total, so this never drifts from it
+let duelLeft=75, duelTotal=75;
 
 function duelMsg(t,kind){ const e=$('duelMsg'); if(!e) return; e.textContent=t||''; e.className='authnote'+(kind?' '+kind:''); }
 function duelShow(which){
@@ -5828,9 +5830,12 @@ function paintDuel(d){
     $('duelMe').classList.toggle('answered',d.you.answered);
     $('duelThem').classList.toggle('answered',d.them.answered);
     $('duelScore').textContent=d.you.score+' — '+d.them.score;
-    if(d.turn!==paintDuel._turn){ duelPicked.clear(); paintDuel._turn=d.turn; }
+    // key on the duel as well as the turn: a new duel also starts at turn 0
+    const mark=d.id+':'+d.turn;
+    if(mark!==paintDuel._mark){ duelPicked.clear(); paintDuel._mark=mark; }
     renderDuelQuestion(d);
-    if(typeof d.secondsLeft==='number'){ duelLeft=d.secondsLeft; }
+    if(typeof d.secondsTotal==='number'&&d.secondsTotal>0) duelTotal=d.secondsTotal;
+    if(typeof d.secondsLeft==='number') duelLeft=d.secondsLeft;
     $('duelStatus').textContent = d.you.answered
       ? (d.them.answered?'Both in — scoring…':'Locked in. Waiting for your opponent…')
       : (d.them.answered?'⚠ They have answered — your move.':'Pick your answer.');
@@ -5861,8 +5866,8 @@ function duelRun(){
     if(duelLeft>0){
       duelLeft--;
       $('duelCount').textContent=duelLeft+'s';
-      $('duelBarFill').style.width=Math.max(0,(duelLeft/30)*100)+'%';
-      $('duelCount').classList.toggle('closing',duelLeft<=5);
+      $('duelBarFill').style.width=Math.max(0,(duelLeft/duelTotal)*100)+'%';
+      $('duelCount').classList.toggle('closing',duelLeft<=10);
     }
   },1000);
 }
@@ -5874,6 +5879,7 @@ async function duelFind(){
   if(!r.ok){ duelMsg(r.reason,'bad'); return; }
   duelMsg('');
   duelId=r.duel.id;
+  paintDuel._mark=null; duelPicked.clear();
   paintDuel(r.duel);
   duelRun();
 }
