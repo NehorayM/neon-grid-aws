@@ -19,6 +19,27 @@ create table if not exists public.profiles (
 
 comment on table public.profiles is 'Per-user Neon Grid progress. One row per auth user.';
 
+-- ---------------------------------------------------------------- display name
+-- Added after the first release, so this whole file is safe to run again on an existing
+-- project: every statement below is guarded.
+alter table public.profiles add column if not exists username text;
+
+-- Case-insensitive uniqueness. The app never needs to read other people's rows to check
+-- whether a name is free - it simply tries to save and handles the 23505 the index raises,
+-- which keeps row-level security airtight while still preventing duplicates.
+create unique index if not exists profiles_username_lower_key
+  on public.profiles (lower(username));
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_username_shape') then
+    alter table public.profiles
+      add constraint profiles_username_shape
+      check (username is null or username ~ '^[A-Za-z0-9_]{3,20}$');
+  end if;
+end
+$$;
+
 -- ---------------------------------------------------------------- row level security
 -- Without this, the publishable key would let anyone read every row.
 alter table public.profiles enable row level security;

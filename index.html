@@ -736,6 +736,15 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .minichip.synced{color:var(--lime);border-color:rgba(107,255,158,.4)}
 .minichip.syncing{color:var(--gold);border-color:rgba(255,215,94,.4)}
 
+.rankbadge{cursor:pointer;text-align:left;padding:3px 7px 3px 3px;border-radius:24px;border:1px solid transparent;transition:background .15s,border-color .15s}
+.rankbadge:hover{background:var(--panel);border-color:var(--line)}
+.rankbadge:active{transform:scale(.98)}
+.mechev{color:var(--dim);font-size:15px;flex:none;margin-left:1px}
+.rankmeta .nm .synced{color:var(--lime);font-size:10px;margin-left:5px}
+.rankring.signedin::after{content:"";position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;
+  border-radius:50%;background:var(--lime);border:2px solid var(--bg);box-shadow:0 0 8px rgba(107,255,158,.6)}
+.rankring.syncing::after{background:var(--gold);box-shadow:0 0 8px rgba(255,215,94,.6)}
+
 </style>
 </head>
 <body>
@@ -743,7 +752,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   <div id="grid-bg"></div>
 
   <div id="topbar">
-    <div class="rankbadge">
+    <button class="rankbadge" id="meBtn" title="Account">
       <div class="rankring">
         <svg width="38" height="38"><circle cx="19" cy="19" r="16" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="3"></circle>
         <circle id="xpRing" cx="19" cy="19" r="16" fill="none" stroke="#3ce0ff" stroke-width="3" stroke-linecap="round"
@@ -876,7 +885,6 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <button class="minichip" id="bankOpen">📚 Bank</button>
       <button class="minichip" id="themeOpen">🎨 Themes</button>
       <button class="minichip" id="logOpen">📋 Exam log</button>
-      <button class="minichip" id="authOpen">👤 <span id="authChip">Guest</span></button>
       <button class="minichip" id="soundBtn">🔊</button>
       <button class="minichip" id="hapticBtn">📳 On</button>
     </div>
@@ -1079,6 +1087,8 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 
     <div class="card" id="authSignedOut">
       <div class="cardhead"><span class="ch-t">Sign in or create an account</span></div>
+      <label class="authlbl" for="authName">Username <span style="text-transform:none;letter-spacing:0">— for new accounts; 3–20 letters, numbers or _</span></label>
+      <input class="authin" id="authName" type="text" autocomplete="username" maxlength="20" placeholder="neon_architect">
       <label class="authlbl" for="authEmail">Email</label>
       <input class="authin" id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
       <label class="authlbl" for="authPass">Password</label>
@@ -1097,6 +1107,14 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
     <div class="card hidden" id="authSignedIn">
       <div class="cardhead"><span class="ch-t">Signed in</span>
         <button class="pillbtn" id="authSignOut">Sign out</button></div>
+      <div class="minirow"><span class="ch-t" style="font-size:12px">Username</span>
+        <span class="ch-s" id="authNameNow">—</span></div>
+      <label class="authlbl" for="authNameEdit">Change username</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="authin" id="authNameEdit" type="text" maxlength="20" placeholder="3–20 letters, numbers or _" style="flex:1">
+        <button class="btn sm" id="authNameSave">Save</button>
+      </div>
+      <div class="divider"></div>
       <div class="minirow"><span class="ch-t" style="font-size:12px">Account</span>
         <span class="ch-s" id="authWho">—</span></div>
       <div class="minirow"><span class="ch-t" style="font-size:12px">Last sync</span>
@@ -1448,9 +1466,9 @@ function rankFor(xp){ let r=RANKS[0],n=null; for(let i=0;i<RANKS.length;i++){ if
 function refreshTop(){
   const rk=rankFor(P.xp);
   $('lvlNum').textContent=rk.lvl;
-  $('rankName').textContent=rk.name;
+  $('rankName').textContent=(typeof sbUser!=='undefined'&&sbUser&&(myName||(sbUser.email||'').split('@')[0]))||rk.name;
   const span=rk.next-rk.base, into=P.xp-rk.base;
-  $('xpText').textContent=into+' / '+span+' XP';
+  $('xpText').textContent=(typeof sbUser!=='undefined'&&sbUser?rk.name+' · ':'')+into+' / '+span+' XP';
   const C=2*Math.PI*16;
   $('xpRing').setAttribute('stroke-dasharray',C.toFixed(1));
   $('xpRing').setAttribute('stroke-dashoffset',(C*(1-Math.min(1,into/span))).toFixed(1));
@@ -5031,6 +5049,15 @@ const SUPA={
 };
 const CLOUD_ON=!!(SUPA.url&&SUPA.anonKey);
 let sb=null, sbUser=null, sbReady=false, lastSync=0, syncing=false, syncTimer=null;
+let myName=null;                      // display name, once signed in
+const NAME_RE=/^[A-Za-z0-9_]{3,20}$/;
+function nameError(n){
+  if(!n) return 'Pick a username.';
+  if(n.length<3) return 'Username needs at least 3 characters.';
+  if(n.length>20) return 'Username can be at most 20 characters.';
+  if(!NAME_RE.test(n)) return 'Use only letters, numbers and underscores.';
+  return null;
+}
 
 // network failures surface as "Failed to fetch", which tells a player nothing
 function humanError(e){
@@ -5049,12 +5076,17 @@ function authMsg(text,kind){
   el.className='authnote'+(kind?' '+kind:'');
 }
 function renderAuth(){
-  const chip=$('authChip'), btn=$('authOpen');
-  if(chip) chip.textContent=sbUser?(sbUser.email||'Account').split('@')[0]:'Guest';
-  if(btn){
-    btn.classList.toggle('synced',!!sbUser&&!syncing);
-    btn.classList.toggle('syncing',syncing);
+  // the top-bar badge is the account: rank for guests, your name once signed in
+  const ring=document.querySelector('.rankring');
+  if(ring){
+    ring.classList.toggle('signedin',!!sbUser&&!syncing);
+    ring.classList.toggle('syncing',!!sbUser&&syncing);
   }
+  const nm=$('rankName');
+  if(nm) nm.textContent=(sbUser&&(myName||(sbUser.email||'').split('@')[0]))||rankFor(P.xp).name;
+  const chev=$('meChev');
+  if(chev) chev.textContent=sbUser?'›':'↗';
+  if($('authNameNow')) $('authNameNow').textContent=myName||'not set';
   const outBox=$('authSignedOut'), inBox=$('authSignedIn'), unBox=$('authUnconfigured');
   if(!outBox) return;
   unBox.classList.toggle('hidden',CLOUD_ON);
@@ -5128,16 +5160,48 @@ function mergeProfiles(a,b){
 // ---------- sync ----------
 async function pullCloud(){
   if(!sb||!sbUser) return null;
-  const {data,error}=await sb.from('profiles').select('profile,course,updated_at').eq('id',sbUser.id).maybeSingle();
+  const {data,error}=await sb.from('profiles').select('profile,course,username,updated_at').eq('id',sbUser.id).maybeSingle();
   if(error){ authMsg(humanError(error),'bad'); return null; }
   return data||null;
 }
 async function pushCloud(){
   if(!sb||!sbUser) return false;
   const course=(()=>{ try{ return JSON.parse(localStorage.getItem('academy_course')||'null'); }catch(e){ return null; } })();
-  const {error}=await sb.from('profiles').upsert({id:sbUser.id, profile:P, course, updated_at:new Date().toISOString()});
+  const row={id:sbUser.id, profile:P, course, updated_at:new Date().toISOString()};
+  if(myName) row.username=myName;
+  let {error}=await sb.from('profiles').upsert(row);
+  // the username column arrived in a later migration; keep syncing if it isn't there yet
+  if(error&&/username/i.test(error.message||'')&&(error.code==='42703'||error.code==='PGRST204')){
+    delete row.username;
+    ({error}=await sb.from('profiles').upsert(row));
+    if(!error) authMsg('Progress synced. Run the updated supabase_setup.sql to enable usernames.','ok');
+  }
   if(error){ authMsg(humanError(error),'bad'); return false; }
   lastSync=Date.now(); return true;
+}
+
+// Uniqueness is enforced by the database index, not by reading other people's rows - that
+// keeps RLS strict while still refusing a duplicate name.
+async function saveUsername(next){
+  const err=nameError(next);
+  if(err){ authMsg(err,'bad'); return false; }
+  if(!sb||!sbUser){ authMsg('Sign in first.','bad'); return false; }
+  authMsg('Saving username…','busy');
+  const {error}=await sb.from('profiles').upsert(
+    {id:sbUser.id, profile:P, username:next, updated_at:new Date().toISOString()});
+  if(error){
+    if(error.code==='23505'){ authMsg('That username is taken — try another.','bad'); return false; }
+    if(error.code==='23514'){ authMsg('Use 3–20 letters, numbers or underscores.','bad'); return false; }
+    if(/username/i.test(error.message||'')&&(error.code==='42703'||error.code==='PGRST204')){
+      authMsg('Usernames need the latest supabase_setup.sql run on your project.','bad'); return false;
+    }
+    authMsg(humanError(error),'bad'); return false;
+  }
+  myName=next;
+  try{ await sb.auth.updateUser({data:{username:next}}); }catch(e){}
+  authMsg('Username saved.','ok');
+  refreshTop(); renderAuth();
+  return true;
 }
 async function syncNow(silent){
   if(!sb||!sbUser||syncing) return;
@@ -5145,6 +5209,7 @@ async function syncNow(silent){
   if(!silent) authMsg('Syncing…','busy');
   try{
     const remote=await pullCloud();
+    if(remote&&remote.username) myName=remote.username;
     if(remote&&remote.profile&&Object.keys(remote.profile).length){
       const merged=mergeProfiles(remote.profile,P);     // local is the newer side of the merge
       Object.assign(P,merged);
@@ -5178,28 +5243,39 @@ async function doSignIn(){
   const {data,error}=await client.auth.signInWithPassword({email:c.email,password:c.pass});
   if(error){ authMsg(humanError(error),'bad'); return; }
   sbUser=data.user; $('authPass').value='';
+  myName=(data.user.user_metadata&&data.user.user_metadata.username)||null;
   authMsg('Signed in. Merging your progress…','busy');
   await syncNow(false);
   renderAuth();
 }
 async function doSignUp(){
   const c=authCreds(); if(!c) return;
+  const wanted=($('authName').value||'').trim();
+  const nerr=nameError(wanted);
+  if(nerr){ authMsg(nerr,'bad'); $('authName').focus(); return; }
   authMsg('Creating your account…','busy');
   const client=await loadSupabase(); if(!client) return;
-  const {data,error}=await client.auth.signUp({email:c.email,password:c.pass});
+  const {data,error}=await client.auth.signUp({email:c.email,password:c.pass,options:{data:{username:wanted}}});
   if(error){ authMsg(humanError(error),'bad'); return; }
   $('authPass').value='';
-  if(!data.session){ authMsg('Account created — check your email to confirm it, then sign in.','ok'); return; }
+  if(!data.session){
+    authMsg('Account created — confirm the email we just sent, then sign in as '+wanted+'.','ok');
+    return;
+  }
   sbUser=data.user;
-  await syncNow(false);
+  const ok=await saveUsername(wanted);
+  if(!ok) myName=wanted;                    // keep it locally even if the column is missing
+  await syncNow(true);
+  authMsg('Welcome, '+wanted+'.','ok');
   renderAuth();
 }
 async function doSignOut(){
   const client=await loadSupabase(); if(!client) return;
   if(sbUser) await pushCloud();          // never lose the last few answers
   await client.auth.signOut();
-  sbUser=null; lastSync=0;
+  sbUser=null; lastSync=0; myName=null;
   authMsg('Signed out. Your progress stays on this device.','ok');
+  refreshTop();
   renderAuth();
 }
 async function doReset(){
@@ -5214,12 +5290,16 @@ async function initAuth(){
   if(!CLOUD_ON) return;
   const client=await loadSupabase(); if(!client) return;
   const {data}=await client.auth.getSession();
-  if(data&&data.session){ sbUser=data.session.user; await syncNow(true); }
+  if(data&&data.session){
+    sbUser=data.session.user;
+    myName=(sbUser.user_metadata&&sbUser.user_metadata.username)||null;
+    await syncNow(true); refreshTop();
+  }
   client.auth.onAuthStateChange((_e,session)=>{ sbUser=session?session.user:null; renderAuth(); });
   sbReady=true; renderAuth();
 }
 
-$('authOpen').onclick=()=>{ renderAuth(); authMsg(''); go('authScreen'); };
+$('meBtn').onclick=()=>{ renderAuth(); authMsg(''); if($('authNameEdit')) $('authNameEdit').value=myName||''; go('authScreen'); };
 $('authBack').onclick=()=>{ go('homeScreen'); renderHome(); };
 $('authSignIn').onclick=()=>doSignIn();
 $('authSignUp').onclick=()=>doSignUp();
@@ -5227,6 +5307,8 @@ $('authSignOut').onclick=()=>doSignOut();
 $('authReset').onclick=()=>doReset();
 $('authSyncNow').onclick=()=>syncNow(false);
 $('authPass').addEventListener('keydown',e=>{ if(e.key==='Enter') doSignIn(); });
+$('authNameSave').onclick=()=>saveUsername(($('authNameEdit').value||'').trim());
+$('authNameEdit').addEventListener('keydown',e=>{ if(e.key==='Enter') $('authNameSave').click(); });
 
 // ================= COURSE MODE =================
 // ---------- markdown ----------
@@ -5933,7 +6015,8 @@ if(TEST){
     EXPLAIN, EX_TERMS, exFind, exCue, buildExplain, renderExplain, hideExplain, explainMode,
     get pendingAdvance(){return pendingAdvance;},
     SUPA, CLOUD_ON, mergeProfiles, renderAuth, authCreds, syncNow, cloudTouch, loadSupabase,
-    humanError, get sbUser(){return sbUser;}, get syncing(){return syncing;},
+    humanError, nameError, saveUsername, get myName(){return myName;},
+    get sbUser(){return sbUser;}, get syncing(){return syncing;},
     coursePayout, courseShape, SUBJECT, subjectData, subjectCoverage, TRIGGERS, PILLARS, pillarFor,
     blueprintHTML, deepDiveHTML, courseRecap, recapCard, optionRationale, authoredRationale,
     saveCourseState, readCourseState, clearCourseState, resumeCourse, renderResumeCourse,
