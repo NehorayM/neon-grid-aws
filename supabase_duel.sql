@@ -115,8 +115,8 @@ as $$
 declare w public.wallets; d public.duels; nm text; ids int[];
 begin
   w := public.wallet_row();
-  if stake <= 0 then raise exception 'stake must be positive'; end if;
-  if w.chips < stake then
+  if duel_find.stake <= 0 then raise exception 'stake must be positive'; end if;
+  if w.chips < duel_find.stake then
     return jsonb_build_object('ok', false, 'reason', 'not enough chips', 'chips', w.chips);
   end if;
 
@@ -131,10 +131,12 @@ begin
   select username into nm from public.profiles where id = auth.uid();
   nm := coalesce(nm, 'player');
 
-  -- take a seat at someone else's table if one is open at this stake
-  select * into d from public.duels
-   where status = 'waiting' and stake = duel_find.stake and a <> auth.uid()
-   order by created_at limit 1
+  -- take a seat at someone else's table if one is open at this stake.
+  -- the column and the parameter are both called "stake", so both sides are qualified:
+  -- dd.stake is the row, duel_find.stake is the argument.
+  select * into d from public.duels dd
+   where dd.status = 'waiting' and dd.stake = duel_find.stake and dd.a <> auth.uid()
+   order by dd.created_at limit 1
    for update skip locked;
 
   if d.id is not null then
@@ -150,11 +152,13 @@ begin
        set b = auth.uid(), b_name = nm, status = 'active', q_ids = ids,
            turn = 0, turn_start = now(), updated_at = now()
      where id = d.id returning * into d;
-    update public.wallets set chips = chips - stake, updated_at = now() where user_id = auth.uid();
+    update public.wallets set chips = chips - duel_find.stake, updated_at = now()
+     where user_id = auth.uid();
   else
     insert into public.duels (stake, a, a_name, status)
-         values (stake, auth.uid(), nm, 'waiting') returning * into d;
-    update public.wallets set chips = chips - stake, updated_at = now() where user_id = auth.uid();
+         values (duel_find.stake, auth.uid(), nm, 'waiting') returning * into d;
+    update public.wallets set chips = chips - duel_find.stake, updated_at = now()
+     where user_id = auth.uid();
   end if;
 
   select * into w from public.wallets where user_id = auth.uid();
