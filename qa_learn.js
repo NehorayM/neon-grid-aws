@@ -175,6 +175,7 @@ window.QA_LEARN = async function (opts) {
   });
 
   // ---- resume across a reload ----
+  if (opts.extra !== false) {
   const sec0 = LT.LEARN_SECS[0];
   LT.startLearn(sec0);
   $('lrnMapGo').click();
@@ -185,11 +186,14 @@ window.QA_LEARN = async function (opts) {
   ok(LT.L && LT.L.sec === sec0, 'the resumed run is the same subject');
   LT.learnLeave(true);
   localStorage.removeItem('academy_learn');
+  }
 
   const secs = opts.secs || LT.LEARN_SECS;
   for (const sec of secs) await runSubject(sec, 'clean');
-  await runSubject(secs[0], 'fail');
-  await runSubject(secs[0], 'half');
+  if (opts.extra !== false) {
+    await runSubject(secs[0], 'fail');
+    await runSubject(secs[0], 'half');
+  }
 
   return { checks, failed: fails.length, fails: fails.slice(0, 40), notes,
            hitTesting: hitSkipped ? 'skipped — run QA_TAPS() with the pane visible' : 'included' };

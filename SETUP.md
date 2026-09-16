@@ -86,8 +86,8 @@ One row per user in `public.profiles`:
 | Column | Contents |
 |---|---|
 | `id` | The Supabase auth user id (foreign key to `auth.users`) |
-| `profile` | The game profile: XP, coins, seen questions, badges, per-sector stats, course records |
-| `course` | An in-flight Subject Course, so a refresh mid-course can resume on another device |
+| `profile` | The game profile: XP, coins, seen questions, badges, per-sector stats, subject records |
+| `course` | An in-flight subject, so a refresh part-way through can resume on another device |
 | `updated_at` | Touched by a trigger on every write |
 
 Passwords are **not** in this table and never pass through the app's own storage. Supabase Auth
