@@ -5026,8 +5026,8 @@ function explainMode(){ return !exam&&!sim&&!mock; }
 // Never put the SECRET key here (sb_secret_… / service_role). That one bypasses RLS and would
 // expose every user's data in a public page.
 const SUPA={
-  url:'',        // Settings → Data API → Project URL, e.g. https://abcdefghijklm.supabase.co
-  anonKey:''     // Settings → API Keys → Publishable key (sb_publishable_…)
+  url:'https://rlbgbxgtaqvxwvskpblg.supabase.co',
+  anonKey:'sb_publishable_eD82x7hk17vpNss1CiYrMg_MOk6_nbs'   // publishable — safe in a browser, RLS verified
 };
 const CLOUD_ON=!!(SUPA.url&&SUPA.anonKey);
 let sb=null, sbUser=null, sbReady=false, lastSync=0, syncing=false, syncTimer=null;
