@@ -41,6 +41,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
 /* ---------- top bar ---------- */
 #topbar{position:absolute;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:10px;
+  pointer-events:none;
   padding:calc(10px + var(--safeT)) 14px 10px;background:linear-gradient(180deg,var(--bg),transparent)}
 .rankbadge{display:flex;align-items:center;gap:9px;min-width:0;flex:1}
 .rankring{position:relative;width:38px;height:38px;flex:none}
@@ -744,6 +745,8 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .rankring.signedin::after{content:"";position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;
   border-radius:50%;background:var(--lime);border:2px solid var(--bg);box-shadow:0 0 8px rgba(107,255,158,.6)}
 .rankring.syncing::after{background:var(--gold);box-shadow:0 0 8px rgba(255,215,94,.6)}
+#topbar > *{pointer-events:auto}
+@media (max-width:859px){ #topbar.hasback{padding-left:58px} }
 
 </style>
 </head>
@@ -763,7 +766,8 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
         <div class="nm" id="rankName">Cloud Initiate</div>
         <div class="xp" id="xpText">0 / 100 XP</div>
       </div>
-    </div>
+      <span class="mechev" id="meChev">↗</span>
+    </button>
     <button class="clockpill" id="playClockWrap">
       <span id="playClock">⏱ 0:00</span><span id="clockSub">session</span>
     </button>
@@ -1078,7 +1082,6 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 
   <!-- ACCOUNT -->
   <div id="authScreen" class="screen hidden">
-    <button class="backbtn" id="authBack">‹</button>
     <div style="text-align:center;margin-bottom:12px">
       <h2 class="head">👤 Account</h2>
       <p class="sub">Signing in syncs your progress across devices. Playing as a guest works
@@ -1518,7 +1521,9 @@ let route='homeScreen';
 function go(id){
   SCREENS.forEach(s=>$(s).classList.toggle('hidden',s!==id)); route=id;
   const inGame=(id==='gameScreen');
-  $('app').classList.toggle('reading',id==='courseReadScreen'||id==='courseRecapScreen');   // calm the background for long reads
+  $('app').classList.toggle('reading',id==='courseReadScreen'||id==='courseRecapScreen');
+  const scr=$(id);
+  $('topbar').classList.toggle('hasback',!!(scr&&scr.querySelector('.backbtn')));   // calm the background for long reads
   $('topbar').style.display='flex';                 // the clock is never hidden
   $('topbar').classList.toggle('slim',inGame);
   $('app').classList.toggle('in-game',inGame);
@@ -5300,7 +5305,6 @@ async function initAuth(){
 }
 
 $('meBtn').onclick=()=>{ renderAuth(); authMsg(''); if($('authNameEdit')) $('authNameEdit').value=myName||''; go('authScreen'); };
-$('authBack').onclick=()=>{ go('homeScreen'); renderHome(); };
 $('authSignIn').onclick=()=>doSignIn();
 $('authSignUp').onclick=()=>doSignUp();
 $('authSignOut').onclick=()=>doSignOut();
