@@ -763,8 +763,11 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   background:conic-gradient(#1b2233 0deg,#c0392b 40deg,#1b2233 80deg,#c0392b 120deg,#1b2233 160deg,
     #2ecc71 180deg,#1b2233 200deg,#c0392b 240deg,#1b2233 280deg,#c0392b 320deg,#1b2233 360deg);
   border:3px solid rgba(255,255,255,.15);box-shadow:0 0 30px rgba(60,224,255,.15)}
-.wheel.spin{animation:wheelSpin .9s cubic-bezier(.2,.8,.3,1)}
-@keyframes wheelSpin{from{transform:rotate(0)}to{transform:rotate(1080deg)}}
+.wheel.spinning{animation:wheelLoop .65s linear infinite}
+@keyframes wheelLoop{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.wheel.landing{animation:wheelLand 1.15s cubic-bezier(.12,.78,.24,1)}
+@keyframes wheelLand{from{transform:rotate(0)}to{transform:rotate(600deg)}}
+.wheel.spinning span,.wheel.landing span{color:var(--dim)}
 .wheel span{background:rgba(5,6,15,.8);border-radius:50%;width:66px;height:66px;display:grid;place-items:center}
 .wheel.red span{color:#ff6b6b} .wheel.black span{color:#cfe0f5} .wheel.green span{color:var(--lime)}
 .betrow{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
@@ -826,6 +829,20 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .tbet .pk.black{background:rgba(44,62,80,.5);color:#c9d8ec}
 .tbet .pk.green{background:rgba(46,204,113,.2);color:var(--lime)}
 .tbet .amt{font-family:var(--mono);font-weight:800;color:var(--gold)}
+.rouwin.red{color:#ff8f88} .rouwin.black{color:#c9d8ec} .rouwin.green{color:var(--lime)}
+
+/* ---------- duel ---------- */
+.duelvs{display:flex;align-items:center;justify-content:center;gap:12px;margin:6px 0 4px}
+.dp{font-size:13px;font-weight:800;padding:8px 14px;border-radius:14px;background:var(--panel);
+  border:1px solid var(--line);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp.me{border-color:rgba(60,224,255,.45);color:var(--cyan)}
+.dp.them{border-color:rgba(255,79,216,.45);color:var(--mag)}
+.dp.dim{color:var(--dim)}
+.dp.answered{box-shadow:0 0 0 2px rgba(107,255,158,.35)}
+.vs{font-family:var(--mono);font-size:14px;font-weight:800;color:var(--gold)}
+.duelresult{font-family:var(--mono);font-size:30px;font-weight:800;line-height:1.1}
+.duelresult.win{color:var(--lime)} .duelresult.lose{color:var(--red)} .duelresult.draw{color:var(--gold)}
+#duelOpts .opt{padding:12px 13px;font-size:13px}
 
 </style>
 </head>
@@ -1243,11 +1260,51 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       </div>
 
       <!-- duel -->
-      <div class="card hidden" id="casDuel">
-        <div class="cardhead"><span class="ch-t">⚔️ Question duel</span></div>
-        <p class="ch-note" id="duelNote">Two players, same questions, chips on the line — whoever
-          answers wrong hands the pot to the other. Not built yet: this is the next piece, and it
-          needs its own realtime matchmaking on top of what the other two games use.</p>
+      <div class="card" id="casDuel">
+        <!-- lobby -->
+        <div id="duelLobby">
+          <div class="cardhead"><span class="ch-t">⚔️ Question duel</span></div>
+          <p class="ch-note">Two players get the same AWS questions. Answer wrong while your
+            opponent answers right and the whole pot is theirs. Five questions, 30 seconds each.</p>
+          <div class="divider"></div>
+          <div class="minirow"><span class="ch-t" style="font-size:12px">Stake</span></div>
+          <div class="betrow" id="duelStakes"></div>
+          <button class="btn wide" id="duelFind" style="margin-top:12px">Find an opponent ▸</button>
+          <div class="authnote" id="duelMsg"></div>
+        </div>
+
+        <!-- waiting for someone to sit down -->
+        <div id="duelWait" class="hidden" style="text-align:center;padding:10px 0">
+          <div class="duelvs"><span class="dp me" id="duelWaitMe">you</span>
+            <span class="vs">VS</span><span class="dp dim">…</span></div>
+          <p class="ch-note" id="duelWaitNote">Waiting for someone to take the seat…</p>
+          <button class="btn ghost sm" id="duelCancel">Cancel and refund</button>
+        </div>
+
+        <!-- live duel -->
+        <div id="duelPlay" class="hidden">
+          <div class="duelvs">
+            <span class="dp me" id="duelMe">you</span>
+            <span class="vs" id="duelScore">0 — 0</span>
+            <span class="dp them" id="duelThem">them</span>
+          </div>
+          <div class="rouhead" style="margin:10px 0">
+            <span class="tag" id="duelQn">Q1</span>
+            <div class="roubar"><i id="duelBarFill"></i></div>
+            <span class="roucount" id="duelCount">30s</span>
+          </div>
+          <div class="qcard" style="margin-bottom:10px"><div class="qtext" id="duelQ"></div></div>
+          <div class="opts" id="duelOpts"></div>
+          <div class="ch-note" id="duelStatus" style="text-align:center;min-height:20px;margin-top:8px"></div>
+          <button class="btn wide hidden" id="duelLock" style="margin-top:10px">Lock in</button>
+        </div>
+
+        <!-- result -->
+        <div id="duelDone" class="hidden" style="text-align:center;padding:6px 0">
+          <div class="duelresult" id="duelResult">—</div>
+          <p class="ch-note" id="duelReason"></p>
+          <button class="btn" id="duelAgain" style="margin-top:8px">Play again</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1696,7 +1753,7 @@ function go(id){
   $('app').classList.toggle('reading',id==='courseReadScreen'||id==='courseRecapScreen');
   const scr=$(id);
   $('topbar').classList.toggle('hasback',!!(scr&&scr.querySelector('.backbtn')));
-  if(id!=='casinoScreen'&&typeof rouStop==='function') rouStop();   // calm the background for long reads
+  if(id!=='casinoScreen'&&typeof rouStop==='function'){ rouStop(); if(typeof duelStop==='function') duelStop(); }   // calm the background for long reads
   $('topbar').style.display='flex';                 // the clock is never hidden
   $('topbar').classList.toggle('slim',inGame);
   $('app').classList.toggle('in-game',inGame);
@@ -5565,14 +5622,38 @@ function casTab(which){
   });
   // only poll the shared table while it is actually on screen
   if(which==='Roul'&&sbUser) rouStart(); else rouStop();
+  if(which!=='Duel'&&typeof duelStop==='function'&&!duelId) duelStop();
 }
 
 // ---------- roulette: one shared wheel, a new round every 25 seconds ----------
-// The server owns the clock. The round number IS the time (epoch/25), and the pocket is
+// The server owns the clock. The round number IS the time (epoch/25) and the pocket is
 // derived from it, so every player who asks about round N gets the same answer without a
-// background worker having to be running.
-let rouPoll=null, rouLastRound=null, rouHist=[], rouLocalLeft=0, rouTick=null;
+// background worker having to run. The wheel starts spinning the moment the countdown hits
+// zero rather than waiting for the next poll, so the spin is something you watch rather
+// than a number that appears.
+let rouPoll=null, rouLastRound=null, rouHist=[], rouLocalLeft=25, rouTick=null;
+let rouPhase='betting', rouSpinningFor=null;
 
+function rouSetPhase(p,pocket,colour){
+  const w=$('rouWheel');
+  rouPhase=p;
+  if(p==='spinning'){
+    w.className='wheel spinning'; $('rouPocket').textContent='•';
+    $('rouResult').innerHTML='<b style="color:var(--gold)">No more bets — spinning…</b>';
+  } else if(p==='landing'){
+    w.className='wheel landing '+colour;
+    setTimeout(()=>{
+      if(rouPhase!=='landing') return;
+      w.className='wheel '+colour;
+      $('rouPocket').textContent=pocket;
+      $('rouResult').innerHTML='<b class="rouwin '+colour+'">'+colour.toUpperCase()+' '+pocket+'</b>';
+      rouPhase='result';
+    },1100);
+    $('rouPocket').textContent='•';
+  } else {
+    w.className='wheel'+(colour?' '+colour:'');
+  }
+}
 function paintRouTable(s){
   if(!s) return;
   $('rouRoundTag').textContent='ROUND '+(s.round%1000);
@@ -5594,26 +5675,23 @@ function paintRouTable(s){
   const mine=(s.mine||[]).reduce((a,b)=>a+b.amount,0);
   $('rouMine').textContent=mine?('staked '+mine+' this round'):'';
 
+  // a fresh result: land the wheel on it
   if(s.last&&s.last.round!==rouLastRound){
     const first=(rouLastRound===null);
     rouLastRound=s.last.round;
     rouHist.unshift(s.last); rouHist=rouHist.slice(0,10);
     $('rouHist').innerHTML=rouHist.map(x=>
       '<span class="hpocket '+x.colour+'">'+x.pocket+'</span>').join('');
-    if(!first){
-      const wheel=$('rouWheel');
-      wheel.classList.remove('spin'); void wheel.offsetWidth; wheel.classList.add('spin');
-      setTimeout(()=>{
-        $('rouPocket').textContent=s.last.pocket;
-        wheel.className='wheel '+s.last.colour;
-        const won=(s.mineLast||[]).find(b=>b.pick===s.last.colour);
-        $('rouResult').innerHTML='<b>'+s.last.colour.toUpperCase()+' '+s.last.pocket+'</b>';
-      },900);
-    } else {
-      $('rouPocket').textContent=s.last.pocket;
-      $('rouWheel').className='wheel '+s.last.colour;
-      $('rouResult').innerHTML='<b>'+s.last.colour.toUpperCase()+' '+s.last.pocket+'</b>';
+    if(first) rouSetPhase('idle',s.last.pocket,s.last.colour),
+              $('rouPocket').textContent=s.last.pocket,
+              $('rouResult').innerHTML='<b class="rouwin '+s.last.colour+'">'+
+                s.last.colour.toUpperCase()+' '+s.last.pocket+'</b>';
+    else {
+      rouSetPhase('landing',s.last.pocket,s.last.colour);
+      if(s.youWon) setTimeout(()=>{ sfx.right(); toast('🎉 +'+s.youWon+' chips'); },1150);
+      else if(s.youLost) setTimeout(()=>sfx.wrong(),1150);
     }
+    rouSpinningFor=null;
   }
 }
 async function rouRefresh(){
@@ -5622,7 +5700,6 @@ async function rouRefresh(){
   rouLocalLeft=s.secondsLeft;
   paintRouTable(s);
 }
-// poll while the table is on screen; a local per-second tick keeps the countdown smooth
 function rouStart(){
   rouStop();
   rouRefresh();
@@ -5632,13 +5709,25 @@ function rouStart(){
       rouLocalLeft--;
       $('rouCount').textContent=rouLocalLeft+'s';
       $('rouBarFill').style.width=Math.max(0,(rouLocalLeft/25)*100)+'%';
-      if(rouLocalLeft<=3){ $('rouCount').classList.add('closing'); }
+      if(rouLocalLeft<=3) $('rouCount').classList.add('closing');
+    }
+    // the moment the clock runs out, start spinning locally and chase the result
+    if(rouLocalLeft<=0&&rouPhase!=='spinning'&&rouPhase!=='landing'){
+      rouSetPhase('spinning');
+      rouSpinningFor=Date.now();
+      if(rouPoll) clearInterval(rouPoll);
+      rouPoll=setInterval(rouRefresh,800);          // poll hard until the pocket lands
+      setTimeout(()=>{                               // then back to the calm cadence
+        if(rouPoll) clearInterval(rouPoll);
+        rouPoll=setInterval(rouRefresh,2500);
+      },6000);
     }
   },1000);
 }
 function rouStop(){
   if(rouPoll){ clearInterval(rouPoll); rouPoll=null; }
   if(rouTick){ clearInterval(rouTick); rouTick=null; }
+  rouPhase='betting';
 }
 async function placeBet(pick){
   if(casChips<casBet){ casMsg('Not enough chips — claim your daily chips or buy in.','bad'); return; }
@@ -5678,6 +5767,126 @@ async function bjDeal(){
   bjState=r; paintBj();
 }
 async function bjAct(fn){ const r=await casRpc(fn); if(r){ bjState=r; paintBj(); } }
+
+
+// ---------- duel: two players, same questions, server holds the answer key ----------
+// The client renders the question from its own bank by index, but never decides who was
+// right: only the server has the answers, so "answer wrong and the pot is theirs" is
+// something it can actually enforce.
+let duelStake=50, duelId=null, duelPoll=null, duelPicked=new Set(), duelLeft=30, duelTick=null;
+
+function duelMsg(t,kind){ const e=$('duelMsg'); if(!e) return; e.textContent=t||''; e.className='authnote'+(kind?' '+kind:''); }
+function duelShow(which){
+  ['duelLobby','duelWait','duelPlay','duelDone'].forEach(id=>
+    $(id).classList.toggle('hidden',id!=='duel'+which));
+}
+function duelStop(){
+  if(duelPoll){ clearInterval(duelPoll); duelPoll=null; }
+  if(duelTick){ clearInterval(duelTick); duelTick=null; }
+}
+function renderDuelQuestion(d){
+  const qi=d.question;
+  const q=QS[qi];
+  if(!q){ $('duelQ').textContent='Question unavailable on this build.'; $('duelOpts').innerHTML=''; return; }
+  $('duelQn').textContent='Q'+(d.turn+1)+' of 5';
+  $('duelQ').textContent=q.q;
+  const need=q.a.length;
+  const box=$('duelOpts'); box.innerHTML='';
+  q.o.forEach(([ltr,txt])=>{
+    const b=document.createElement('button');
+    b.className='opt'+(duelPicked.has(ltr)?' sel':''); b.dataset.ltr=ltr;
+    b.innerHTML='<span class="ltr">'+ltr+'</span><span>'+esc(txt)+'</span>';
+    b.onclick=()=>{
+      if(d.you.answered) return;
+      if(duelPicked.has(ltr)) duelPicked.delete(ltr);
+      else { if(need===1) duelPicked.clear(); if(duelPicked.size>=need) return; duelPicked.add(ltr); }
+      [...box.children].forEach(el=>el.classList.toggle('sel',duelPicked.has(el.dataset.ltr)));
+      $('duelLock').classList.toggle('hidden',duelPicked.size!==need);
+    };
+    box.appendChild(b);
+  });
+  $('duelLock').textContent=need>1?('Lock in '+need+' answers'):'Lock in';
+  $('duelLock').classList.toggle('hidden',duelPicked.size!==need||d.you.answered);
+}
+function paintDuel(d){
+  if(!d) return;
+  if(d.status==='waiting'){
+    duelShow('Wait');
+    $('duelWaitMe').textContent=(d.you.name||'you');
+    return;
+  }
+  if(d.status==='active'){
+    duelShow('Play');
+    $('duelMe').textContent=(d.you.name||'you');
+    $('duelThem').textContent=(d.them.name||'opponent');
+    $('duelMe').classList.toggle('answered',d.you.answered);
+    $('duelThem').classList.toggle('answered',d.them.answered);
+    $('duelScore').textContent=d.you.score+' — '+d.them.score;
+    if(d.turn!==paintDuel._turn){ duelPicked.clear(); paintDuel._turn=d.turn; }
+    renderDuelQuestion(d);
+    if(typeof d.secondsLeft==='number'){ duelLeft=d.secondsLeft; }
+    $('duelStatus').textContent = d.you.answered
+      ? (d.them.answered?'Both in — scoring…':'Locked in. Waiting for your opponent…')
+      : (d.them.answered?'⚠ They have answered — your move.':'Pick your answer.');
+    return;
+  }
+  if(d.status==='done'){
+    duelShow('Done');
+    duelStop();
+    const won=d.youWon, draw=!d.winner;
+    $('duelResult').className='duelresult '+(draw?'draw':won?'win':'lose');
+    $('duelResult').textContent=draw?'DRAW':won?'YOU WIN':'YOU LOSE';
+    $('duelReason').textContent=(d.reason||'')+(draw?' — stakes returned':won?' — the pot is yours':'');
+    if(won) sfx.right(); else if(!draw) sfx.wrong();
+    duelId=null;
+    casRefresh();
+  }
+}
+async function duelRefresh(){
+  if(!duelId) return;
+  const r=await casRpc('duel_state',{duel:duelId});
+  if(!r||!r.ok) return;
+  paintDuel(r.duel);
+}
+function duelRun(){
+  duelStop();
+  duelPoll=setInterval(duelRefresh,1500);
+  duelTick=setInterval(()=>{
+    if(duelLeft>0){
+      duelLeft--;
+      $('duelCount').textContent=duelLeft+'s';
+      $('duelBarFill').style.width=Math.max(0,(duelLeft/30)*100)+'%';
+      $('duelCount').classList.toggle('closing',duelLeft<=5);
+    }
+  },1000);
+}
+async function duelFind(){
+  if(casChips<duelStake){ duelMsg('Not enough chips for that stake.','bad'); return; }
+  duelMsg('Looking for an opponent…','busy');
+  const r=await casRpc('duel_find',{stake:duelStake});
+  if(!r) return;
+  if(!r.ok){ duelMsg(r.reason,'bad'); return; }
+  duelMsg('');
+  duelId=r.duel.id;
+  paintDuel(r.duel);
+  duelRun();
+}
+async function duelLockIn(){
+  if(!duelId||!duelPicked.size) return;
+  const r=await casRpc('duel_answer',{duel:duelId,picks:[...duelPicked]});
+  if(r&&r.ok){ paintDuel(r.duel); $('duelLock').classList.add('hidden'); }
+}
+async function duelQuit(){
+  if(!duelId) return;
+  await casRpc('duel_leave',{duel:duelId});
+  duelId=null; duelStop(); duelShow('Lobby'); casRefresh();
+}
+
+$('duelFind').onclick=()=>duelFind();
+$('duelLock').onclick=()=>duelLockIn();
+$('duelCancel').onclick=()=>duelQuit();
+$('duelAgain').onclick=()=>{ duelShow('Lobby'); duelMsg(''); };
+renderBetRow('duelStakes',duelStake,v=>{duelStake=v;});
 
 // ---------- wiring ----------
 $('navCasino').onclick=()=>{
@@ -6431,7 +6640,9 @@ if(TEST){
     EXPLAIN, EX_TERMS, exFind, exCue, buildExplain, renderExplain, hideExplain, explainMode,
     get pendingAdvance(){return pendingAdvance;},
     casRpc, casRefresh, renderCasino, casCard, placeBet, rouRefresh, rouStart, rouStop,
-    paintRouTable, bjDeal, bjAct, casTab,
+    paintRouTable, rouSetPhase, get rouPhase(){return rouPhase;}, bjDeal, bjAct, casTab,
+    duelFind, duelRefresh, duelLockIn, duelQuit, paintDuel, duelShow,
+    get duelId(){return duelId;}, get duelPicked(){return duelPicked;},
     get casChips(){return casChips;}, get bjState(){return bjState;},
     SUPA, CLOUD_ON, mergeProfiles, renderAuth, authCreds, syncNow, cloudTouch, loadSupabase,
     humanError, nameError, saveUsername, get myName(){return myName;},
