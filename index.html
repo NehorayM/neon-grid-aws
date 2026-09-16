@@ -746,7 +746,46 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   border-radius:50%;background:var(--lime);border:2px solid var(--bg);box-shadow:0 0 8px rgba(107,255,158,.6)}
 .rankring.syncing::after{background:var(--gold);box-shadow:0 0 8px rgba(255,215,94,.6)}
 #topbar > *{pointer-events:auto}
-@media (max-width:859px){ #topbar.hasback{padding-left:58px} }
+@media (max-width:859px){
+  #topbar.hasback{padding-left:58px}
+  /* the shifted bar leaves too little room for name + XP, so keep just the level ring */
+  #topbar.hasback .rankmeta{display:none}
+  #topbar.hasback .mechev{display:none}
+}
+
+/* ---------- casino ---------- */
+.castabs{display:flex;gap:7px;width:100%;max-width:var(--colw);margin:0 auto 10px}
+.castab{flex:1;padding:10px 8px;border-radius:12px;background:var(--panel);border:1px solid var(--line);
+  font-size:12.5px;font-weight:700;color:var(--dim)}
+.castab.on{color:var(--txt);border-color:var(--cyan);background:rgba(60,224,255,.12)}
+.wheel{width:120px;height:120px;margin:4px auto 12px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--mono);font-size:34px;font-weight:800;color:#fff;
+  background:conic-gradient(#1b2233 0deg,#c0392b 40deg,#1b2233 80deg,#c0392b 120deg,#1b2233 160deg,
+    #2ecc71 180deg,#1b2233 200deg,#c0392b 240deg,#1b2233 280deg,#c0392b 320deg,#1b2233 360deg);
+  border:3px solid rgba(255,255,255,.15);box-shadow:0 0 30px rgba(60,224,255,.15)}
+.wheel.spin{animation:wheelSpin .9s cubic-bezier(.2,.8,.3,1)}
+@keyframes wheelSpin{from{transform:rotate(0)}to{transform:rotate(1080deg)}}
+.wheel span{background:rgba(5,6,15,.8);border-radius:50%;width:66px;height:66px;display:grid;place-items:center}
+.wheel.red span{color:#ff6b6b} .wheel.black span{color:#cfe0f5} .wheel.green span{color:var(--lime)}
+.betrow{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
+.betchip{font-family:var(--mono);font-size:12.5px;font-weight:800;padding:8px 14px;border-radius:20px;
+  background:var(--surface);border:1px solid var(--line);color:var(--txt)}
+.betchip.on{border-color:var(--gold);color:var(--gold);background:rgba(255,215,94,.12)}
+.btn.casred{background:linear-gradient(120deg,#e74c3c,#c0392b);color:#fff}
+.btn.casblack{background:linear-gradient(120deg,#2c3e50,#1b2233);color:#fff}
+.btn.casgreen{background:linear-gradient(120deg,#2ecc71,#27ae60);color:#04241a}
+.btn.casred span,.btn.casblack span,.btn.casgreen span{font-family:var(--mono);font-size:10px;opacity:.8;margin-left:6px}
+.cards{display:flex;gap:7px;flex-wrap:wrap;min-height:64px;align-items:center}
+.pcard{width:44px;height:62px;border-radius:8px;background:#f4f8ff;color:#0d1220;display:grid;
+  place-items:center;font-weight:800;font-size:15px;box-shadow:0 3px 10px rgba(0,0,0,.4);
+  animation:dealIn .25s ease}
+.pcard.red{color:#c0392b}
+.pcard.back{background:linear-gradient(135deg,#1b2233,#2c3e50);color:transparent;border:1px solid var(--line)}
+@keyframes dealIn{from{opacity:0;transform:translateY(-8px) scale(.9)}to{opacity:1;transform:none}}
+.bjrow{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.bjlbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+.bjval{font-family:var(--mono);font-size:14px;font-weight:800;color:var(--cyan)}
+@media (min-width:860px){ .pcard{width:52px;height:74px;font-size:17px} .wheel{width:140px;height:140px} }
 
 </style>
 </head>
@@ -1000,6 +1039,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
     <button class="navbtn on" id="navHome"><span class="ic">🏠</span>Home</button>
     <button class="navbtn" id="navPlay"><span class="ic">⚡</span>Practice</button>
     <button class="navbtn" id="navExam"><span class="ic">🎓</span>Exam</button>
+    <button class="navbtn" id="navCasino"><span class="ic">🎰</span>Casino</button>
     <button class="navbtn" id="navShop"><span class="ic">🛒</span>Shop</button>
     <button class="navbtn" id="navBadges"><span class="ic">🏆</span>Badges</button>
   </nav>
@@ -1076,6 +1116,82 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <div class="row" style="margin:16px 0 0">
         <button class="btn" id="simAgain">Run another</button>
         <button class="btn ghost sm" id="simHome">Home</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CASINO -->
+  <div id="casinoScreen" class="screen hidden">
+    <button class="backbtn" id="casinoBack">‹</button>
+    <div style="text-align:center;margin-bottom:10px">
+      <h2 class="head">🎰 Neon Casino</h2>
+      <p class="sub">Chips are separate from your study coins and live on the server — every spin
+        and card is dealt there, not in your browser. Cash chips back into coins any time.</p>
+    </div>
+
+    <div class="card hidden" id="casGuest">
+      <div class="cardhead"><span class="ch-t">Sign in to play</span></div>
+      <p class="ch-note">Chips belong to an account so a game between two people can be fair.
+        Playing as a guest keeps everything else working.</p>
+      <button class="btn wide" id="casGoAuth" style="margin-top:10px">Open account</button>
+    </div>
+
+    <div id="casMain" class="hidden">
+      <div class="card accent-gold">
+        <div class="cardhead"><span class="ch-t">🪙 <b id="casChips">0</b> chips</span>
+          <button class="pillbtn" id="casGrant">Daily chips</button></div>
+        <div class="ch-note" id="casGrantNote"></div>
+        <div class="divider"></div>
+        <div class="minirow"><span class="ch-t" style="font-size:12px">Cash out — 5 chips = 1 study coin</span></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="authin" id="casCashAmt" type="number" min="5" step="5" placeholder="chips to cash out" style="flex:1">
+          <button class="btn sm" id="casCashBtn">Cash out</button>
+        </div>
+        <div class="authnote" id="casMsg"></div>
+      </div>
+
+      <div class="castabs">
+        <button class="castab on" id="casTabRoul">🔴 Roulette</button>
+        <button class="castab" id="casTabBj">🃏 Blackjack</button>
+        <button class="castab" id="casTabDuel">⚔️ Duel</button>
+      </div>
+
+      <!-- roulette -->
+      <div class="card" id="casRoul">
+        <div class="wheel" id="rouWheel"><span id="rouPocket">—</span></div>
+        <div class="ch-note" id="rouResult" style="text-align:center;min-height:20px">Pick a colour and spin.</div>
+        <div class="divider"></div>
+        <div class="minirow"><span class="ch-t" style="font-size:12px">Bet</span></div>
+        <div class="betrow" id="rouBets"></div>
+        <div class="row" style="margin-top:12px;justify-content:center">
+          <button class="btn casred" id="rouRed">Red <span>1:1</span></button>
+          <button class="btn casblack" id="rouBlack">Black <span>1:1</span></button>
+          <button class="btn casgreen" id="rouGreen">Green <span>35:1</span></button>
+        </div>
+      </div>
+
+      <!-- blackjack -->
+      <div class="card hidden" id="casBj">
+        <div class="bjrow"><span class="bjlbl">Dealer</span><span class="bjval" id="bjDealerVal">—</span></div>
+        <div class="cards" id="bjDealer"></div>
+        <div class="bjrow" style="margin-top:12px"><span class="bjlbl">You</span><span class="bjval" id="bjPlayerVal">—</span></div>
+        <div class="cards" id="bjPlayer"></div>
+        <div class="ch-note" id="bjResult" style="text-align:center;min-height:20px;margin-top:10px">Place a bet to deal.</div>
+        <div class="divider"></div>
+        <div class="betrow" id="bjBets"></div>
+        <div class="row" style="margin-top:12px;justify-content:center">
+          <button class="btn" id="bjDeal">Deal</button>
+          <button class="btn ghost sm hidden" id="bjHit">Hit</button>
+          <button class="btn ghost sm hidden" id="bjStand">Stand</button>
+        </div>
+      </div>
+
+      <!-- duel -->
+      <div class="card hidden" id="casDuel">
+        <div class="cardhead"><span class="ch-t">⚔️ Question duel</span></div>
+        <p class="ch-note" id="duelNote">Two players, same questions, chips on the line — whoever
+          answers wrong hands the pot to the other. Not built yet: this is the next piece, and it
+          needs its own realtime matchmaking on top of what the other two games use.</p>
       </div>
     </div>
   </div>
@@ -1516,7 +1632,7 @@ const sfx={
 
 // ---------- routing ----------
 const SCREENS=['homeScreen','quizScreen','reelScreen','gameScreen','gresScreen','shopScreen','achScreen','examScreen','flashScreen','recScreen','sumScreen','pickScreen','logScreen','briefScreen','studyPickScreen','readyScreen','themeScreen','pathScreen','bankScreen','simRevScreen','simDoneScreen','timerScreen',
-  'coursePickScreen','coursePhaseScreen','courseReadScreen','courseRecapScreen','courseDoneScreen','authScreen'];
+  'coursePickScreen','coursePhaseScreen','courseReadScreen','courseRecapScreen','courseDoneScreen','authScreen','casinoScreen'];
 let route='homeScreen';
 function go(id){
   SCREENS.forEach(s=>$(s).classList.toggle('hidden',s!==id)); route=id;
@@ -4807,7 +4923,7 @@ function renderStudyPicker(){
 
 // ---------- bottom navigation ----------
 const NAVS=[['navHome','homeScreen'],['navPlay','quizScreen'],['navExam','examScreen'],
-            ['navShop','shopScreen'],['navBadges','achScreen']];
+            ['navCasino','casinoScreen'],['navShop','shopScreen'],['navBadges','achScreen']];
 function syncNav(){
   const hide=(route==='gameScreen'||route==='reelScreen');
   $('nav').classList.toggle('hidden',hide);
@@ -5301,7 +5417,10 @@ async function initAuth(){
     myName=(sbUser.user_metadata&&sbUser.user_metadata.username)||null;
     await syncNow(true); refreshTop();
   }
-  client.auth.onAuthStateChange((_e,session)=>{ sbUser=session?session.user:null; renderAuth(); });
+  client.auth.onAuthStateChange((_e,session)=>{
+    sbUser=session?session.user:null; renderAuth();
+    if(typeof renderCasino==='function'){ renderCasino(); if(sbUser) casRefresh(); }
+  });
   sbReady=true; renderAuth();
 }
 
@@ -5314,6 +5433,161 @@ $('authSyncNow').onclick=()=>syncNow(false);
 $('authPass').addEventListener('keydown',e=>{ if(e.key==='Enter') doSignIn(); });
 $('authNameSave').onclick=()=>saveUsername(($('authNameEdit').value||'').trim());
 $('authNameEdit').addEventListener('keydown',e=>{ if(e.key==='Enter') $('authNameSave').click(); });
+
+
+// ================= CASINO =================
+// Nothing here decides an outcome. Every spin, card and payout is computed by a Postgres
+// function on the server (supabase_casino.sql); the browser only sends the bet and draws
+// whatever comes back. Chips are a separate, server-owned currency - study coins are written
+// by this browser, so they could never back a fair wager between two people.
+let casChips=0, casBet=25, bjBet=25, casBusy=false, bjState=null;
+const BETS=[10,25,50,100,250];
+
+function casMsg(t,kind){ const e=$('casMsg'); if(!e) return; e.textContent=t||''; e.className='authnote'+(kind?' '+kind:''); }
+function casCard(c){
+  const rank=((c-1)%13)+1, suit=Math.floor((c-1)/13);
+  const rl=['A','2','3','4','5','6','7','8','9','10','J','Q','K'][rank-1];
+  const sl=['♠','♥','♦','♣'][suit];
+  return {label:rl+sl, red:(suit===1||suit===2)};
+}
+function renderCards(box,arr,hideRest){
+  const el=$(box); el.innerHTML='';
+  (arr||[]).forEach(c=>{
+    const d=document.createElement('div'); const cc=casCard(c);
+    d.className='pcard'+(cc.red?' red':''); d.textContent=cc.label; el.appendChild(d);
+  });
+  if(hideRest){ const d=document.createElement('div'); d.className='pcard back'; d.textContent='?'; el.appendChild(d); }
+}
+function renderBetRow(box,current,set){
+  const el=$(box); el.innerHTML='';
+  BETS.forEach(v=>{
+    const b=document.createElement('button');
+    b.className='betchip'+(v===current?' on':''); b.textContent=v;
+    b.onclick=()=>{ set(v); renderBetRow(box,v,set); };
+    el.appendChild(b);
+  });
+}
+function renderCasino(){
+  const signedIn=!!sbUser;
+  $('casGuest').classList.toggle('hidden',signedIn);
+  $('casMain').classList.toggle('hidden',!signedIn);
+  $('casChips').textContent=casChips.toLocaleString();
+}
+async function casRpc(fn,args){
+  if(!sb||!sbUser){ casMsg('Sign in to play.','bad'); return null; }
+  if(casBusy) return null;
+  casBusy=true;
+  try{
+    const {data,error}=await sb.rpc(fn,args||{});
+    if(error){
+      if(/could not find the function|schema cache/i.test(error.message||''))
+        casMsg('The casino tables are not installed yet — run supabase_casino.sql in the SQL editor.','bad');
+      else casMsg(humanError(error),'bad');
+      return null;
+    }
+    if(data&&typeof data.chips==='number'){ casChips=data.chips; renderCasino(); }
+    return data;
+  }catch(e){ casMsg(humanError(e),'bad'); return null; }
+  finally{ casBusy=false; }
+}
+async function casRefresh(){
+  if(!sbUser) { renderCasino(); return; }
+  const s=await casRpc('casino_state');
+  if(!s) return;
+  $('casGrant').disabled=!s.grantReady;
+  $('casGrantNote').textContent=s.grantReady
+    ? 'Free chips are waiting — claim them any time.'
+    : 'Next free chips '+(s.nextGrant?new Date(s.nextGrant).toLocaleTimeString():'in a few hours')+'.';
+  const bj=await casRpc('bj_current');
+  if(bj&&bj.state&&bj.state!=='none'){ bjState=bj; paintBj(); }
+}
+function casTab(which){
+  [['casTabRoul','casRoul'],['casTabBj','casBj'],['casTabDuel','casDuel']].forEach(([t,p])=>{
+    $(t).classList.toggle('on',t==='casTab'+which);
+    $(p).classList.toggle('hidden',p!=='cas'+which);
+  });
+}
+
+// ---------- roulette ----------
+async function spin(pick){
+  if(casChips<casBet){ casMsg('Not enough chips — claim your daily chips.','bad'); return; }
+  casMsg('');
+  const wheel=$('rouWheel');
+  wheel.classList.remove('spin'); void wheel.offsetWidth; wheel.classList.add('spin');
+  $('rouResult').textContent='Spinning…';
+  const r=await casRpc('casino_roulette',{bet:casBet,pick:pick});
+  if(!r) { $('rouResult').textContent='—'; return; }
+  if(!r.ok){ casMsg(r.reason,'bad'); $('rouResult').textContent='—'; return; }
+  setTimeout(()=>{
+    $('rouPocket').textContent=r.pocket;
+    wheel.className='wheel '+r.colour;
+    $('rouResult').innerHTML=r.won
+      ? '<b style="color:var(--lime)">'+r.colour.toUpperCase()+' '+r.pocket+' — you win +'+r.payout+'</b>'
+      : '<b style="color:var(--red)">'+r.colour.toUpperCase()+' '+r.pocket+' — you lose '+casBet+'</b>';
+    if(r.won) sfx.right(); else sfx.wrong();
+  },900);
+}
+
+// ---------- blackjack ----------
+function paintBj(){
+  const s=bjState; if(!s) return;
+  const live=(s.state==='active');
+  renderCards('bjDealer',s.dealer,live);
+  renderCards('bjPlayer',s.player,false);
+  $('bjDealerVal').textContent=live?(s.dealerValue+' + ?'):s.dealerValue;
+  $('bjPlayerVal').textContent=s.playerValue;
+  $('bjHit').classList.toggle('hidden',!live);
+  $('bjStand').classList.toggle('hidden',!live);
+  $('bjDeal').classList.toggle('hidden',live);
+  if(s.outcome){
+    const good=['win','blackjack','dealer bust'].includes(s.outcome);
+    const push=(s.outcome==='push');
+    $('bjResult').innerHTML='<b style="color:'+(push?'var(--gold)':good?'var(--lime)':'var(--red)')+'">'+
+      s.outcome.toUpperCase()+'</b>';
+    if(good) sfx.right(); else if(!push) sfx.wrong();
+  } else if(live) $('bjResult').textContent='Hit or stand.';
+}
+async function bjDeal(){
+  if(casChips<bjBet){ casMsg('Not enough chips — claim your daily chips.','bad'); return; }
+  casMsg(''); $('bjResult').textContent='Dealing…';
+  const r=await casRpc('bj_start',{bet:bjBet});
+  if(!r) return;
+  if(r.ok===false){ casMsg(r.reason,'bad'); return; }
+  bjState=r; paintBj();
+}
+async function bjAct(fn){ const r=await casRpc(fn); if(r){ bjState=r; paintBj(); } }
+
+// ---------- wiring ----------
+$('navCasino').onclick=()=>{ renderCasino(); casRefresh(); go('casinoScreen'); syncNav(); };
+$('casinoBack').onclick=()=>{ go('homeScreen'); renderHome(); syncNav(); };
+$('casGoAuth').onclick=()=>{ renderAuth(); go('authScreen'); };
+$('casTabRoul').onclick=()=>casTab('Roul');
+$('casTabBj').onclick=()=>casTab('Bj');
+$('casTabDuel').onclick=()=>casTab('Duel');
+$('rouRed').onclick=()=>spin('red');
+$('rouBlack').onclick=()=>spin('black');
+$('rouGreen').onclick=()=>spin('green');
+$('bjDeal').onclick=()=>bjDeal();
+$('bjHit').onclick=()=>bjAct('bj_hit');
+$('bjStand').onclick=()=>bjAct('bj_stand');
+$('casGrant').onclick=async()=>{
+  const r=await casRpc('casino_grant');
+  if(r&&r.ok){ casMsg('+'+r.granted+' chips.','ok'); sfx.coin&&sfx.coin(); }
+  else if(r) casMsg('Already claimed — come back later.','bad');
+  casRefresh();
+};
+$('casCashBtn').onclick=async()=>{
+  const amt=parseInt($('casCashAmt').value||'0',10);
+  if(!amt||amt<5){ casMsg('Cash out at least 5 chips.','bad'); return; }
+  const r=await casRpc('casino_cash_out',{amount:amt});
+  if(r&&r.ok){
+    addCoins(r.coins); saveProfile();
+    casMsg('Cashed out '+r.coins+' study coins.','ok');
+    $('casCashAmt').value='';
+  } else if(r) casMsg(r.reason,'bad');
+};
+renderBetRow('rouBets',casBet,v=>{casBet=v;});
+renderBetRow('bjBets',bjBet,v=>{bjBet=v;});
 
 // ================= COURSE MODE =================
 // ---------- markdown ----------
@@ -6019,6 +6293,8 @@ if(TEST){
     COURSES, COURSE_BY_SEC, CPHASES, COURSE_MIN, COURSE_PASS, mdRender, mdInline,
     EXPLAIN, EX_TERMS, exFind, exCue, buildExplain, renderExplain, hideExplain, explainMode,
     get pendingAdvance(){return pendingAdvance;},
+    casRpc, casRefresh, renderCasino, casCard, spin, bjDeal, bjAct, casTab,
+    get casChips(){return casChips;}, get bjState(){return bjState;},
     SUPA, CLOUD_ON, mergeProfiles, renderAuth, authCreds, syncNow, cloudTouch, loadSupabase,
     humanError, nameError, saveUsername, get myName(){return myName;},
     get sbUser(){return sbUser;}, get syncing(){return syncing;},
