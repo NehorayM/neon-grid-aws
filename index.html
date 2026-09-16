@@ -5179,7 +5179,7 @@ async function pushCloud(){
   if(error&&/username/i.test(error.message||'')&&(error.code==='42703'||error.code==='PGRST204')){
     delete row.username;
     ({error}=await sb.from('profiles').upsert(row));
-    if(!error) authMsg('Progress synced. Run the updated supabase_setup.sql to enable usernames.','ok');
+    if(!error) authMsg('Progress synced. Run supabase_add_username.sql to enable usernames.','ok');
   }
   if(error){ authMsg(humanError(error),'bad'); return false; }
   lastSync=Date.now(); return true;
@@ -5198,7 +5198,8 @@ async function saveUsername(next){
     if(error.code==='23505'){ authMsg('That username is taken — try another.','bad'); return false; }
     if(error.code==='23514'){ authMsg('Use 3–20 letters, numbers or underscores.','bad'); return false; }
     if(/username/i.test(error.message||'')&&(error.code==='42703'||error.code==='PGRST204')){
-      authMsg('Usernames need the latest supabase_setup.sql run on your project.','bad'); return false;
+      authMsg('Your database has no username column yet — run supabase_add_username.sql in the Supabase SQL editor, then try again.','bad');
+      return false;
     }
     authMsg(humanError(error),'bad'); return false;
   }
