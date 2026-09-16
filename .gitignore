@@ -9,3 +9,4 @@ __pycache__/
 # editor / OS noise
 .DS_Store
 *.swp
+_authtest.html

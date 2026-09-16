@@ -725,6 +725,17 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .fullwrite[open] summary::before{content:"▾ "}
 .fullwrite > .mdx{padding:0 14px 14px}
 
+/* ---------- account ---------- */
+.authlbl{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--dim);margin:11px 0 5px}
+.authin{width:100%;padding:12px 13px;border-radius:12px;background:rgba(255,255,255,.05);
+  border:1px solid var(--line);color:var(--txt);font-size:14px;font-family:var(--sans)}
+.authin:focus{outline:none;border-color:var(--cyan);background:rgba(60,224,255,.07)}
+.authnote{margin-top:11px;font-size:12.4px;line-height:1.55;color:var(--dim);min-height:1px}
+.authnote.ok{color:var(--lime)} .authnote.bad{color:var(--red)} .authnote.busy{color:var(--gold)}
+.minichip.synced{color:var(--lime);border-color:rgba(107,255,158,.4)}
+.minichip.syncing{color:var(--gold);border-color:rgba(255,215,94,.4)}
+
 </style>
 </head>
 <body>
@@ -865,6 +876,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <button class="minichip" id="bankOpen">📚 Bank</button>
       <button class="minichip" id="themeOpen">🎨 Themes</button>
       <button class="minichip" id="logOpen">📋 Exam log</button>
+      <button class="minichip" id="authOpen">👤 <span id="authChip">Guest</span></button>
       <button class="minichip" id="soundBtn">🔊</button>
       <button class="minichip" id="hapticBtn">📳 On</button>
     </div>
@@ -1053,6 +1065,51 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
         <button class="btn" id="simAgain">Run another</button>
         <button class="btn ghost sm" id="simHome">Home</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ACCOUNT -->
+  <div id="authScreen" class="screen hidden">
+    <button class="backbtn" id="authBack">‹</button>
+    <div style="text-align:center;margin-bottom:12px">
+      <h2 class="head">👤 Account</h2>
+      <p class="sub">Signing in syncs your progress across devices. Playing as a guest works
+        exactly the same — it just stays on this browser.</p>
+    </div>
+
+    <div class="card" id="authSignedOut">
+      <div class="cardhead"><span class="ch-t">Sign in or create an account</span></div>
+      <label class="authlbl" for="authEmail">Email</label>
+      <input class="authin" id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
+      <label class="authlbl" for="authPass">Password</label>
+      <input class="authin" id="authPass" type="password" autocomplete="current-password" placeholder="at least 8 characters">
+      <div class="row" style="margin-top:12px;justify-content:flex-start">
+        <button class="btn sm" id="authSignIn">Sign in</button>
+        <button class="btn ghost sm" id="authSignUp">Create account</button>
+        <button class="minichip" id="authReset">Forgot password</button>
+      </div>
+      <div class="authnote" id="authMsg"></div>
+      <div class="divider"></div>
+      <p class="ch-note">Your password is handled by Supabase Auth and never stored in this app
+        or in its source. Progress is saved to a row only your account can read.</p>
+    </div>
+
+    <div class="card hidden" id="authSignedIn">
+      <div class="cardhead"><span class="ch-t">Signed in</span>
+        <button class="pillbtn" id="authSignOut">Sign out</button></div>
+      <div class="minirow"><span class="ch-t" style="font-size:12px">Account</span>
+        <span class="ch-s" id="authWho">—</span></div>
+      <div class="minirow"><span class="ch-t" style="font-size:12px">Last sync</span>
+        <span class="ch-s" id="authSync">—</span></div>
+      <button class="btn wide" id="authSyncNow" style="margin-top:10px">Sync now</button>
+    </div>
+
+    <div class="card hidden" id="authUnconfigured">
+      <div class="cardhead"><span class="ch-t">☁ Cloud sync is not configured</span></div>
+      <p class="ch-note">This build has no Supabase project attached, so accounts are switched off
+        and everything stays on this device. To turn it on: create a free project, run
+        <code>supabase_setup.sql</code> in its SQL editor, then put the project URL and anon key
+        into the <code>SUPA</code> block at the top of the page source.</p>
     </div>
   </div>
 
@@ -1377,6 +1434,7 @@ function saveProfile(){
   if(saveTimer) clearTimeout(saveTimer);
   saveTimer=setTimeout(async()=>{
     try{ await window.storage.set('academy_profile',JSON.stringify(P),false); }catch(e){}
+    if(typeof cloudTouch==='function') cloudTouch();
   },250);
 }
 
@@ -1437,7 +1495,7 @@ const sfx={
 
 // ---------- routing ----------
 const SCREENS=['homeScreen','quizScreen','reelScreen','gameScreen','gresScreen','shopScreen','achScreen','examScreen','flashScreen','recScreen','sumScreen','pickScreen','logScreen','briefScreen','studyPickScreen','readyScreen','themeScreen','pathScreen','bankScreen','simRevScreen','simDoneScreen','timerScreen',
-  'coursePickScreen','coursePhaseScreen','courseReadScreen','courseRecapScreen','courseDoneScreen'];
+  'coursePickScreen','coursePhaseScreen','courseReadScreen','courseRecapScreen','courseDoneScreen','authScreen'];
 let route='homeScreen';
 function go(id){
   SCREENS.forEach(s=>$(s).classList.toggle('hidden',s!==id)); route=id;
@@ -4955,6 +5013,218 @@ function explainThen(advance,ok){
 // exam and the timed full simulation stay unassisted; everywhere else explains every answer
 function explainMode(){ return !exam&&!sim&&!mock; }
 
+
+// ================= ACCOUNTS & CLOUD SYNC =================
+// Sign-in is optional. Guests keep everything in localStorage exactly as before; signing in
+// mirrors the same profile into a Supabase row so it follows you between devices.
+//
+// The key below is Supabase's *publishable* anon key — it is meant to ship in the page. It is
+// only safe because every row is protected by row-level security (see supabase_setup.sql):
+// a signed-in user can read and write their own row and nothing else. Never paste a
+// service_role key here; that one bypasses RLS entirely.
+const SUPA={
+  url:'',        // e.g. https://abcdefghijklm.supabase.co
+  anonKey:''     // the "anon / public" key from Settings → API
+};
+const CLOUD_ON=!!(SUPA.url&&SUPA.anonKey);
+let sb=null, sbUser=null, sbReady=false, lastSync=0, syncing=false, syncTimer=null;
+
+// network failures surface as "Failed to fetch", which tells a player nothing
+function humanError(e){
+  const m=(e&&e.message)||String(e||'');
+  if(/failed to fetch|networkerror|load failed/i.test(m))
+    return 'Could not reach the server. Check your connection — you can keep playing offline.';
+  if(/invalid login credentials/i.test(m)) return 'That email and password do not match an account.';
+  if(/email not confirmed/i.test(m)) return 'Confirm your email address first — check your inbox.';
+  if(/user already registered/i.test(m)) return 'That email already has an account — sign in instead.';
+  if(/rate limit|too many/i.test(m)) return 'Too many attempts. Wait a minute and try again.';
+  return m;
+}
+function authMsg(text,kind){
+  const el=$('authMsg'); if(!el) return;
+  el.textContent=text||'';
+  el.className='authnote'+(kind?' '+kind:'');
+}
+function renderAuth(){
+  const chip=$('authChip'), btn=$('authOpen');
+  if(chip) chip.textContent=sbUser?(sbUser.email||'Account').split('@')[0]:'Guest';
+  if(btn){
+    btn.classList.toggle('synced',!!sbUser&&!syncing);
+    btn.classList.toggle('syncing',syncing);
+  }
+  const outBox=$('authSignedOut'), inBox=$('authSignedIn'), unBox=$('authUnconfigured');
+  if(!outBox) return;
+  unBox.classList.toggle('hidden',CLOUD_ON);
+  outBox.classList.toggle('hidden',!CLOUD_ON||!!sbUser);
+  inBox.classList.toggle('hidden',!sbUser);
+  if(sbUser){
+    $('authWho').textContent=sbUser.email||sbUser.id.slice(0,8);
+    $('authSync').textContent=lastSync?('synced '+new Date(lastSync).toLocaleTimeString()):'not yet';
+  }
+}
+// the client library is only fetched when cloud sync is actually configured
+function loadSupabase(){
+  if(sb) return Promise.resolve(sb);
+  if(!CLOUD_ON) return Promise.resolve(null);
+  return new Promise(resolve=>{
+    const done=()=>{
+      try{
+        sb=window.supabase.createClient(SUPA.url,SUPA.anonKey,
+          {auth:{persistSession:true,autoRefreshToken:true}});
+      }catch(e){ sb=null; }
+      resolve(sb);
+    };
+    if(window.supabase&&window.supabase.createClient) return done();
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+    s.onload=done;
+    s.onerror=()=>{ authMsg('Could not reach the auth service — you are still playing offline.','bad'); resolve(null); };
+    document.head.appendChild(s);
+  });
+}
+
+// ---------- merging ----------
+// Two devices can both make progress offline, so a sync keeps the better of each value
+// rather than letting whichever wrote last erase the other.
+const MAX_KEYS=['xp','coins','answered','correct','bestStreak','gamesPlayed','mocks','mocksPassed',
+                'bestMock','reviewCleared','studyOpened','skill','sims','simsPassed','bestSim'];
+function mergeProfiles(a,b){
+  a=a||{}; b=b||{};
+  const out=Object.assign({},a,b);
+  MAX_KEYS.forEach(k=>{
+    const x=Number(a[k]||0), y=Number(b[k]||0);
+    if(!isNaN(x)||!isNaN(y)) out[k]=Math.max(x||0,y||0);
+  });
+  out.seen=Object.assign({},a.seen||{},b.seen||{});
+  out.highs=Object.assign({},a.highs||{});
+  Object.keys(b.highs||{}).forEach(k=>{ out.highs[k]=Math.max(a.highs&&a.highs[k]||0,b.highs[k]||0); });
+  out.upgrades=Object.assign({},a.upgrades||{},b.upgrades||{});
+  const uniq=(x,y)=>[...new Set([...(x||[]),...(y||[])])];
+  out.badges=uniq(a.badges,b.badges);
+  out.wrong=uniq(a.wrong,b.wrong);
+  out.marks=uniq(a.marks,b.marks);
+  // per-sector stats: keep the record with more answers rather than summing them
+  out.secStats={};
+  const secs=new Set([...Object.keys(a.secStats||{}),...Object.keys(b.secStats||{})]);
+  secs.forEach(s=>{
+    const x=(a.secStats||{})[s]||{a:0,c:0}, y=(b.secStats||{})[s]||{a:0,c:0};
+    out.secStats[s]=(y.a||0)>(x.a||0)?y:x;
+  });
+  out.courses={};
+  const cs=new Set([...Object.keys(a.courses||{}),...Object.keys(b.courses||{})]);
+  cs.forEach(s=>{
+    const x=(a.courses||{})[s], y=(b.courses||{})[s];
+    if(!x||!y){ out.courses[s]=x||y; return; }
+    out.courses[s]={runs:Math.max(x.runs||0,y.runs||0), best:Math.max(x.best||0,y.best||0),
+                    last:(y.at>=x.at?y.last:x.last), mins:Math.max(x.mins||0,y.mins||0),
+                    at:(y.at>=x.at?y.at:x.at)};
+  });
+  return out;
+}
+
+// ---------- sync ----------
+async function pullCloud(){
+  if(!sb||!sbUser) return null;
+  const {data,error}=await sb.from('profiles').select('profile,course,updated_at').eq('id',sbUser.id).maybeSingle();
+  if(error){ authMsg(humanError(error),'bad'); return null; }
+  return data||null;
+}
+async function pushCloud(){
+  if(!sb||!sbUser) return false;
+  const course=(()=>{ try{ return JSON.parse(localStorage.getItem('academy_course')||'null'); }catch(e){ return null; } })();
+  const {error}=await sb.from('profiles').upsert({id:sbUser.id, profile:P, course, updated_at:new Date().toISOString()});
+  if(error){ authMsg(humanError(error),'bad'); return false; }
+  lastSync=Date.now(); return true;
+}
+async function syncNow(silent){
+  if(!sb||!sbUser||syncing) return;
+  syncing=true; renderAuth();
+  if(!silent) authMsg('Syncing…','busy');
+  try{
+    const remote=await pullCloud();
+    if(remote&&remote.profile&&Object.keys(remote.profile).length){
+      const merged=mergeProfiles(remote.profile,P);     // local is the newer side of the merge
+      Object.assign(P,merged);
+      try{ await window.storage.set('academy_profile',JSON.stringify(P),false); }catch(e){}
+      refreshTop(); renderHome(); renderDaily&&renderDaily(); renderInv&&renderInv();
+    }
+    const ok=await pushCloud();
+    if(!silent) authMsg(ok?'Progress synced.':'Could not sync — kept locally.',ok?'ok':'bad');
+  }catch(e){ if(!silent) authMsg(humanError(e),'bad'); }
+  syncing=false; renderAuth();
+}
+// every local save schedules a debounced push, so normal play keeps the cloud current
+function cloudTouch(){
+  if(!sb||!sbUser) return;
+  if(syncTimer) clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>{ pushCloud().then(renderAuth); },4000);
+}
+
+// ---------- auth actions ----------
+function authCreds(){
+  const email=($('authEmail').value||'').trim();
+  const pass=$('authPass').value||'';
+  if(!email||email.indexOf('@')<0){ authMsg('Enter a valid email address.','bad'); return null; }
+  if(pass.length<8){ authMsg('Password must be at least 8 characters.','bad'); return null; }
+  return {email,pass};
+}
+async function doSignIn(){
+  const c=authCreds(); if(!c) return;
+  authMsg('Signing in…','busy');
+  const client=await loadSupabase(); if(!client) return;
+  const {data,error}=await client.auth.signInWithPassword({email:c.email,password:c.pass});
+  if(error){ authMsg(humanError(error),'bad'); return; }
+  sbUser=data.user; $('authPass').value='';
+  authMsg('Signed in. Merging your progress…','busy');
+  await syncNow(false);
+  renderAuth();
+}
+async function doSignUp(){
+  const c=authCreds(); if(!c) return;
+  authMsg('Creating your account…','busy');
+  const client=await loadSupabase(); if(!client) return;
+  const {data,error}=await client.auth.signUp({email:c.email,password:c.pass});
+  if(error){ authMsg(humanError(error),'bad'); return; }
+  $('authPass').value='';
+  if(!data.session){ authMsg('Account created — check your email to confirm it, then sign in.','ok'); return; }
+  sbUser=data.user;
+  await syncNow(false);
+  renderAuth();
+}
+async function doSignOut(){
+  const client=await loadSupabase(); if(!client) return;
+  if(sbUser) await pushCloud();          // never lose the last few answers
+  await client.auth.signOut();
+  sbUser=null; lastSync=0;
+  authMsg('Signed out. Your progress stays on this device.','ok');
+  renderAuth();
+}
+async function doReset(){
+  const email=($('authEmail').value||'').trim();
+  if(!email||email.indexOf('@')<0){ authMsg('Enter your email address first.','bad'); return; }
+  const client=await loadSupabase(); if(!client) return;
+  const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:location.href});
+  authMsg(error?humanError(error):'Password reset sent — check your email.',error?'bad':'ok');
+}
+async function initAuth(){
+  renderAuth();
+  if(!CLOUD_ON) return;
+  const client=await loadSupabase(); if(!client) return;
+  const {data}=await client.auth.getSession();
+  if(data&&data.session){ sbUser=data.session.user; await syncNow(true); }
+  client.auth.onAuthStateChange((_e,session)=>{ sbUser=session?session.user:null; renderAuth(); });
+  sbReady=true; renderAuth();
+}
+
+$('authOpen').onclick=()=>{ renderAuth(); authMsg(''); go('authScreen'); };
+$('authBack').onclick=()=>{ go('homeScreen'); renderHome(); };
+$('authSignIn').onclick=()=>doSignIn();
+$('authSignUp').onclick=()=>doSignUp();
+$('authSignOut').onclick=()=>doSignOut();
+$('authReset').onclick=()=>doReset();
+$('authSyncNow').onclick=()=>syncNow(false);
+$('authPass').addEventListener('keydown',e=>{ if(e.key==='Enter') doSignIn(); });
+
 // ================= COURSE MODE =================
 // ---------- markdown ----------
 // The guide text still carries the narrative for phases 1 and 3; the structured tables sit
@@ -5613,6 +5883,7 @@ loadProfile().then(()=>{ syncLifeCosts(); applyTheme(P.theme||'neon'); renderDai
   applyFS(); syncNav(); renderDiff(); renderCharge(); renderQuests(); renderChest(); renderResume();
 renderGoals(); renderWeek(); renderTomorrow(); });
 go('homeScreen');
+initAuth();
 
 if(TEST){
   window.__t={
@@ -5658,6 +5929,8 @@ if(TEST){
     COURSES, COURSE_BY_SEC, CPHASES, COURSE_MIN, COURSE_PASS, mdRender, mdInline,
     EXPLAIN, EX_TERMS, exFind, exCue, buildExplain, renderExplain, hideExplain, explainMode,
     get pendingAdvance(){return pendingAdvance;},
+    SUPA, CLOUD_ON, mergeProfiles, renderAuth, authCreds, syncNow, cloudTouch, loadSupabase,
+    humanError, get sbUser(){return sbUser;}, get syncing(){return syncing;},
     coursePayout, courseShape, SUBJECT, subjectData, subjectCoverage, TRIGGERS, PILLARS, pillarFor,
     blueprintHTML, deepDiveHTML, courseRecap, recapCard, optionRationale, authoredRationale,
     saveCourseState, readCourseState, clearCourseState, resumeCourse, renderResumeCourse,
