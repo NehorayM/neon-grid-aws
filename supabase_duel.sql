@@ -138,9 +138,14 @@ begin
    for update skip locked;
 
   if d.id is not null then
-    select array_agg(k order by random()) into ids
-      from (select (jsonb_object_keys(ans))::int as k from public.answer_key where id = 1
-            order by random() limit 5) s;
+    -- a set-returning function in the select list combined with order by/limit behaves
+    -- unpredictably; expand the keys first, then sample from them
+    select array_agg(k) into ids from (
+      select key::int as k
+        from jsonb_object_keys((select ans from public.answer_key where id = 1)) as key
+       order by random()
+       limit 5
+    ) s;
     update public.duels
        set b = auth.uid(), b_name = nm, status = 'active', q_ids = ids,
            turn = 0, turn_start = now(), updated_at = now()
@@ -318,8 +323,8 @@ end $$;
 notify pgrst, 'reload schema';
 
 -- ---------------------------------------------------------------- verify
+-- expect: 1 key row, 2502 questions in it, and the duel functions present
 select (select count(*) from public.answer_key) as key_rows,
-       (select jsonb_object_keys_count from
-          (select count(*) as jsonb_object_keys_count
-             from jsonb_object_keys((select ans from public.answer_key where id = 1))) z
-       ) as questions_in_key;
+       (select count(*) from jsonb_object_keys((select ans from public.answer_key where id = 1))) as questions,
+       (select count(*) from pg_proc where proname in
+          ('duel_find','duel_state','duel_answer','duel_leave')) as duel_functions;

@@ -5587,21 +5587,27 @@ function renderCasino(){
   $('casMain').classList.toggle('hidden',!signedIn);
   $('casChips').textContent=casChips.toLocaleString();
 }
-async function casRpc(fn,args){
-  if(!sb||!sbUser){ casMsg('Sign in to play.','bad'); return null; }
+function rpcFile(fn){
+  if(fn.indexOf('duel')===0) return 'supabase_duel.sql';
+  if(fn.indexOf('roulette')===0||fn==='casino_buy_chips') return 'supabase_casino_v2.sql';
+  return 'supabase_casino.sql';
+}
+async function casRpc(fn,args,say){
+  const tell=say||casMsg;
+  if(!sb||!sbUser){ tell('Sign in to play.','bad'); return null; }
   if(casBusy) return null;
   casBusy=true;
   try{
     const {data,error}=await sb.rpc(fn,args||{});
     if(error){
-      if(/could not find the function|schema cache/i.test(error.message||''))
-        casMsg('The casino tables are not installed yet — run supabase_casino.sql in the SQL editor.','bad');
-      else casMsg(humanError(error),'bad');
+      if(/could not find the function|schema cache|does not exist/i.test(error.message||''))
+        tell('This part is not installed on your database yet — run '+rpcFile(fn)+' in the Supabase SQL editor.','bad');
+      else tell(humanError(error),'bad');
       return null;
     }
     if(data&&typeof data.chips==='number'){ casChips=data.chips; renderCasino(); }
     return data;
-  }catch(e){ casMsg(humanError(e),'bad'); return null; }
+  }catch(e){ tell(humanError(e),'bad'); return null; }
   finally{ casBusy=false; }
 }
 async function casRefresh(){
@@ -5844,7 +5850,7 @@ function paintDuel(d){
 }
 async function duelRefresh(){
   if(!duelId) return;
-  const r=await casRpc('duel_state',{duel:duelId});
+  const r=await casRpc('duel_state',{duel:duelId},duelMsg);
   if(!r||!r.ok) return;
   paintDuel(r.duel);
 }
@@ -5863,8 +5869,8 @@ function duelRun(){
 async function duelFind(){
   if(casChips<duelStake){ duelMsg('Not enough chips for that stake.','bad'); return; }
   duelMsg('Looking for an opponent…','busy');
-  const r=await casRpc('duel_find',{stake:duelStake});
-  if(!r) return;
+  const r=await casRpc('duel_find',{stake:duelStake},duelMsg);
+  if(!r){ if(/Looking/.test($('duelMsg').textContent)) duelMsg('Could not start a duel — see above.','bad'); return; }
   if(!r.ok){ duelMsg(r.reason,'bad'); return; }
   duelMsg('');
   duelId=r.duel.id;
@@ -5873,12 +5879,12 @@ async function duelFind(){
 }
 async function duelLockIn(){
   if(!duelId||!duelPicked.size) return;
-  const r=await casRpc('duel_answer',{duel:duelId,picks:[...duelPicked]});
+  const r=await casRpc('duel_answer',{duel:duelId,picks:[...duelPicked]},duelMsg);
   if(r&&r.ok){ paintDuel(r.duel); $('duelLock').classList.add('hidden'); }
 }
 async function duelQuit(){
   if(!duelId) return;
-  await casRpc('duel_leave',{duel:duelId});
+  await casRpc('duel_leave',{duel:duelId},duelMsg);
   duelId=null; duelStop(); duelShow('Lobby'); casRefresh();
 }
 
@@ -6639,7 +6645,7 @@ if(TEST){
     COURSES, COURSE_BY_SEC, CPHASES, COURSE_MIN, COURSE_PASS, mdRender, mdInline,
     EXPLAIN, EX_TERMS, exFind, exCue, buildExplain, renderExplain, hideExplain, explainMode,
     get pendingAdvance(){return pendingAdvance;},
-    casRpc, casRefresh, renderCasino, casCard, placeBet, rouRefresh, rouStart, rouStop,
+    rpcFile, casRpc, casRefresh, renderCasino, casCard, placeBet, rouRefresh, rouStart, rouStop,
     paintRouTable, rouSetPhase, get rouPhase(){return rouPhase;}, bjDeal, bjAct, casTab,
     duelFind, duelRefresh, duelLockIn, duelQuit, paintDuel, duelShow,
     get duelId(){return duelId;}, get duelPicked(){return duelPicked;},
