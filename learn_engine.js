@@ -132,7 +132,7 @@ function renderLearnPick(){
     const d=learnData(sec), rec=learnRecord(sec), done=learnModsDone(sec).length;
     const mins=d.modules.reduce((a,m)=>a+m.min,0)+LSIM_MIN+8;
     const b=document.createElement('button'); b.className='crsrow';
-    b.innerHTML='<span class="cem">'+(rec&&rec.best>=LSIM_PASS?'🎓':done?'📗':'📘')+'</span>'+
+    b.innerHTML='<span class="cem">'+(rec&&rec.best>=LSIM_PASS?'🎓':secEm(sec))+'</span>'+
       '<span style="flex:1;min-width:0"><span class="cnm">'+esc(SHORT[sec]||d.nm)+'</span>'+
       '<span class="cmeta">'+d.modules.length+' parts · '+mins+' min · '+
       d.modules.reduce((a,m)=>a+m.checks.length,0)+' check questions · 10-question exam'+
@@ -569,6 +569,7 @@ function learnFinish(){
   $('lrnDoneScore').textContent=pct+'%';
   $('lrnDoneScore').style.color=passed?'var(--lime)':'var(--gold)';
   $('lrnDoneVerdict').textContent=(passed?'SUBJECT PASSED — ':'SUBJECT COMPLETE — ')+(SHORT[L.sec]||d.nm);
+  $('lrnDoneHeb').innerHTML=hebHTML(passed?'learn':'fail');
   $('lrnDoneMeta').textContent=mins+' min · exam '+correct+'/'+S.qs.length+' · '+
     d.modules.length+' parts · +'+coins+' 🪙 · +'+xp+' XP';
   $('lrnDoneBreak').innerHTML=d.modules.map((m,i)=>{

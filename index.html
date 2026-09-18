@@ -64,8 +64,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .center{align-items:center;justify-content:center;text-align:center}
 
-h1.logo{font-size:clamp(21px,5.2vw,27px);font-weight:600;letter-spacing:6px;line-height:1.1;
+h1.logo{font-size:clamp(22px,5.4vw,29px);font-weight:600;letter-spacing:6px;line-height:1.1;
   color:var(--txt);text-transform:uppercase}
+h1.logo span{color:var(--cyan)}
 .tagline{color:var(--dim);font-size:12.5px;margin-top:9px;max-width:330px;line-height:1.55}
 h2.head{font-size:18px;font-weight:650;letter-spacing:.2px;margin-bottom:4px}
 .sub{color:var(--dim);font-size:12.5px;line-height:1.5}
@@ -83,6 +84,21 @@ h2.head{font-size:18px;font-weight:650;letter-spacing:.2px;margin-bottom:4px}
 .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .stack{display:flex;flex-direction:column;gap:10px;width:100%;max-width:var(--colw);margin:0 auto}
 
+/* ---------- Hebrew encouragement ---------- */
+/* isolate so the punctuation of an RTL line cannot reorder the Latin around it */
+.heb{direction:rtl;unicode-bidi:isolate;font-size:13px;line-height:1.6}
+.motiv{width:100%;max-width:var(--colw);margin:0 auto 14px;padding:12px 15px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;gap:11px}
+.motiv .mem{font-size:17px;flex:none;opacity:.9}
+.paperrow{position:relative;overflow:hidden}
+.paperrow::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dcol,var(--line))}
+.pbar{height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:7px;max-width:210px}
+.pbar i{display:block;height:100%;border-radius:3px;transition:width .5s}
+.pscore{font-family:var(--mono);font-size:13px;font-weight:650;flex:none}
+.motiv .heb{flex:1;color:var(--txt);text-align:right}
+.vheb{margin-top:12px;color:var(--txt);opacity:.85;max-width:300px;font-size:13.5px}
+.simheb{margin-top:10px;color:var(--txt);opacity:.8}
+
 /* ---------- home ---------- */
 .hero{display:flex;flex-direction:column;align-items:center;gap:3px;margin:8px 0 26px;text-align:center}
 .statstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:var(--colw);margin:0 auto}
@@ -97,13 +113,18 @@ h2.head{font-size:18px;font-weight:650;letter-spacing:.2px;margin-bottom:4px}
 .seccard:hover{border-color:var(--line2);background:var(--surface2)}
 .seccard:active{transform:scale(.985)}
 .seccard .glow{display:none}
-.seccard .nm{position:relative;font-size:12.5px;font-weight:650;line-height:1.35;min-height:32px}
+.seccard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dcol,var(--cyan))}
+.secrow{display:flex;align-items:flex-start;gap:9px}
+.secem{font-size:16px;line-height:1.2;flex:none}
+.seccard .nm{position:relative;font-size:12.5px;font-weight:650;line-height:1.35;min-height:32px;flex:1}
+.secdom{position:relative;font-family:var(--mono);font-size:9.5px;letter-spacing:.4px;
+  color:var(--dcol,var(--cyan));text-transform:uppercase}
 .seccard .cnt{position:relative;font-family:var(--mono);font-size:10px;color:var(--dim)}
 .mbar{position:relative;height:5px;border-radius:4px;background:rgba(255,255,255,.09);overflow:hidden;margin-top:auto}
 .mbar i{display:block;height:100%;border-radius:4px;transition:width .5s}
 .seccard .pct{position:relative;font-family:var(--mono);font-size:10px;color:var(--dim)}
 .mixcard{grid-column:1/-1;min-height:auto;flex-direction:row;align-items:center;gap:13px;padding:15px 14px}
-.mixcard .em{font-size:18px;opacity:.75;filter:saturate(.7)}
+.mixcard .em{font-size:20px}
 
 /* ---------- quiz ---------- */
 .qwrap{width:100%;max-width:var(--quizw);margin:0 auto;display:flex;flex-direction:column;gap:12px;flex:1}
@@ -190,7 +211,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   background:var(--surface);border:1px solid var(--line);text-align:left}
 .item .nm{font-size:14px}
 .item .ds{font-size:12px}
-.item .em{font-size:17px;flex:none;opacity:.75;filter:saturate(.7)}
+.item .em{font-size:19px;flex:none}
 .item .nm{font-size:13.5px;font-weight:650}
 .item .ds{font-size:11.5px;color:var(--dim);line-height:1.4;margin-top:2px}
 .item.locked{opacity:.45}
@@ -393,7 +414,8 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 
 /* ---- clean card system ---- */
 .card{width:100%;max-width:var(--colw);margin:0 auto 12px;padding:16px 18px;border-radius:14px;
-  background:var(--surface);border:1px solid var(--line)}
+  background:var(--surface);border:1px solid var(--line);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
 /* accents mark a card without repainting it */
 /* no overflow:hidden here — inside the screen's flex column it would let the card
    shrink below its own content */
@@ -417,7 +439,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   background:var(--surface);border:1px solid var(--line);text-align:left;transition:.15s}
 .tile:hover{border-color:var(--line2);background:var(--surface2)}
 .tile:active{transform:scale(.985)}
-.tile .ic{font-size:17px;margin-bottom:6px;opacity:.75;filter:saturate(.7)}
+.tile .ic{font-size:19px;margin-bottom:6px}
 .tile b{font-size:13.5px;font-weight:650}
 .tile span:last-child{font-size:11px;color:var(--dim);line-height:1.45;margin-top:2px}
 .tile.hero-tile{grid-column:1/-1;flex-direction:row;align-items:center;gap:14px;padding:17px 16px}
@@ -876,7 +898,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .lb-call .ic{flex:none;font-size:14px;line-height:1.3}
 .lb-call.key{background:color-mix(in srgb, var(--gold) 9%, transparent);border:1px solid color-mix(in srgb, var(--gold) 32%, transparent);color:#e3cfa4}
 .lb-call.key strong{color:var(--gold)}
-.lb-call.trap{background:color-mix(in srgb, var(--red) 8%, transparent);border:1px solid color-mix(in srgb, var(--red) 30%, transparent);color:#e8cdd1}
+.lb-call.trap{background:color-mix(in srgb, var(--red) 8%, transparent);border:1px solid color-mix(in srgb, var(--red) 30%, transparent);color:#ffdde1}
 .lb-call.trap strong{color:var(--red)}
 .lb-call.note{background:color-mix(in srgb, var(--violet) 8%, transparent);border:1px solid color-mix(in srgb, var(--violet) 30%, transparent);color:#e0d6ff}
 .lb-call.note strong{color:var(--violet)}
@@ -968,9 +990,11 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   <!-- HOME -->
   <div id="homeScreen" class="screen">
     <div class="hero">
-      <h1 class="logo">NEON GRID</h1>
+      <h1 class="logo">NEON <span>GRID</span></h1>
       <p class="tagline">AWS Solutions Architect training, wired into an arcade.</p>
     </div>
+
+    <div class="motiv" id="motivBox"></div>
 
     <button class="card readycard" id="readyCard">
       <div class="readyring">
@@ -1140,6 +1164,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <div class="vtitle" id="vTitle">CORRECT</div>
       <div class="vrewards" id="vRewards"></div>
       <div class="vsub" id="vSub"></div>
+      <div class="vsub vheb" id="vHeb"></div>
     </div>
   </div>
 
@@ -1258,6 +1283,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <div class="bigpct" id="simScore">0%</div>
       <div class="ch-t" id="simVerdict"></div>
       <div class="ch-note" id="simMeta"></div>
+      <div class="ch-note simheb" id="simHeb"></div>
       <div class="sechead">Domain breakdown</div>
       <div class="card" id="simDomList"></div>
       <div class="sechead">History</div>
@@ -1277,7 +1303,8 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <h2 class="head">📄 Practice Exams</h2>
       <p class="sub" id="paperSub"></p>
     </div>
-    <div class="chiprow" style="justify-content:center;margin-bottom:12px">
+    <div class="statstrip" id="paperStats" style="margin-bottom:14px"></div>
+    <div class="chiprow" style="justify-content:center;margin-bottom:14px">
       <button class="minichip" id="paperCsv">⬇ Export flagged &amp; missed (CSV)</button>
     </div>
     <div class="list" id="paperList"></div>
@@ -1599,6 +1626,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
         <div class="crsscore" id="lrnDoneScore">0%</div>
         <div class="ch-t" id="lrnDoneVerdict"></div>
         <div class="ch-note" id="lrnDoneMeta"></div>
+        <div class="ch-note simheb" id="lrnDoneHeb"></div>
       </div>
       <div class="sechead">How the subject went</div>
       <div class="card" id="lrnDoneBreak"></div>
@@ -1748,6 +1776,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <div class="vtitle">SET COMPLETE</div>
       <div class="vrewards" id="sumRewards"></div>
       <div class="vsub" id="sumSub"></div>
+      <div class="vsub vheb" id="sumHeb"></div>
       <div class="row" style="margin-top:18px">
         <button class="btn" id="sumNext">Keep going ▸</button>
         <button class="btn ghost sm" id="sumHome">Home</button>
@@ -1832,9 +1861,84 @@ const reduced=typeof window.matchMedia==='function'&&window.matchMedia('(prefers
 const bySec={};
 QS.forEach((q,i)=>{ (bySec[q.s]=bySec[q.s]||[]).push(i); });
 // Sectors used to get a hue each, which turned the grid into a colour wheel.
-// They now share the accent and are told apart by their name and their progress.
+// They are coloured by exam domain instead: four colours that mean something.
 const hueOf=i=>(i*47)%360;
-const secColor=()=>'var(--cyan)';
+const DOMAIN_COL=['#9691cc','#85c49b','#7ab6d6','#d4ae76'];   // Secure, Resilient, Performing, Cost
+const secColor=i=>DOMAIN_COL[domainOf(i)]||'var(--cyan)';
+
+// one emoji per sector, picked for the service it stands for
+const SEC_EM=['\u{1f511}','\u{1f5a5}\ufe0f','\u2699\ufe0f','\u{1f4be}','\u2696\ufe0f','\u{1f5c3}\ufe0f',
+  '\u{1f9ed}','\u{1faa3}','\u{1f30d}','\u{1f4e6}','\u{1f4e8}','\u{1f433}','\u26a1','\u{1f9ee}',
+  '\u{1f4ca}','\u{1f916}','\u{1f4c8}','\u{1f3db}\ufe0f','\u{1f512}','\u{1f578}\ufe0f','\u{1f69a}',
+  '\u{1f9f0}','\u{1f4b0}'];
+const secEm=i=>SEC_EM[i]||'\u{1f4d8}';
+
+// ---------- Hebrew encouragement ----------
+// Short lines, placed where a learner actually stops: the home screen, the beat
+// after an answer, the end of an exam, the end of a subject.
+const HEB={
+  daily:[
+    'כל שאלה שאתה פותר היום היא אחוז שלא תצטרך לנחש בבחינה.',
+    'אתה לא צריך לדעת הכול. אתה צריך לדעת להחליט.',
+    '72% זה הרף. כל סשן מקרב אותך אליו.',
+    'מי שפותר 65 שאלות באימון, לא נבהל מ-65 במבחן.',
+    'ארכיטקט טוב לא זוכר הכול — הוא יודע מה לבחור.',
+    'התמדה קטנה כל יום מנצחת יום אחד של לחץ.',
+    'היום עוד נושא אחד. זה הכול.',
+    'הבחינה בודקת שיקול דעת, לא שינון.',
+    'מי שמתאמן על הקשה, מקבל את הקלה במתנה.',
+    'עוד סשן, עוד צעד. אתה בכיוון הנכון.'
+  ],
+  right:[
+    'יפה. עוד אחת בכיס.',
+    'בדיוק. ככה זה ייראה בבחינה.',
+    'מצוין — השיקול היה נכון.',
+    'זהו. תמשיך ככה.',
+    'תשובה של ארכיטקט.',
+    'נכון, ובביטחון.'
+  ],
+  wrong:[
+    'בסדר גמור. עכשיו זה נשאר לך בראש.',
+    'טעות כאן שווה נקודה במבחן.',
+    'תקרא את ההסבר — את זו כבר לא תפספס.',
+    'גם ארכיטקטים טועים. פשוט לא פעמיים.',
+    'זו בדיוק הסיבה שאתה מתאמן.'
+  ],
+  streak:[
+    'רצף יפה. אל תעצור עכשיו.',
+    'אתה בקצב. תשמור עליו.',
+    'ככה נראה ביטחון ביום הבחינה.'
+  ],
+  pass:[
+    'עברת. בדיוק ההרגשה שאתה רוצה ביום הבחינה.',
+    'מעל הרף. עכשיו תעשה את זה שוב, ושוב.',
+    'זה לא מזל. זו עבודה.'
+  ],
+  fail:[
+    'עוד לא — אבל עכשיו אתה יודע בדיוק מה חסר.',
+    'הציון הזה הוא מפה, לא גזר דין.',
+    'תחזור לדומיין האדום. שם מחכים לך האחוזים.'
+  ],
+  learn:[
+    'נושא שלם מאחוריך. זה כבר נשאר איתך.',
+    'עוד אבן בקיר. הקיר הזה הוא התעודה.',
+    'למדת, נבחנת, עברת. זה כל הסיפור.'
+  ]
+};
+function hebLine(kind,seed){
+  const pool=HEB[kind]||HEB.daily;
+  const i=(seed==null)?Math.floor(Math.random()*pool.length)
+                      :Math.abs(seed)%pool.length;
+  return pool[i];
+}
+// the home line is the same all day, so it reads as today's line rather than noise
+function hebToday(){
+  const d=new Date(), n=d.getFullYear()*372+d.getMonth()*31+d.getDate();
+  return hebLine('daily',n);
+}
+function hebHTML(kind,seed,cls){
+  return '<span class="heb'+(cls?' '+cls:'')+'" dir="rtl">'+esc(hebLine(kind,seed))+'</span>';
+}
 
 // ---------- persistent profile ----------
 const P={
@@ -1941,6 +2045,9 @@ function go(id){
 function secPct(i){ const st=P.secStats[i]; if(!st||!st.a) return 0; return Math.round(st.c/st.a*100); }
 function renderHome(){
   if(typeof renderGoals==='function'){ renderGoals(); renderWeek(); renderTomorrow(); }
+  const mb=$('motivBox');
+  if(mb) mb.innerHTML='<span class="mem">\u{1f331}</span>'+hebHTML('daily',
+    (new Date().getFullYear()*372+new Date().getMonth()*31+new Date().getDate()));
   $('stAns').textContent=P.answered;
   $('stAcc').textContent=P.answered?Math.round(P.correct/P.answered*100)+'%':'—';
   $('stBest').textContent=P.bestStreak;
@@ -1957,10 +2064,12 @@ function renderHome(){
     const pct=secPct(i), col=secColor(i);
     const b=document.createElement('button'); b.className='seccard';
     b.dataset.nm=(SHORT[i]||name);
-    const tier=tierOf(i);
-    b.innerHTML='<div class="glow" style="background:'+col+'"></div>'+
-      (tier.em?'<div class="mtier">'+tier.em+'</div>':'')+
-      '<div class="nm">'+esc(SHORT[i]||name)+'</div>'+
+    b.style.setProperty('--dcol',col);
+    const tier=tierOf(i), dom=DOMAINS[domainOf(i)];
+    b.innerHTML=(tier.em?'<div class="mtier">'+tier.em+'</div>':'')+
+      '<div class="secrow"><span class="secem">'+secEm(i)+'</span>'+
+      '<div class="nm">'+esc(SHORT[i]||name)+'</div></div>'+
+      '<div class="secdom">'+esc(dom.short)+' · '+dom.w+'%</div>'+
       '<div class="cnt">'+n+' questions</div>'+
       '<div class="mbar"><i style="width:'+pct+'%;background:'+col+'"></i></div>'+
       '<div class="pct">'+((P.secStats[i]&&P.secStats[i].a)||0)+' seen · '+pct+'% correct</div>';
@@ -1998,7 +2107,7 @@ function loadQuestionInto(qi){
   if(qi===undefined||qi===null||qi<0||!QS[qi]) return;
   curQ=qi; chosen.clear(); eliminated.clear(); answeredThis=false;
   const q=QS[curQ];
-  $('qSector').textContent=(SHORT[q.s]||SECTIONS[q.s]).slice(0,22);
+  $('qSector').textContent=secEm(q.s)+' '+(SHORT[q.s]||SECTIONS[q.s]).slice(0,20);
   $('qCount').textContent='#'+sessionCount;
   $('qProg').style.width=Math.min(100,sessionCount*10)+'%';
   $('qText').textContent=q.q;
@@ -2114,6 +2223,8 @@ function showVerdict(ok,c,x,mult){
     '<div class="vchip" style="color:var(--gold)">+'+c+' 🪙</div>'+
     (ok&&mult>1?'<div class="vchip" style="color:var(--mag)">🔥 x'+mult+'</div>':'');
   $('vSub').textContent=ok?'Streak '+P.streak+' — reward round unlocked':'Added to your review queue';
+  const vh=$('vHeb');
+  if(vh) vh.innerHTML=hebHTML(ok?(P.streak>=5?'streak':'right'):'wrong');
   $('studyBtn').classList.remove('hidden');
   $('verdict').classList.remove('hidden');
   if(mock){ mockAnswer(ok); return; }
@@ -3572,6 +3683,7 @@ function showSessionSummary(){
   $('sumSub').textContent=pct>=80?('Strong set — '+pct+'% over '+mins+' min')
     :pct>=50?('Solid — '+pct+'%. Check your weak sectors.')
     :('Tough set — '+pct+'%. Try a Study Card after each miss.');
+  $('sumHeb').innerHTML=hebHTML(pct>=80?'streak':pct>=50?'right':'wrong');
   go('sumScreen');
 }
 
@@ -4810,6 +4922,7 @@ function simSubmit(auto){
     (passed?'PASS — above the 72% line':'BELOW PASS — 72% needed');
   $('simMeta').textContent=correct+' / '+len+' correct · '+mins+' min · +'+coins+' 🪙'+
     (csv.length?' · '+csv.length+' to export':'');
+  $('simHeb').innerHTML=hebHTML(passed?'pass':'fail');
   $('simAgain').textContent=paper?(paper<PAPER_COUNT?'Exam '+(paper+1)+' ›':'Back to exams'):'Run another';
   const L=$('simDomList'); L.innerHTML='';
   DOMAINS.forEach(d=>{
@@ -4854,20 +4967,32 @@ function renderPapers(){
   const L=$('paperList'); if(!L) return;
   L.innerHTML='';
   const done=Object.keys(P.papers||{}).length;
+  const recs=Object.values(P.papers||{});
+  const best=recs.length?Math.max(...recs.map(r=>r.best)):0;
+  const passedN=recs.filter(r=>r.best>=SIM_PASS).length;
   $('paperSub').textContent=QS.length+' questions cut into '+PAPER_COUNT+' papers — '+
     PAPER_LEN+' questions each, '+PAPER_MIN+' minutes, nothing repeated inside a paper '+
-    'and nothing shared between papers. '+(done?done+' attempted so far.':'None attempted yet.');
+    'and nothing shared between papers.';
+  $('paperStats').innerHTML=
+    '<div class="stat"><b>'+done+' / '+PAPER_COUNT+'</b><span>Attempted</span></div>'+
+    '<div class="stat"><b>'+passedN+'</b><span>Passed</span></div>'+
+    '<div class="stat"><b>'+(best?best+'%':'—')+'</b><span>Best</span></div>';
   for(let n=1;n<=PAPER_COUNT;n++){
     const qs=paperQs(n), rec=paperRec(n);
-    const row=document.createElement('div'); row.className='item';
+    const row=document.createElement('div'); row.className='item paperrow';
     const em=rec?(rec.best>=SIM_PASS?'🎓':'📝'):'📄';
     const len=qs.length;
     const meta=rec
-      ? 'best '+rec.best+'% · '+rec.tries+' attempt'+(rec.tries>1?'s':'')+' · last '+rec.last
+      ? rec.tries+' attempt'+(rec.tries>1?'s':'')+' · last '+rec.last
       : len+' questions · '+PAPER_MIN+' minutes';
-    row.innerHTML='<div class="em">'+em+'</div><div style="flex:1">'+
+    const col=rec?(rec.best>=SIM_PASS?'var(--lime)':'var(--gold)'):'var(--line2)';
+    row.style.setProperty('--dcol',col);
+    row.innerHTML='<div class="em">'+em+'</div><div style="flex:1;min-width:0">'+
       '<div class="nm">Exam '+n+(len<PAPER_LEN?' · short paper ('+len+' questions)':'')+'</div>'+
-      '<div class="ds">'+esc(meta)+'</div></div>';
+      '<div class="ds">'+esc(meta)+'</div>'+
+      (rec?'<div class="pbar"><i style="width:'+rec.best+'%;background:'+col+'"></i></div>':'')+
+      '</div>'+
+      (rec?'<div class="pscore" style="color:'+col+'">'+rec.best+'%</div>':'');
     const b=document.createElement('button');
     b.className='buy'; b.textContent=rec?'Retake':'Start';
     b.onclick=()=>startPaper(n);
@@ -6581,7 +6706,7 @@ function renderLearnPick(){
     const d=learnData(sec), rec=learnRecord(sec), done=learnModsDone(sec).length;
     const mins=d.modules.reduce((a,m)=>a+m.min,0)+LSIM_MIN+8;
     const b=document.createElement('button'); b.className='crsrow';
-    b.innerHTML='<span class="cem">'+(rec&&rec.best>=LSIM_PASS?'🎓':done?'📗':'📘')+'</span>'+
+    b.innerHTML='<span class="cem">'+(rec&&rec.best>=LSIM_PASS?'🎓':secEm(sec))+'</span>'+
       '<span style="flex:1;min-width:0"><span class="cnm">'+esc(SHORT[sec]||d.nm)+'</span>'+
       '<span class="cmeta">'+d.modules.length+' parts · '+mins+' min · '+
       d.modules.reduce((a,m)=>a+m.checks.length,0)+' check questions · 10-question exam'+
@@ -7018,6 +7143,7 @@ function learnFinish(){
   $('lrnDoneScore').textContent=pct+'%';
   $('lrnDoneScore').style.color=passed?'var(--lime)':'var(--gold)';
   $('lrnDoneVerdict').textContent=(passed?'SUBJECT PASSED — ':'SUBJECT COMPLETE — ')+(SHORT[L.sec]||d.nm);
+  $('lrnDoneHeb').innerHTML=hebHTML(passed?'learn':'fail');
   $('lrnDoneMeta').textContent=mins+' min · exam '+correct+'/'+S.qs.length+' · '+
     d.modules.length+' parts · +'+coins+' 🪙 · +'+xp+' XP';
   $('lrnDoneBreak').innerHTML=d.modules.map((m,i)=>{
@@ -7105,6 +7231,7 @@ if(TEST){
     get P(){return P;}, get route(){return route;}, get curQ(){return curQ;}, get chosen(){return chosen;},
     get gScore(){return gScore;}, get gRunning(){return gRunning;}, get G(){return G;},
     QS, SECTIONS, SHORT, BANKV, bySec, BADGES, GAMES,
+    HEB, hebLine, hebToday, hebHTML, SEC_EM, secEm, DOMAIN_COL, secColor,
     go, startSession, startReview, nextQuestion, submitAnswer, get route2(){return route;}, toggleOpt:(l)=>{
       const el=[...$('qOpts').children].find(e=>e.dataset.ltr===l); if(el) el.onclick();
     },

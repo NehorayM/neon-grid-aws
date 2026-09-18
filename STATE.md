@@ -41,6 +41,27 @@ The rules the design follows:
 - **Sticky footers are opaque** with a short fade above them; they used to fade from
   transparent and let the next paragraph read straight through the button.
 
+The reaction to that pass was "too clean, not interesting". `character.py` put the personality
+back without putting the noise back — decoration that carries meaning:
+
+- **An emoji per sector**, chosen for the service (`SEC_EM`): 🔑 IAM, 🪣 S3, 🐳 containers,
+  🕸️ VPC. It rides along in the sector grid, the Learn subject list and the quiz header.
+- **The four exam domains each own a colour** (`DOMAIN_COL`). Every sector card wears its
+  domain's stripe and states its weight — "PERFORMING · 24%" — so the grid teaches the
+  blueprint instead of just listing topics.
+- **Practice Exams** shows attempted/passed/best, and each paper gets its score, a bar and
+  green-or-amber depending on whether it cleared 72%.
+- **Hebrew encouragement** (`HEB`, `hebLine`, `hebHTML`) at the four places a learner stops:
+  today's line on the home screen (the same all day, seeded by the date), the beat after an
+  answer, the end of a set, the end of an exam or a subject. Lines are wrapped in
+  `.heb[dir=rtl]` with `unicode-bidi:isolate` so their punctuation cannot reorder the Latin
+  text around them.
+
+**Anything under the `LEARN:` markers must be changed in `learn_engine.js`, `learn_screens.html`
+or `learn_styles.css`, not in `index.html`** — the next `inject_learn.py` run overwrites it.
+That caught this pass twice: the subject emoji and the palette conversion both had to be
+redone in the source files.
+
 `QA_UI()` guards the layout side of this: 32 screens at 375px and 1024px, no sideways scroll,
 no clipped text, no covered back buttons, no tap target under 24px.
 
