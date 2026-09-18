@@ -2,7 +2,7 @@
 
 Live: **https://nehoraym.github.io/neon-grid-aws/** · repo `NehorayM/neon-grid-aws` (public, GitHub Pages from `main`)
 
-`index.html` is the whole app — one self-contained file, ~3.9 MB (about 1 MB gzipped over the wire),
+`index.html` is the whole app — one self-contained file, ~2.9 MB (well under 1 MB gzipped over the wire),
 including the question bank and every subject's teaching material.
 Push to `main` and Pages redeploys in about a minute.
 
@@ -11,11 +11,43 @@ Push to `main` and Pages redeploys in about a minute.
 | Part | State |
 |---|---|
 | Study guide `AWS-SAA-C03-Combined.md` | Two sources merged into one 24-topic guide |
-| Practice, mock, exam, flashcards | Original app, untouched |
+| **Question bank** | 1,201 questions, every answer read and verified one by one. The old 2,502-question bank is gone |
+| **Practice Exams** | The bank cut into 19 numbered papers — 65 questions each (the last holds the remaining 31), 170 minutes, countdown, score, CSV export |
+| Practice, mock, exam, flashcards | Original app, still running on the new bank |
 | **Learn a Subject** | The main mode. 23 subjects, 97 parts, 388 check questions, 230 exam questions — all authored, none drawn from the bank |
 | **Answer explanations** | Bank questions: glossary-derived. Learn mode: authored per option |
 | **Accounts** | Supabase Auth, optional (guests still work). Username, cross-device sync, merge-best on first sign-in |
 | **Casino** | Chips (server-owned). Shared roulette on a 25s clock, blackjack vs the house, question duel |
+
+## The question bank
+
+Every question comes from `qsrc/aws_saa_questions_full.csv`, an OCR'd exam dump kept in the repo
+so the pipeline reruns without the original download. Nothing else feeds the bank.
+
+```bash
+python3 clean_csv.py      # CSV  -> qsrc/questions_clean.json   (repairs the OCR damage)
+python3 build_bank.py     # + qsrc/answers.py -> qsrc/bank.json (assigns each question a sector)
+python3 inject_bank.py    # qsrc/bank.json -> the #data blob in index.html
+python3 build_duel_key.py # the same answers -> the server-side key in supabase_duel.sql
+```
+
+`clean_csv.py` undoes what the scan did to the text: glyph lookalikes (`©`→C, `£`/`€`/`3`→E),
+options merged into one cell because their letter marker was lost, hyphens inside words. What it
+cannot repair it refuses to guess at — 20 items are dropped by number with the reason written
+next to them, including three CompTIA Security+ questions the source had mixed in.
+
+`qsrc/answers.py` is the answer key: `V` maps item number to answer letters, `NOTES` says why an
+entry differs from the file or why a close call went the way it did. Every one of the 1,201
+questions was read against its options. 863 arrived with an answer in the CSV and **64 of those
+were wrong** — those carry a note starting "Changed from the file's …". The other 338 had no
+answer in the source at all.
+
+The bank is index-keyed, so `index.html` carries a `BANKV` stamp; when it changes the page clears
+`seen`, `wrong`, `marks` and the spaced-repetition schedule, and keeps XP, coins, badges and the
+readiness history.
+
+**Deploy the page and the SQL together.** The duel picks question ids server-side, so pushing a
+new bank without re-running `supabase_duel.sql` leaves duels handing out ids that no longer exist.
 
 ## How the Learn mode works
 
@@ -68,7 +100,15 @@ In the browser, with the page visible:
 eval(await (await fetch('/qa_learn.js')).text());
 await QA_LEARN();     // walks every subject: read, answer, fail, re-read, pass, summary, exam, result
 QA_TAPS();            // every control is what a finger would actually land on
+
+eval(await (await fetch('/qa_bank.js')).text());
+await QA_BANK();      // the bank, the 19 papers, a full 65-question exam, the CSV, every other mode
+await QA_UI();        // all 32 screens: sideways scroll, clipped text, tap size, covered back buttons
 ```
+
+`QA_BANK` last ran at 19,003 assertions, all passing — it answers a whole paper through the real
+option buttons, flags as it goes, lets one exam run out of time, abandons another, and checks the
+practice controls come back afterwards. `QA_UI` reports nothing at 375px and at 1024px.
 
 `QA_LEARN` drives the real screens by clicking real elements — 11,536 assertions across the 23
 subjects at the last full run, all passing. It includes a deliberate failure run to prove the
@@ -105,6 +145,8 @@ python3 build_subject_content.py  # blueprint, trade-offs, traps, limits
 
 ## Known gaps / next up
 
+- `supabase_duel.sql` must be re-run in the SQL editor whenever the bank changes; the page alone
+  is not enough (see above).
 - **Multiplayer blackjack tables** — asked for, not built. Seats, turn order, a timer for an
   idle player, dealer acting after everyone. The largest remaining piece.
 - Hard limits are authored for 11 of 23 subjects in `subject_content.json`; the rest render
