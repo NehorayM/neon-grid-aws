@@ -19,6 +19,31 @@ Push to `main` and Pages redeploys in about a minute.
 | **Accounts** | Supabase Auth, optional (guests still work). Username, cross-device sync, merge-best on first sign-in |
 | **Casino** | Chips (server-owned). Shared roulette on a 25s clock, blackjack vs the house, question duel |
 
+## The look
+
+Feedback in September 2026 was that the interface read as dense, harsh and machine-made.
+`restyle.py` and `restyle2.py` were the one-shot passes that fixed it; `index.html` is the
+source of truth now, so change the CSS there rather than re-running them.
+
+The rules the design follows:
+
+- **Surfaces are neutral.** `--surface`, `--line` and `--panel` are white at 3–9% alpha and
+  never tinted with the accent. `applyTheme` used to derive them from the theme's cyan, which
+  washed every panel in colour — that is why it looked synthetic.
+- **One accent does the work.** `--cyan` is the primary; `--lime`, `--gold` and `--red` only
+  carry meaning (pass, attention, fail). Sector cards share the accent instead of generating
+  a hue each, which had turned the grid into a colour wheel.
+- **Every palette sits in the same register** — mid lightness, low saturation. That holds for
+  the ten shop themes too, so buying one changes the mood, not the volume.
+- **No glow.** No text-shadow, no coloured box-shadow, no rotating background sweep. Progress
+  bars are one flat colour, not a two-colour gradient.
+- **Weights stop at 650.** 800 and 900 everywhere is what made the type shout.
+- **Sticky footers are opaque** with a short fade above them; they used to fade from
+  transparent and let the next paragraph read straight through the button.
+
+`QA_UI()` guards the layout side of this: 32 screens at 375px and 1024px, no sideways scroll,
+no clipped text, no covered back buttons, no tap target under 24px.
+
 ## The question bank
 
 Every question comes from `qsrc/aws_saa_questions_full.csv`, an OCR'd exam dump kept in the repo
