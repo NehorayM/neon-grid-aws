@@ -12,7 +12,8 @@ Push to `main` and Pages redeploys in about a minute.
 |---|---|
 | Study guide `AWS-SAA-C03-Combined.md` | Two sources merged into one 24-topic guide |
 | **Question bank** | 1,201 questions, every answer read and verified one by one. The old 2,502-question bank is gone |
-| **Practice Exams** | The bank cut into 19 numbered papers — 65 questions each (the last holds the remaining 31), 170 minutes, countdown, score, CSV export |
+| **Practice Exams** | The **Exam** tab. The bank cut into 19 numbered papers — 65 questions each (the last holds the remaining 31), 170 minutes, countdown, score, CSV export |
+| **Study** | The **Study** tab. The whole syllabus as 13 readable chapters, 76 topics, with authored comparison tables, decision trees and flows, and 3 checks per chapter |
 | Practice, mock, exam, flashcards | Original app, still running on the new bank |
 | **Learn a Subject** | The main mode. 23 subjects, 97 parts, 388 check questions, 230 exam questions — all authored, none drawn from the bank |
 | **Answer explanations** | Bank questions: glossary-derived. Learn mode: authored per option |
@@ -64,6 +65,34 @@ redone in the source files.
 
 `QA_UI()` guards the layout side of this: 32 screens at 375px and 1024px, no sideways scroll,
 no clipped text, no covered back buttons, no tap target under 24px.
+
+## Study mode
+
+The **Study** tab is the reference half of the app: read the syllabus, in any order, nothing
+locked. Learn mode teaches and gates; Study mode just explains.
+
+```bash
+python3 build_study.py    # qsrc/aws-saa-study-notes-english.md -> the #studydata blob
+python3 inject_study.py   # screens, styles and engine into index.html (idempotent)
+```
+
+`build_study.py` carries the prose across untouched and adds what prose cannot: 81 authored
+comparison tables, decision trees, flows and must-know / exam-trap callouts, keyed by topic in
+`EXTRAS`, plus three multiple-choice checks per chapter in `QUIZ`. Every `##` in the notes must
+appear in `SECTION_CH` or the build refuses, so a topic can never quietly go missing.
+
+Blocks render through the Learn mode's `blocksHTML`, so both modes share one renderer and one
+visual language. Chapters are coloured by the exam domain they mostly serve.
+
+## What happened to the old modes
+
+- The **Exam ×5** drill is gone. The 65-question papers are the real exams, and two things
+  called "exam" in one navigation bar was the confusion. Its badges (`Certified`,
+  `Exam Machine`), its daily quest and its history log were repointed at the papers, so they
+  now mean something a candidate would recognise. The Exam Pass shop item went with it.
+- The **Practice** nav tab became **Study**. Sector practice itself is untouched — it is still
+  reached from the sector grid, Weak spots, Review, Bookmarks and the Practice tile on home.
+- A new badge, **Well Read**, lands when all 13 Study chapters have been opened.
 
 ## The question bank
 
@@ -152,7 +181,7 @@ await QA_BANK();      // the bank, the 19 papers, a full 65-question exam, the C
 await QA_UI();        // all 32 screens: sideways scroll, clipped text, tap size, covered back buttons
 ```
 
-`QA_BANK` last ran at 19,003 assertions, all passing — it answers a whole paper through the real
+`QA_BANK` last ran at 19,909 assertions, all passing — it answers a whole paper through the real
 option buttons, flags as it goes, lets one exam run out of time, abandons another, and checks the
 practice controls come back afterwards. `QA_UI` reports nothing at 375px and at 1024px.
 

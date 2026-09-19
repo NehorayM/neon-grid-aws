@@ -262,11 +262,7 @@ async function appChecks(){
   t.startWeakDrill(); await sleep(0);
   ok(t.route==='quizScreen'||t.route==='homeScreen','weak drill opened or declined cleanly');
 
-  // exam x5 and the mock
-  t.startExam(3); await sleep(0);
-  eq(t.route,'quizScreen','exam x5 opened');
-  ok(t.exam&&t.exam.qs.length===5,'exam x5 built five questions');
-  eq(new Set(t.exam.qs).size,t.exam.qs.length,'exam x5 questions are unique');
+  // the mock (the five-question drill was retired)
   t.startMock(); await sleep(0);
   eq(t.route,'quizScreen','mock exam opened');
 
@@ -350,6 +346,107 @@ window.QA_UI=async function(){
   return {screens:checked, problems:uniq};
 };
 
+// ---------- study mode ----------
+async function studyChecks(){
+  const t=T(), $=id=>document.getElementById(id), S=t.STUDY_T;
+  ok(!!S,'the study engine is exposed');
+  if(!S) return;
+  const CH=S.STU_CH;
+  eq(CH.length,13,'thirteen chapters');
+  const titles=new Set();
+  CH.forEach((c,i)=>{
+    ok(!!c.nm&&!!c.em&&!!c.sub, 'chapter '+i+' is labelled');
+    ok(c.topics.length>0,'chapter '+i+' has topics');
+    ok(c.quiz.length>=3,'chapter '+i+' has at least three checks');
+    c.topics.forEach(tp=>{
+      ok(!titles.has(tp.nm),'topic "'+tp.nm+'" appears in two chapters');
+      titles.add(tp.nm);
+      ok(tp.blocks.length>0,'"'+tp.nm+'" has content');
+      tp.blocks.forEach(b=>{
+        ok(['h','p','list','steps','table','flow','split','key','trap','note','code','dtree']
+          .includes(b.t), '"'+tp.nm+'": unknown block '+b.t);
+        if(b.t==='table'){
+          ok(b.head.length>1,'"'+tp.nm+'": a one-column table');
+          b.rows.forEach(r=>eq(r.length,b.head.length,'"'+tp.nm+'": ragged table row'));
+        }
+      });
+    });
+    c.quiz.forEach((q,qi)=>{
+      ok(q.q.length>15,'chapter '+i+' check '+qi+' has a real stem');
+      ok(q.o.length>=3,'chapter '+i+' check '+qi+' has options');
+      eq(new Set(q.o).size,q.o.length,'chapter '+i+' check '+qi+' repeats an option');
+      ok(q.a>=0&&q.a<q.o.length,'chapter '+i+' check '+qi+' has a valid answer');
+    });
+  });
+  eq(titles.size,76,'every topic from the notes is present exactly once');
+
+  // the picker, through the nav the way a user reaches it
+  $('navPlay').click(); await sleep(40);
+  eq(t.route,'stuPickScreen','the Study tab opens the chapter list');
+  ok($('navPlay').classList.contains('on'),'the Study tab lights up');
+  eq($('stuPickList').children.length,CH.length,'one card per chapter');
+  hittable($('stuPickBack'),'study back button');
+  hittable($('stuPickList').firstChild,'first chapter card');
+
+  // read every chapter
+  for(let i=0;i<CH.length;i++){
+    $('stuPickList').children[i].click(); await sleep(20);
+    eq(t.route,'stuReadScreen','chapter '+i+' opened');
+    eq(S.stuIdx,i,'chapter index tracks');
+    const c=CH[i];
+    eq($('stuJump').children.length,c.topics.length,'chapter '+i+': a jump chip per topic');
+    eq($('stuBody').querySelectorAll('.stutopic').length,c.topics.length,'chapter '+i+': every topic rendered');
+    eq($('stuQuiz').children.length,c.quiz.length,'chapter '+i+': every check rendered');
+    ok($('stuTitle').textContent.indexOf(c.nm)>=0,'chapter '+i+': title shown');
+    ok($('stuBody').textContent.length>500,'chapter '+i+': the body has real text');
+    ok((t.P.study||{})[i]&&t.P.study[i].read===1,'chapter '+i+' is marked read');
+    if(i===0){
+      hittable($('stuQuiz').querySelector('.stuo'),'first check option');
+      hittable($('stuNext'),'next chapter button');
+    }
+    $('stuReadBack').click(); await sleep(10);
+  }
+  eq(Object.keys(t.P.study||{}).length,CH.length,'every chapter recorded as read');
+
+  // answering a check: right, then wrong
+  S.stuOpen(0); await sleep(20);
+  const cards=[...$('stuQuiz').children];
+  const q0=CH[0].quiz[0];
+  cards[0].querySelectorAll('.stuo')[q0.a].click(); await sleep(5);
+  ok(cards[0].querySelectorAll('.stuo')[q0.a].classList.contains('ok'),'a correct pick is marked correct');
+  ok([...cards[0].querySelectorAll('.stuo')].every(b=>b.disabled),'the options lock after answering');
+  ok(/Correct/.test(cards[0].querySelector('.stufeed').textContent),'it says so');
+  const q1=CH[0].quiz[1], wrong=(q1.a+1)%q1.o.length;
+  cards[1].querySelectorAll('.stuo')[wrong].click(); await sleep(5);
+  ok(cards[1].querySelectorAll('.stuo')[wrong].classList.contains('no'),'a wrong pick is marked wrong');
+  ok(cards[1].querySelectorAll('.stuo')[q1.a].classList.contains('ok'),'and the right one is shown');
+  const q2=CH[0].quiz[2];
+  cards[2].querySelectorAll('.stuo')[q2.a].click(); await sleep(20);
+  const rec=S.stuRec(0);
+  ok(rec&&rec.best>0,'finishing the check records a score, got '+(rec&&rec.best));
+  // a second click must not double-score
+  cards[0].querySelectorAll('.stuo')[0].click(); await sleep(5);
+  eq(S.stuRec(0).best,rec.best,'re-clicking a locked option changes nothing');
+
+  // the last chapter's Next returns to the list
+  S.stuOpen(CH.length-1); await sleep(20);
+  $('stuNext').click(); await sleep(20);
+  eq(t.route,'stuPickScreen','the last chapter hands you back to the list');
+  t.go('homeScreen');
+}
+
+// the five-question drill is gone and the Exam tab is the papers now
+async function retiredDrillChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  ok(!$('examScreen'),'the old exam drill screen is gone');
+  ok(!$('examOpen'),'its home tile is gone');
+  ok(t.startExam===undefined,'startExam is gone from the test surface');
+  $('navExam').click(); await sleep(40);
+  eq(t.route,'paperScreen','the Exam tab opens the practice exams');
+  ok($('navExam').classList.contains('on'),'the Exam tab lights up');
+  t.go('homeScreen');
+}
+
 window.QA_BANK=async function(opts){
   opts=opts||{};
   pass=0; fails=[];
@@ -361,6 +458,7 @@ window.QA_BANK=async function(opts){
   bankChecks();
   paperChecks();
   if(opts.app!==false) await appChecks();
+  if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
   if(opts.quick!==true){
     await runPaper(1,{});
     csvChecks();

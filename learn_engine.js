@@ -70,7 +70,7 @@ function learnStored(){
 function learnResume(){
   const s=learnStored(); if(!s) return false;
   const d=learnData(s.sec); if(!d) return false;
-  ensureAudio(); exitStudyMode(); reviewMode=false; markMode=false; exam=null; mock=null; sim=null;
+  ensureAudio(); exitStudyMode(); reviewMode=false; markMode=false; mock=null; sim=null;
   L={sec:s.sec, phase:s.phase||'read', mi:Math.min(s.mi||0,d.modules.length), startedAt:Date.now()-(s.spent&&s.spent.total||0),
      spent:s.spent||{total:0}, mods:s.mods||{}, quiz:null, sim:null, stage:Date.now()};
   if(s.sim&&s.phase==='sim'){
@@ -149,7 +149,7 @@ function startLearn(sec){
   ensureAudio();
   const d=learnData(sec);
   if(!d){ toast('That subject has not been authored yet'); return; }
-  exitStudyMode(); reviewMode=false; markMode=false; exam=null; mock=null; sim=null;
+  exitStudyMode(); reviewMode=false; markMode=false; mock=null; sim=null;
   P.lastLearn=sec;
   L={sec, phase:'read', mi:0, startedAt:Date.now(), spent:{total:0}, mods:{}, quiz:null, sim:null, stage:Date.now()};
   learnClock(); learnSave(); learnMap();
