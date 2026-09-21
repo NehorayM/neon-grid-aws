@@ -174,7 +174,7 @@ function renderExamBrief(qi){
     b.distractors.slice(0,3).forEach(k=>card(k,CODEX[k],'alt')); }
   if(b.tips.length){ label('How the exam phrases it');
     b.tips.forEach(t=>{ const d=document.createElement('div'); d.className='tip';
-      d.textContent='\U0001f4a1 '+t; body.appendChild(d); }); }
+      d.textContent='💡 '+t; body.appendChild(d); }); }
   if(b.multi){ const d=document.createElement('div'); d.className='tip warn';
     d.textContent='⚠ More than one answer is required here.'; body.appendChild(d); }
 }""")

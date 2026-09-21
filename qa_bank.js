@@ -831,6 +831,41 @@ async function weightChecks(){
   t.go('homeScreen');
 }
 
+// ---------- the question tools sit in the header, not over the answers ----------
+async function qToolChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  ok($('fsBtn').closest('.qtop')!==null,'the text-size button lives in the question header');
+  ok($('markBtn').closest('.qtop')!==null,'the bookmark button lives in the question header');
+  ok(!$('qBar').contains($('fsBtn')),'it is no longer in the foot bar');
+  ok(!$('qBar').contains($('markBtn')),'nor is the bookmark');
+
+  // during an exam the foot bar has nothing to show and must take no space
+  t.simClearSave();
+  t.startPaper(4); await sleep(30);
+  ok($('qBar').classList.contains('hidden'),'the foot bar is hidden inside an exam');
+  eq(Math.round($('qBar').getBoundingClientRect().height),0,'and takes no vertical space');
+  const rows=Math.round(document.querySelector('.qtop').getBoundingClientRect().height);
+  ok(rows<40,'the header stays on one line, got '+rows+'px');
+  hittable($('fsBtn'),'text-size button in an exam');
+  hittable($('markBtn'),'bookmark button in an exam');
+  // and both still do their job
+  const fs0=document.body.dataset.fs;
+  $('fsBtn').click(); await sleep(5);
+  ok(document.body.dataset.fs!==fs0,'the text-size button still cycles');
+  const wasMarked=t.isBookmarked(t.curQ);
+  $('markBtn').click(); await sleep(5);
+  ok(t.isBookmarked(t.curQ)!==wasMarked,'the bookmark button still toggles');
+  ok($('markBtn').classList.contains('on')===t.isBookmarked(t.curQ),'and shows its state');
+  $('markBtn').click(); await sleep(5);
+  t.simAbandon(); await sleep(20); t.simClearSave();
+
+  // in practice the foot bar is back, because it has the lifelines and Lock in
+  t.startSession(6); await sleep(30);
+  ok(!$('qBar').classList.contains('hidden'),'the foot bar returns in practice');
+  ok($('qBar').getBoundingClientRect().height>20,'and has its controls');
+  ok([...$('qBar').children].some(e=>e.id==='qConfirm'),'including Lock in');
+}
+
 window.QA_BANK=async function(opts){
   opts=opts||{};
   pass=0; fails=[];
@@ -844,7 +879,7 @@ window.QA_BANK=async function(opts){
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
   if(opts.extras!==false){ await resumeChecks(); await ttsChecks(); await briefChecks();
-    await freeChecks(); await feedbackChecks(); await cheerChecks();
+    await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
     await runPaper(1,{});
