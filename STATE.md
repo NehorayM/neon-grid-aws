@@ -12,7 +12,7 @@ Push to `main` and Pages redeploys in about a minute.
 |---|---|
 | Study guide `AWS-SAA-C03-Combined.md` | Two sources merged into one 24-topic guide |
 | **Question bank** | 1,201 questions, every answer read and verified one by one. The old 2,502-question bank is gone |
-| **Practice Exams** | The **Exam** tab. 19 numbered papers — 65 questions each (the last holds 31), 170 minutes, countdown, score, CSV export. A paper you leave is kept and offered back; exams 1–5 brief you before each question; any question can be read aloud |
+| **Practice Exams** | The **Exam** tab. 19 numbered papers — 65 questions each (the last holds 31), 170 minutes, countdown, score, CSV export. A paper you leave is kept and offered back; exams 1–10 brief you before each question and explain every answer; any question's stem can be read aloud on request |
 | **Study** | The **Study** tab. The whole syllabus as 13 readable chapters, 76 topics, with authored comparison tables, decision trees and flows, and 3 checks per chapter |
 | Practice, mock, exam, flashcards | Original app, still running on the new bank |
 | **Learn a Subject** | The main mode. 23 subjects, 97 parts, 388 check questions, 230 exam questions — all authored, none drawn from the bank |
@@ -98,11 +98,16 @@ visual language. Chapters are coloured by the exam domain they mostly serve.
   stopped instead of having expired overnight. The Practice Exams screen shows a Resume card;
   submitting or starting another paper clears the save. Quitting a paper now lands on that
   screen rather than on Home, so the save is where you left off.
-- **Read aloud.** One tap on 🔊 reads the current question and its options through the Web
-  Speech API. A second tap while it is speaking arms auto-read for the rest of the paper, and
-  that preference is remembered. Moving on cancels the previous reading. A browser with no
-  voices installed accepts `speak()` and stays silent, so the page checks 400ms later and says
-  so rather than leaving you wondering.
+- **Read aloud.** 🔊 Read reads the current question; while it is talking the button is
+  ⏹ Stop and a tap stops it. That is the whole button — no auto-read, no remembered
+  preference, and nothing ever reads itself. Moving on cancels a reading in progress.
+  **It reads the stem only**, not the options: they are on the screen, and a reader asked
+  for them not to be spoken.
+  The button follows an internal `ttsOn` flag rather than `speechSynthesis.speaking`, which
+  lags behind `cancel()` in some browsers, and `u.onend`/`u.onerror` put it back. A browser
+  with no voices installed fires `onerror: synthesis-failed`, so the button never lies about
+  reading; it also accepts `speak()` silently in some builds, so the page checks 400ms later
+  and says so rather than leaving you wondering.
 - **Papers 1–10 teach; 11–19 test.** On the first ten, a collapsible panel above each question
   (`buildBriefing()`) names the services it turns on, the ones it name-drops as distractors and
   how the exam phrases the ask — capped at four concepts and three distractors. And the moment
@@ -249,10 +254,14 @@ practice controls come back afterwards. `QA_UI` reports nothing at 375px and at 
 subjects at the last full run, all passing. It includes a deliberate failure run to prove the
 gate holds, and a partial run to prove scoring is not always 100%.
 
-`QA_BANK` stubs `window.speechSynthesis` to prove the read-aloud wiring — what is spoken, that
-moving on cancels it, that practice never speaks. It cannot prove audible output, and the
-preview browser has no voices installed, so the sound itself has only been verified by reading
-the code path. Try it on a real phone. Batch it with
+`QA_BANK` stubs `window.speechSynthesis` to prove the read-aloud wiring — that the reading is
+the position and the stem and nothing else, that the button toggles Read/Stop and resets on
+`onend`, that moving on cancels it and never starts one, that practice never speaks. It cannot
+prove audible output, and the preview browser has no voices installed, so the sound itself has
+only been verified by reading the code path. Try it on a real phone.
+Careful when faking a voice by hand: assigning a plain object to `utterance.voice` throws, the
+`catch` in `ttsSpeak` swallows it, and it looks exactly like the button being broken. Give the
+fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 `QA_LEARN({secs:[0,1,2], extra:false})` to stay under the tool timeout.
 
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel

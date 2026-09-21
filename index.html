@@ -4905,7 +4905,6 @@ function simLoad(){
   renderExamBrief(qi);
   renderTtsBtn();
   ttsStop();
-  if(P.ttsAuto) simSpeak();
   simPersist();
   $('simPrev').disabled=sim.i===0;
   $('simNext').textContent=sim.i===simLen()-1?'Review ▸':'Next ›';
@@ -5193,10 +5192,17 @@ function simAnsweredIn(sv){ return Object.keys(sv.ans||{}).filter(k=>(sv.ans[k]|
 
 // ---------- read the question aloud ----------
 const ttsOk=()=>typeof window!=='undefined'&&'speechSynthesis' in window;
-function ttsStop(){ try{ if(ttsOk()) window.speechSynthesis.cancel(); }catch(e){} }
+// speechSynthesis.speaking lags behind cancel() in some browsers, so the button
+// follows our own flag and the utterance's own end event instead
+let ttsOn=false;
+function ttsStop(){
+  ttsOn=false;
+  try{ if(ttsOk()) window.speechSynthesis.cancel(); }catch(e){}
+  renderTtsBtn();
+}
 function ttsText(q,i,total){
-  return 'Question '+(i+1)+' of '+total+'. '+q.q+' '+
-    q.o.map(o=>'Option '+o[0]+'. '+o[1]+'.').join(' ');
+  // the stem only — the options are on the screen in front of whoever is listening
+  return 'Question '+(i+1)+' of '+total+'. '+q.q;
 }
 function ttsSpeak(text){
   if(!ttsOk()) { toast('This browser cannot read aloud'); return false; }
@@ -5204,16 +5210,20 @@ function ttsSpeak(text){
     window.speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
     u.rate=P.ttsRate||1; u.lang='en-US';
+    u.onend=u.onerror=()=>{ ttsOn=false; renderTtsBtn(); };
     const v=(window.speechSynthesis.getVoices()||[]).find(x=>/^en/i.test(x.lang));
     if(v) u.voice=v;
     window.speechSynthesis.speak(u);
+    ttsOn=true; renderTtsBtn();
     // a browser with no voices installed accepts speak() and stays silent, so say so
     // rather than leaving the reader wondering whether the tap registered
     if(!TEST) setTimeout(()=>{
       try{
         const ss=window.speechSynthesis;
-        if(!ss.speaking&&!ss.pending&&!(ss.getVoices()||[]).length)
+        if(!ss.speaking&&!ss.pending&&!(ss.getVoices()||[]).length){
+          ttsOn=false; renderTtsBtn();
           toast('No speech voices are installed in this browser');
+        }
       }catch(e){}
     },400);
     return true;
@@ -5225,17 +5235,17 @@ function simSpeak(){
   return ttsSpeak(ttsText(q,sim.i,sim.qs.length));
 }
 function ttsToggle(){
-  // one tap reads this question; a second tap turns auto-read on for the rest
+  // read, or stop reading. That is the whole button.
   if(!ttsOk()){ toast('This browser cannot read aloud'); return; }
-  if(P.ttsAuto){ P.ttsAuto=0; ttsStop(); toast('🔇 Auto-read off'); }
-  else if(window.speechSynthesis.speaking){ P.ttsAuto=1; toast('🔊 Auto-read on'); }
-  else { simSpeak(); }
-  saveProfile(); renderTtsBtn();
+  if(ttsOn) ttsStop();
+  else simSpeak();
+  renderTtsBtn();
 }
 function renderTtsBtn(){
   const b=$('simTts'); if(!b) return;
-  b.classList.toggle('on',!!P.ttsAuto);
-  b.textContent=P.ttsAuto?'🔊 Auto':'🔊 Read';
+  b.classList.toggle('on',ttsOn);
+  b.textContent=ttsOn?'⏹ Stop':'🔊 Read';
+  b.title=ttsOn?'Stop reading':'Read the question aloud';
 }
 
 const EXAM_CHEER=[

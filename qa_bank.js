@@ -524,9 +524,10 @@ async function ttsChecks(){
   const t=T(), $=id=>document.getElementById(id);
   // stub the speech engine so the harness can see exactly what was asked for
   const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis');
-  const spoken=[]; let cancels=0, speaking=false;
+  const spoken=[]; let cancels=0, speaking=false, last=null;
+  const finish=()=>{ speaking=false; if(last&&last.onend) last.onend(); };
   Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
-    speak(u){ spoken.push(u.text); speaking=true; },
+    speak(u){ spoken.push(u.text); speaking=true; last=u; },
     cancel(){ cancels++; speaking=false; },
     getVoices(){ return [{lang:'en-US',name:'Test'}]; },
     get speaking(){ return speaking; }
@@ -539,7 +540,10 @@ async function ttsChecks(){
   const txt=t.ttsText(q,0,65);
   ok(txt.indexOf('Question 1 of 65')===0,'the reading opens with the position');
   ok(txt.indexOf(q.q)>0,'it reads the stem');
-  q.o.forEach(o=>ok(txt.indexOf('Option '+o[0]+'. '+o[1])>0,'it reads option '+o[0]));
+  // and stops there — the options are on the screen already
+  q.o.forEach(o=>ok(txt.indexOf('Option '+o[0])<0,'it does not announce option '+o[0]));
+  q.o.forEach(o=>ok(txt.indexOf(o[1].slice(0,30))<0,'it does not read option '+o[0]+" text"));
+  eq(txt,'Question 1 of 65. '+q.q,'the reading is the position and the stem, nothing else');
 
   t.startPaper(8); await sleep(20);
   eq($('simTts').textContent,'🔊 Read','the button offers a read');
@@ -547,27 +551,40 @@ async function ttsChecks(){
   $('simTts').click(); await sleep(10);
   eq(spoken.length,n0+1,'tapping it speaks');
   ok(spoken[spoken.length-1].indexOf('Question 1 of 65')===0,'it spoke this question');
-  ok(!t.P.ttsAuto,'one tap does not turn auto-read on');
+  eq($('simTts').textContent,'⏹ Stop','and the button becomes a stop');
+  ok($('simTts').classList.contains('on'),'and shows that it is reading');
 
-  // a second tap while it is still speaking arms auto-read
+  // a second tap stops it. There is no third state.
+  const c0=cancels;
   $('simTts').click(); await sleep(10);
-  ok(!!t.P.ttsAuto,'the second tap arms auto-read');
-  eq($('simTts').textContent,'🔊 Auto','and the button says so');
+  ok(cancels>c0,'the second tap stops the voice');
+  eq(spoken.length,n0+1,'and does not start another reading');
+  eq($('simTts').textContent,'🔊 Read','the button offers a read again');
+  ok(!$('simTts').classList.contains('on'),'and drops the reading state');
 
-  const n1=spoken.length, c1=cancels;
+  // moving on never reads by itself
+  const n1=spoken.length;
   t.simGo(1); await sleep(10);
-  ok(cancels>c1,'moving on cancels the previous reading');
-  eq(spoken.length,n1+1,'and reads the next question automatically');
-  ok(spoken[spoken.length-1].indexOf('Question 2 of 65')===0,'the right one');
-
-  // turning it off
+  eq(spoken.length,n1,'moving to the next question does not read it');
+  eq($('simTts').textContent,'🔊 Read','and the button stays a read');
   $('simTts').click(); await sleep(10);
-  ok(!t.P.ttsAuto,'a third tap turns auto-read off');
-  const n2=spoken.length;
+  eq(spoken.length,n1+1,'but asking for it still works');
+  ok(spoken[spoken.length-1].indexOf('Question 2 of 65')===0,'and reads the right one');
+
+  // when the voice finishes on its own, the button comes back by itself
+  finish(); await sleep(10);
+  eq($('simTts').textContent,'🔊 Read','the button resets when a reading ends');
+  ok(!$('simTts').classList.contains('on'),'and clears its state');
+
+  // and a reading still in progress is cancelled by moving on
+  $('simTts').click(); await sleep(10);
+  const c1=cancels;
   t.simGo(1); await sleep(10);
-  eq(spoken.length,n2,'and nothing is read after that');
+  ok(cancels>c1,'moving on cancels a reading in progress');
+  eq($('simTts').textContent,'🔊 Read','and the button follows');
 
   // leaving the exam stops the voice
+  $('simTts').click(); await sleep(10);
   const c2=cancels;
   t.simAbandon(); await sleep(20);
   ok(cancels>c2,'quitting stops the voice');

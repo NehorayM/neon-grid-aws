@@ -12,6 +12,10 @@
      study feature, lifeline, upgrade, theme or mini-game is behind a price.
 
 Run once; index.html is the source of truth afterwards.
+
+SUPERSEDED IN PART: the read-aloud button here had a hidden second gesture
+(tap again while it talks to arm auto-read) and read every option after the
+stem. tts_plain.py replaced both — see it, not this, for how Read behaves now.
 """
 import pathlib
 import sys
