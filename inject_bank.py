@@ -29,7 +29,8 @@ def main():
     assert len(bank["sections"]) == len(bank["short"]) == 23, "23 sections expected"
     seen = set()
     for i, q in enumerate(qs):
-        assert set(q) == {"s", "q", "o", "a", "v"}, f"q{i} has odd fields {set(q)}"
+        assert set(q) <= {"s", "q", "o", "a", "v", "x"}, f"q{i} has odd fields {set(q)}"
+        assert {"s", "q", "o", "a", "v"} <= set(q), f"q{i} is missing a field"
         assert 0 <= q["s"] < 23, f"q{i} section out of range"
         assert q["a"] and all(a in {l for l, _ in q["o"]} for a in q["a"]), f"q{i} bad answer"
         assert len(q["o"]) >= 3, f"q{i} has too few options"
@@ -38,7 +39,12 @@ def main():
         seen.add(k)
 
     blob = json.dumps(bank, ensure_ascii=False, separators=(",", ":"))
-    ver = hashlib.sha1(blob.encode("utf-8")).hexdigest()[:10]
+    # The stamp exists to detect "index 412 now points at a different question", so it
+    # hashes what makes an index mean something — the stems, the options and the answers.
+    # Adding an explanation to a question must not throw away anyone's progress.
+    identity = json.dumps([[q["q"], q["o"], q["a"], q["s"]] for q in qs],
+                          ensure_ascii=False, separators=(",", ":"))
+    ver = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:10]
 
     s = PAGE.read_text(encoding="utf-8")
     pat = re.compile(r'(<script id="data" type="application/json">).*?(</script>)', re.S)

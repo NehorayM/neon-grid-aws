@@ -58,10 +58,16 @@ back without putting the noise back — decoration that carries meaning:
   `.heb[dir=rtl]` with `unicode-bidi:isolate` so their punctuation cannot reorder the Latin
   text around them.
 
-**Anything under the `LEARN:` markers must be changed in `learn_engine.js`, `learn_screens.html`
-or `learn_styles.css`, not in `index.html`** — the next `inject_learn.py` run overwrites it.
-That caught this pass twice: the subject emoji and the palette conversion both had to be
-redone in the source files.
+**Anything under a `LEARN:` or `STUDY:` marker must be changed in its source file, not in
+`index.html`** — the next `inject_learn.py` / `inject_study.py` run overwrites it. This has bitten
+three times now: the subject emoji, the palette conversion, and a whole block of exam CSS that
+`exam_extras.py` had anchored on a selector inside `STUDY:CSS`. Exam styling lives in its own
+`EXAM:CSS` block above the STUDY markers for exactly that reason.
+
+**`overflow:hidden` on a direct child of `.screen` needs `flex:none`.** It zeroes the flex item's
+automatic minimum size, so the panel collapses to nothing while still containing its content.
+It has happened twice — the accent cards and the exam statistics panel. `QA_UI()` now fails on
+any screen child that has content but no height.
 
 `QA_UI()` guards the layout side of this: 32 screens at 375px and 1024px, no sideways scroll,
 no clipped text, no covered back buttons, no tap target under 24px.
@@ -97,10 +103,36 @@ visual language. Chapters are coloured by the exam domain they mostly serve.
   that preference is remembered. Moving on cancels the previous reading. A browser with no
   voices installed accepts `speak()` and stays silent, so the page checks 400ms later and says
   so rather than leaving you wondering.
-- **Exams 1–5 are briefed.** Above each question, a collapsible panel built from
-  `buildBriefing()`: the services the question turns on, the ones it name-drops as distractors,
-  and how the exam phrases the ask. Capped at four concepts and three distractors so the
-  briefing never dwarfs the question. Papers 6–19 have none — the training wheels come off.
+- **Papers 1–10 teach; 11–19 test.** On the first ten, a collapsible panel above each question
+  (`buildBriefing()`) names the services it turns on, the ones it name-drops as distractors and
+  how the exam phrases the ask — capped at four concepts and three distractors. And the moment
+  you commit the required number of picks, the question **settles**: the options lock, right and
+  wrong are marked, and `renderExplain()` opens underneath with what you picked, the correct
+  answer, why it fits and what each other option actually does. The strip then reads
+  "12 / 65 answered · 9/12 right so far". Papers 11–19 say nothing until you submit, and you can
+  still change an answer there — that is what a real exam feels like.
+- **A line that knows where you are.** Sixty-five Hebrew one-liners, one per position in a
+  paper, each naming the number you just reached ("ארבעים ושתיים. התשובה לחיים, ליקום ולכל
+  השאר. ולשאלה הזאת."). None of them hints at whether you were right, so the silent papers show
+  them too — in the explanation panel on 1–10, as a toast on 11–19. Past 65 it falls back to a
+  generated line.
+- **174 questions carry the note written when their answer was verified**, and that note leads
+  the explanation panel. `build_bank.py` copies `NOTES` from `qsrc/answers.py` into the question
+  as `x`; `BANKV` deliberately hashes only stems, options, answers and sections, so adding an
+  explanation never throws away anyone's progress.
+
+## Knowing how much to learn
+
+`BANK_STATS` walks the bank once at load and reports, per subject: how many questions there
+are, what share of the bank that is, roughly how many to expect in a 65-question paper, how
+many of the 19 papers it turns up in, and your accuracy on it. Eight subjects appear in **all
+19 papers** — RDS/Aurora/ElastiCache, S3, ELB & ASG, Serverless, VPC, SQS/SNS/Kinesis,
+Containers and EBS/EFS. The Practice Exams screen carries it as a collapsible panel.
+
+Study chapters carry the same arithmetic. `STU_SECS` maps each of the 13 chapters to the
+question sectors it covers — every sector belongs to exactly one chapter, so the weights add up
+to the whole bank — and each chapter card says **"16% of the exam · 192 questions · you are 64%
+right on 40 of them"**. That is the number that tells you how hard to study a subject.
 
 ## Nothing costs coins
 
@@ -209,7 +241,7 @@ await QA_BANK();      // the bank, the 19 papers, a full 65-question exam, the C
 await QA_UI();        // all 32 screens: sideways scroll, clipped text, tap size, covered back buttons
 ```
 
-`QA_BANK` last ran at 19,989 assertions, all passing — it answers a whole paper through the real
+`QA_BANK` last ran at 20,429 assertions, all passing — it answers a whole paper through the real
 option buttons, flags as it goes, lets one exam run out of time, abandons another, and checks the
 practice controls come back afterwards. `QA_UI` reports nothing at 375px and at 1024px.
 
@@ -250,6 +282,46 @@ summary (the two collapsible sections at the bottom of it).
 python3 build_course_data.py      # subject briefings and explanation data
 python3 build_subject_content.py  # blueprint, trade-offs, traps, limits
 ```
+
+## Known bugs — found by the audit, not yet fixed
+
+`python3 audit_static.py` and, in the browser, `eval(await (await fetch('/audit_runtime.js')).text()); await AUDIT()`.
+Twenty-six verified defects; ~118 instances once each unnamed button and damaged question is
+counted separately. Nine are high severity:
+
+1. **Leaving an exam by the back arrow does not end it.** `quizBack` only calls `go('homeScreen')`,
+   so `sim` stays live.
+2. …its countdown keeps running in the top bar on every other screen.
+3. …and when it expires `simCheckTime()` submits and drags you to the result screen from wherever
+   you were.
+4. …and read-aloud keeps speaking the question after you have left.
+5. **Two exam engines can run at once** — `startMock()` never clears `sim`. Reachable: start a
+   paper, back arrow, Readiness, Start mock.
+6. **The verdict overlay survives navigation.** `go()` dismisses no overlays.
+7. **The Study Card modal survives navigation.** Same cause.
+8. **Question 715 is broken** (paper 12, q1): OCR merged option A into the stem, and option A now
+   renders as just "OpsCenter."
+9. **The custom timer has no validation.** 0/0/0 starts a ~1.9-year countdown; 999999 shows
+   "16666:39:00 · round 1/999999".
+
+Medium: a past exam date reads "0 days to go · 900 questions/day" and a far one 355,118 days;
+`renderBadges()` and `renderShop()` throw on a profile missing `badges`/`upgrades` where every
+other reader guards with `||[]`; `paperQs(0)` and `paperQs(-1)` return out-of-range indices;
+the Flashcards tile says 88 terms and the deck has 90; q549 option C carries option D's text
+behind a stray "D."; a stray © survives in q242, q282, q715; four multi-answer questions lost
+their "(Select TWO.)" (q90, q285, q334, q826); 34 icon-only buttons have no accessible name;
+the shop still says "50/50 costs 10 coins instead of 30" though nothing costs coins; a comment
+still says "the 2,502 questions".
+
+Low: `.stujump button.on` is dead CSS so the topic jump bar never marks where you are;
+`readiness()` does not clamp accuracy; `comboBreak()` is dead and `openStudy2()` is reachable
+only from the test surface; `P.lastLearn` and `P.lastTimer` are write-only; 55 CSS selectors are
+declared more than once.
+
+Checked and clean: no duplicate stems or options in the bank, papers disjoint and complete, all
+nine mini-games, profile round-trip, player names rendered with `textContent` (a duel opponent
+cannot inject HTML), layout at 320/375/1024, and the explanation engine never explains a wrong
+option with a service the right answer also uses.
 
 ## Known gaps / next up
 

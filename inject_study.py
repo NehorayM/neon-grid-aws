@@ -52,6 +52,12 @@ CSS = """
 .stuo:disabled{cursor:default}
 .stufeed{font-size:12px;margin-top:4px;color:var(--dim)}
 .stuprog{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.stuw{margin-top:9px}
+.stuw .wbar{height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.stuw .wbar i{display:block;height:100%;border-radius:3px;background:var(--dcol,var(--cyan))}
+.stuw .wtxt{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:5px;letter-spacing:.2px}
+.stuw .wtxt b{color:var(--txt);font-size:11px}
+.stuw.heavy .wtxt b{color:var(--gold)}
 /* the chapter body is long; give the sticky footer room to breathe */
 #stuReadScreen .crsfoot{margin-top:18px}
 """
@@ -79,7 +85,8 @@ SCREENS = """
         <span class="stuprog" id="stuCount"></span>
       </div>
       <h2 class="head" id="stuTitle"></h2>
-      <p class="sub" id="stuSub" style="margin-bottom:14px"></p>
+      <p class="sub" id="stuSub" style="margin-bottom:12px"></p>
+      <div class="statstrip" id="stuWeight" style="margin-bottom:14px"></div>
       <div class="stujump" id="stuJump"></div>
       <div class="mdx" id="stuBody"></div>
       <div class="sechead">Quick check</div>
@@ -105,6 +112,24 @@ const STU_CH=STUDY.chapters||[];
 // a chapter maps onto the exam domains through the sectors it covers, so the
 // colour on its card means the same thing as everywhere else in the app
 const STU_DOM=[0,0,2,2,2,1,1,2,1,2,0,2,3];
+// Which question sectors each chapter covers. Every sector belongs to exactly one
+// chapter, so the weights below add up to the whole bank and a chapter can honestly
+// say how much of the exam it is worth.
+const STU_SECS=[[21,22],[0,17],[7,8,9],[1,2],[3],[5,13],[6],[19],[4],[10],[18],[11,12],[14,15,16,20]];
+function stuWeight(i){
+  const secs=STU_SECS[i]||[];
+  const n=secs.reduce((a,s)=>a+((bySec[s]||[]).length),0);
+  return {n, pct:QS.length?Math.round(n/QS.length*1000)/10:0, secs};
+}
+// how well you have done on the sectors a chapter covers, and how much of it you have seen
+function stuMastery(i){
+  let a=0,c=0,pool=0;
+  (STU_SECS[i]||[]).forEach(s=>{
+    const st=(P.secStats||{})[s]; if(st){ a+=st.a; c+=st.c; }
+    pool+=(bySec[s]||[]).length;
+  });
+  return {a, c, pool, acc:a?Math.round(c/a*100):0, seen:pool?Math.round(Math.min(1,a/pool)*100):0};
+}
 let stuIdx=-1;
 
 function stuRec(i){ return (P.study||{})[i]||null; }
@@ -138,11 +163,24 @@ function renderStudyPick(){
       '<span style="flex:1;min-width:0"><span class="snm">'+esc(c.nm)+'</span>'+
       '<div class="ssub">'+esc(c.sub)+'</div>'+
       '<div class="smeta">'+c.topics.length+' topics · '+c.min+' min read · '+
-      c.quiz.length+' checks'+(rec&&rec.best?' · check '+rec.best+'%':'')+'</div></span>'+
+      c.quiz.length+' checks'+(rec&&rec.best?' · check '+rec.best+'%':'')+'</div>'+
+      stuWeightHTML(i)+'</span>'+
       (rec&&rec.read?'<span class="studone">✓ read</span>':'');
     b.onclick=()=>stuOpen(i);
     L.appendChild(b);
   });
+}
+// The number a learner actually wants: how much of the exam this chapter is, and
+// how much of it they have already proved they know.
+function stuWeightHTML(i){
+  const w=stuWeight(i), m=stuMastery(i);
+  if(!w.n) return '';
+  const band=w.pct>=10?'heavy':w.pct>=5?'mid':'light';
+  return '<div class="stuw '+band+'">'+
+    '<div class="wbar"><i style="width:'+Math.min(100,w.pct*6)+'%"></i></div>'+
+    '<div class="wtxt"><b>'+w.pct+'%</b> of the exam · '+w.n+' questions'+
+    (m.a?' · you are '+m.acc+'% right on '+m.a+' of them':' · none attempted yet')+
+    '</div></div>';
 }
 function stuOpen(i){
   if(i<0||i>=STU_CH.length) return;
@@ -152,6 +190,12 @@ function stuOpen(i){
   $('stuCount').textContent=c.topics.length+' topics · '+c.min+' min';
   $('stuTitle').textContent=c.em+'  '+c.nm;
   $('stuSub').textContent=c.sub;
+  const w=stuWeight(i), m=stuMastery(i);
+  $('stuWeight').innerHTML=w.n
+    ? '<div class="stat"><b>'+w.pct+'%</b><span>Of the exam</span></div>'+
+      '<div class="stat"><b>'+w.n+'</b><span>Questions</span></div>'+
+      '<div class="stat"><b>'+(m.a?m.acc+'%':'—')+'</b><span>You are right</span></div>'
+    : '';
   const jump=$('stuJump'); jump.innerHTML='';
   c.topics.forEach((t,k)=>{
     const b=document.createElement('button'); b.textContent=t.nm;
@@ -214,8 +258,9 @@ $('stuPickBack').onclick=()=>{ go('homeScreen'); renderHome(); };
 $('stuReadBack').onclick=()=>{ renderStudyPick(); go('stuPickScreen'); };
 $('stuNext').onclick=stuNext;
 $('stuPractise').onclick=stuPractise;
-const STUDY_T={ STUDY, STU_CH, get stuIdx(){return stuIdx;}, stuOpen, stuNext, stuPractise,
-  renderStudyPick, stuRec, openStudy2, stuRenderQuiz };
+const STUDY_T={ STUDY, STU_CH, STU_SECS, get stuIdx(){return stuIdx;}, stuOpen, stuNext,
+  stuPractise, renderStudyPick, stuRec, openStudy2, stuRenderQuiz, stuWeight, stuMastery,
+  stuWeightHTML };
 """
 
 

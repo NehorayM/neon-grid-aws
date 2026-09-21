@@ -314,6 +314,13 @@ window.QA_UI=async function(){
     checked++;
     if(document.documentElement.scrollWidth>innerWidth+1)
       out.push(id+': the page scrolls sideways ('+document.documentElement.scrollWidth+' > '+innerWidth+')');
+    // a panel with content but no height is invisible and nothing else catches it
+    [...sc.children].forEach(el=>{
+      const st=getComputedStyle(el);
+      if(st.display==='none'||el.classList.contains('hidden')) return;
+      if(el.scrollHeight>8&&el.getBoundingClientRect().height<1)
+        out.push(id+': '+(el.id||el.className)+' has content but collapsed to zero height');
+    });
     [...sc.querySelectorAll('*')].forEach(el=>{
       const r=el.getBoundingClientRect();
       if(!r.width||!r.height) return;
@@ -579,8 +586,8 @@ async function ttsChecks(){
 // ---------- the briefing on the first five papers ----------
 async function briefChecks(){
   const t=T(), $=id=>document.getElementById(id);
-  eq(t.BRIEF_PAPERS,5,'the first five papers are briefed');
-  for(const n of [1,3,5]){
+  eq(t.BRIEF_PAPERS,10,'the first ten papers are briefed');
+  for(const n of [1,5,10]){
     t.startPaper(n); await sleep(20);
     ok(!$('exBrief').classList.contains('hidden'),'exam '+n+' shows a briefing');
     ok($('exBrief').open,'exam '+n+': it starts open');
@@ -595,7 +602,7 @@ async function briefChecks(){
        'exam '+n+': the briefing follows the question');
     t.simAbandon(); await sleep(10);
   }
-  for(const n of [6,12,19]){
+  for(const n of [11,15,19]){
     t.startPaper(n); await sleep(20);
     ok($('exBrief').classList.contains('hidden'),'exam '+n+' has no briefing');
     t.simAbandon(); await sleep(10);
@@ -635,6 +642,195 @@ async function freeChecks(){
   eq(t.P.coins,0,'and the balance is untouched');
 }
 
+// ---------- the teaching papers explain as you go ----------
+async function feedbackChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  eq(t.EXPLAIN_PAPERS,10,'ten papers explain as you go');
+  eq(t.BRIEF_PAPERS,10,'and ten papers brief you first');
+  t.simClearSave();
+
+  // a right answer
+  t.startPaper(1); await sleep(20);
+  ok(t.simTeaches(),'paper 1 teaches');
+  ok(!$('explain').classList.contains('show'),'nothing is explained before an answer');
+  const q0=t.QS[t.sim.qs[0]];
+  q0.a.forEach(l=>t.simPick(l)); await sleep(20);
+  ok(t.simRevealed(),'answering reveals');
+  ok($('explain').classList.contains('show'),'the explanation panel is up');
+  ok(/Correct/.test($('.exhead')?'':$('explain').querySelector('.exhead').textContent),'it says correct');
+  q0.a.forEach(l=>{
+    const el=[...$('qOpts').children].find(x=>x.dataset.ltr===l);
+    ok(el.classList.contains('ok'),'the right option is marked');
+  });
+  ok(/Correct answer|Your answer/.test($('explain').textContent),'it names the answer');
+  eq(t.simScore().right,1,'the tally counts it');
+
+  // it is settled: further picks do nothing
+  const otherL=q0.o.map(o=>o[0]).find(l=>!q0.a.includes(l));
+  const wasAns=(t.sim.ans[0]||[]).join('');
+  t.simPick(otherL); await sleep(10);
+  eq((t.sim.ans[0]||[]).join(''),wasAns,'a revealed question cannot be changed');
+
+  // a wrong answer
+  t.simGo(1); await sleep(20);
+  ok(!$('explain').classList.contains('show'),'the next question starts clean');
+  const q1=t.QS[t.sim.qs[1]];
+  const bad=q1.o.map(o=>o[0]).filter(l=>!q1.a.includes(l)).slice(0,q1.a.length);
+  bad.forEach(l=>t.simPick(l)); await sleep(20);
+  ok(t.simRevealed(),'a wrong answer reveals too');
+  ok(/Not quite/.test($('explain').querySelector('.exhead').textContent),'it says not quite');
+  bad.forEach(l=>{
+    const el=[...$('qOpts').children].find(x=>x.dataset.ltr===l);
+    ok(el.classList.contains('no'),'the wrong pick is marked wrong');
+  });
+  q1.a.forEach(l=>{
+    const el=[...$('qOpts').children].find(x=>x.dataset.ltr===l);
+    ok(el.classList.contains('ok'),'and the right one is shown');
+  });
+  ok(/You picked/.test($('explain').textContent),'it shows what was picked');
+  eq(t.simScore().done,2,'two settled');
+  eq(t.simScore().right,1,'one of them right');
+  ok(/right so far/.test($('simCount').textContent),'the strip reports the tally');
+
+  // going back re-shows the verdict
+  t.simGo(-1); await sleep(20);
+  ok($('explain').classList.contains('show'),'coming back shows the verdict again');
+  ok(/Correct/.test($('explain').querySelector('.exhead').textContent),'the same verdict');
+  t.simGo(1); await sleep(10);
+
+  // the reveal survives leaving and resuming
+  $('simQuit').click(); await sleep(30);
+  const sv=t.simSaved();
+  ok(sv&&sv.rev&&sv.rev[0]&&sv.rev[1],'the save keeps which questions were settled');
+  t.simResume(); await sleep(30);
+  ok(t.simRevealed(1),'and they are still settled after resuming');
+  eq(t.simScore().done,2,'the tally survives too');
+
+  // scoring at submit matches what was revealed
+  const before=t.simScore();
+  t.simSubmit(true); await sleep(40);
+  const pct=parseInt($('simScore').textContent,10);
+  eq(pct,Math.round(before.right/65*100),'the final score matches the running tally');
+
+  // a later paper stays silent
+  t.startPaper(12); await sleep(20);
+  ok(!t.simTeaches(),'paper 12 does not teach');
+  const q2=t.QS[t.sim.qs[0]];
+  q2.a.forEach(l=>t.simPick(l)); await sleep(20);
+  ok(!t.simRevealed(),'answering does not reveal on paper 12');
+  ok(!$('explain').classList.contains('show'),'and nothing is explained');
+  ok($('exBrief').classList.contains('hidden'),'nor briefed');
+  // and the answer can still be changed, as in a real exam
+  const alt=q2.o.map(o=>o[0]).find(l=>!q2.a.includes(l));
+  t.simPick(alt); await sleep(10);
+  ok((t.sim.ans[0]||[]).indexOf(alt)>=0,'an unrevealed answer can still be changed');
+  t.simAbandon(); await sleep(20);
+  t.simClearSave();
+
+  // the authored notes ride along with the questions that have one
+  const withNote=t.QS.filter(q=>q.x);
+  ok(withNote.length>150,'the review notes shipped, got '+withNote.length);
+  withNote.slice(0,40).forEach(q=>ok(q.x.length>30,'a note is a real sentence'));
+  const qi=t.QS.findIndex(q=>q.x);
+  const e=t.buildExplain(t.QS[qi],new Set(t.QS[qi].a),true);
+  eq(e.note,t.QS[qi].x,'the panel is handed the note');
+}
+
+// ---------- the line that knows where you are ----------
+async function cheerChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  eq(t.EXAM_CHEER.length,65,'one line per position in a full paper');
+  eq(new Set(t.EXAM_CHEER).size,65,'no line is reused');
+  t.EXAM_CHEER.forEach((l,i)=>{
+    ok(l.length>12,'line '+(i+1)+' is a real sentence');
+    ok(/[֐-׿]/.test(l),'line '+(i+1)+' is in Hebrew');
+    // nothing may hint at right or wrong: the silent papers show these too
+    ok(!/נכון|טעית|צדקת|שגוי/.test(l),'line '+(i+1)+' gives nothing away');
+  });
+  ok(/1/.test(t.examCheer(0,65)),'the first line names the first question');
+  ok(/42|ארבעים ושתיים/.test(t.examCheer(41,65)),'question 42 gets its own line');
+  ok(t.examCheer(64,65).length>0,'the last question has a line');
+  const over=t.examCheer(70,80);
+  ok(/71/.test(over)&&/80/.test(over),'past the table it still names the position');
+  ok(/31/.test(t.examCheer(30,31))||t.examCheer(30,31).length>0,'the short paper is covered');
+
+  // it shows up in the panel on a teaching paper
+  t.simClearSave();
+  t.startPaper(2); await sleep(20);
+  const q=t.QS[t.sim.qs[0]];
+  q.a.forEach(l=>t.simPick(l)); await sleep(30);
+  const ch=$('explain').querySelector('.excheer');
+  ok(!!ch,'the line is in the explanation panel');
+  ok(ch.textContent.indexOf(t.examCheer(0,65))>=0,'and it is the right line');
+  // and it follows the position
+  t.simGo(1); await sleep(10);
+  const q1=t.QS[t.sim.qs[1]];
+  q1.a.forEach(l=>t.simPick(l)); await sleep(30);
+  ok($('explain').querySelector('.excheer').textContent.indexOf(t.examCheer(1,65))>=0,
+     'question two gets question two’s line');
+  t.simAbandon(); await sleep(20); t.simClearSave();
+}
+
+// ---------- what is in the papers ----------
+async function statsChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const S=t.BANK_STATS;
+  eq(S.total,t.QS.length,'the overview counts every question');
+  eq(S.papers,t.PAPER_COUNT,'over every paper');
+  eq(S.rows.reduce((a,r)=>a+r.n,0),t.QS.length,'the subject counts add up to the bank');
+  eq(S.rows.length,new Set(t.QS.map(q=>q.s)).size,'one row per subject that has questions');
+  const pct=S.rows.reduce((a,r)=>a+r.pct,0);
+  ok(Math.abs(pct-100)<1.5,'the percentages add up to about 100, got '+pct.toFixed(1));
+  S.rows.forEach(r=>{
+    ok(r.papers>=1&&r.papers<=S.papers,'subject '+r.sec+' appears in a sane number of papers');
+    ok(r.n>0,'subject '+r.sec+' has questions');
+    ok(r.pct>0,'subject '+r.sec+' has a share');
+  });
+  for(let i=1;i<S.rows.length;i++) ok(S.rows[i-1].n>=S.rows[i].n,'rows are ordered by size');
+  ok(S.everyPaper>=5,'several subjects turn up in every paper, got '+S.everyPaper);
+
+  // and it renders
+  t.renderPapers(); t.go('paperScreen'); await sleep(30);
+  eq($('paperStatsBody').children.length,S.rows.length,'a row per subject is rendered');
+  ok(/appear in all/.test($('paperStatsTitle').textContent),'the title says how many are unavoidable');
+  hittable($('paperStatsBox').querySelector('summary'),'the overview toggle');
+  ok(/%/.test($('paperStatsBody').textContent),'the rows carry percentages');
+  ok(/per paper/.test($('paperStatsBody').textContent),'and how many to expect per paper');
+}
+
+// ---------- how much of the exam each Study chapter is ----------
+async function weightChecks(){
+  const t=T(), $=id=>document.getElementById(id), S=t.STUDY_T;
+  eq(S.STU_SECS.length,S.STU_CH.length,'every chapter maps to sectors');
+  const all=S.STU_SECS.flat();
+  eq(all.length,new Set(all).size,'no sector is claimed by two chapters');
+  eq(new Set(all).size,t.SECTIONS.length,'every sector belongs to a chapter');
+  const tot=S.STU_CH.reduce((a,c,i)=>a+S.stuWeight(i).n,0);
+  eq(tot,t.QS.length,'the chapter weights add up to the whole bank');
+  const pct=S.STU_CH.reduce((a,c,i)=>a+S.stuWeight(i).pct,0);
+  ok(Math.abs(pct-100)<1.5,'and to about 100%, got '+pct.toFixed(1));
+  S.STU_CH.forEach((c,i)=>{
+    const w=S.stuWeight(i);
+    ok(w.n>0,'chapter '+i+' ('+c.nm+') covers questions');
+    ok(w.pct>0,'chapter '+i+' has a share of the exam');
+  });
+
+  S.renderStudyPick(); t.go('stuPickScreen'); await sleep(30);
+  const cards=[...$('stuPickList').children];
+  eq(cards.length,S.STU_CH.length,'a card per chapter');
+  cards.forEach((el,i)=>{
+    const w=S.stuWeight(i);
+    ok(el.textContent.indexOf(w.pct+'%')>=0,'chapter '+i+' card shows its share');
+    ok(el.textContent.indexOf(w.n+' questions')>=0,'chapter '+i+' card shows its question count');
+  });
+  // and inside the chapter
+  S.stuOpen(2); await sleep(30);
+  const w2=S.stuWeight(2);
+  ok($('stuWeight').textContent.indexOf(w2.pct+'%')>=0,'the chapter page repeats the share');
+  eq($('stuWeight').children.length,3,'three figures on the chapter page');
+  t.go('homeScreen');
+}
+
 window.QA_BANK=async function(opts){
   opts=opts||{};
   pass=0; fails=[];
@@ -647,7 +843,9 @@ window.QA_BANK=async function(opts){
   paperChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await resumeChecks(); await ttsChecks(); await briefChecks(); await freeChecks(); }
+  if(opts.extras!==false){ await resumeChecks(); await ttsChecks(); await briefChecks();
+    await freeChecks(); await feedbackChecks(); await cheerChecks();
+    await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
     await runPaper(1,{});
     csvChecks();

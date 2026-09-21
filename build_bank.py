@@ -153,7 +153,7 @@ def main():
     spec = importlib.util.spec_from_file_location("answers", KEY)
     key = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(key)
-    V = key.V
+    V, NOTES = key.V, key.NOTES
 
     out, weak = [], []
     for q in qs:
@@ -168,8 +168,14 @@ def main():
         sec, top, second = classify(q)
         if top - second < 3:
             weak.append((q["item"], sec, top, second))
-        out.append({"s": sec, "q": q["q"], "o": [[l, t] for l, t in q["o"]],
-                    "a": ans, "v": 1})
+        row = {"s": sec, "q": q["q"], "o": [[l, t] for l, t in q["o"]],
+               "a": ans, "v": 1}
+        # the note written while reviewing this question is the best explanation
+        # anyone will ever write for it, so it ships with the question
+        note = NOTES.get(q["item"])
+        if note:
+            row["x"] = note
+        out.append(row)
 
     counts = Counter(x["s"] for x in out)
     empty = [i for i in range(len(SECTIONS)) if counts[i] == 0]
@@ -188,6 +194,7 @@ def main():
     total = sum(pos.values())
     print("  answer letters:", {k: f"{v * 100 // total}%" for k, v in sorted(pos.items())})
     print("  answers per question:", dict(Counter(len(x["a"]) for x in out)))
+    print("  with an authored explanation:", sum(1 for x in out if x.get("x")))
     if "--weak" in sys.argv:
         for w in weak:
             print("   weak:", w)
