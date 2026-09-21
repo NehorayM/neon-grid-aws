@@ -281,7 +281,41 @@ summary (the two collapsible sections at the bottom of it).
 ```bash
 python3 build_course_data.py      # subject briefings and explanation data
 python3 build_subject_content.py  # blueprint, trade-offs, traps, limits
+python3 hebrew_glossary.py        # ...then put #explaindata back into Hebrew
+python3 hebrew_blueprint.py       # ...and the Learn service cards with it
 ```
+
+**Those last two are not optional.** Both generators write English, and the service
+explanations are meant to be Hebrew. Run them or the panel reverts silently — `QA_BANK()`
+will fail with the name of the first term that slipped back.
+
+## The service explanations are Hebrew
+
+The same AWS services are defined in three places, and all three now answer in Hebrew:
+
+| where | how many | translated by |
+| --- | --- | --- |
+| `CODEX` in the page — the briefing and the flashcards | 90 | `hebrew_codex.py` |
+| `#explaindata.glossary` — "למה זו התשובה" in the explanation panel | 154 | `hebrew_glossary.py` |
+| `#subjectdata` blueprint + trade-offs — the Learn service cards | 163 + 84 | `hebrew_blueprint.py` |
+
+`hebrew_blueprint.py` imports its wording straight from `hebrew_glossary.py`, so the two never
+drift; every service the blueprint names is in that glossary and every wording matched, which is
+why one dictionary can drive both.
+
+Things deliberately left in English:
+
+- **The term names** (`t`). `exFind()` matches them against the literal text of the options —
+  translate a key and it simply stops matching.
+- **The 216 `cues`.** A cue quotes the exam's own phrasing ("if a question says …"); the point is
+  to recognise those words on the real paper.
+- **The `q.x` verified-answer notes** under "Why". Those are per-question reasoning, not service
+  definitions, and they are still English — so the label above them stays English too.
+
+Hebrew and Latin on one line need `direction:rtl; unicode-bidi:isolate` on the Hebrew and
+`direction:ltr; unicode-bidi:isolate` on the service name inside it, or a term like
+`` `maxReceiveCount` `` loses its backticks to the far end of the line. The English fallback
+("Decision rules for this sector", pulled from the course recap) opts out with `.exitem.ltr`.
 
 ## Known bugs — found by the audit, not yet fixed
 
@@ -345,3 +379,12 @@ option with a service the right answer also uses.
 - Programmatic `.click()` sails through dead buttons. Hit-test with `document.elementFromPoint`
   after `scrollIntoView`, which is what `QA_TAPS` does.
 - Supabase renamed the keys: **Publishable** (`sb_publishable_`) is the old anon key.
+- Generated blobs are the same trap as the `LEARN:`/`STUDY:` markers: anything hand-edited into
+  `#explaindata` or `#subjectdata` is gone the next time its generator runs. Put the edit in a
+  script that runs after the generator, and add a QA assertion that fails when it has not.
+- `direction:rtl` on a shared selector will quietly mangle any English still rendering through it
+  — trailing full stops jump to the left. Check what else uses the selector before adding it.
+- Driving the app with `submitAnswer()` or `qConfirm.click()` runs the **practice** path even
+  during an exam, because `.click()` fires on a hidden button. It looks exactly like the exam
+  falling apart mid-run. Tap a real `.opt` instead; on a teaching paper that is what settles the
+  question.
