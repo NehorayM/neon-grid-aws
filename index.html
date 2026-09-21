@@ -100,6 +100,29 @@ h2.head{font-size:18px;font-weight:650;letter-spacing:.2px;margin-bottom:4px}
 .simheb{margin-top:10px;color:var(--txt);opacity:.8}
 
 /* STUDY:CSS:BEGIN */
+/* ---------- exam briefing, resume and read-aloud ---------- */
+.exbrief{border:1px solid var(--line);background:var(--surface);border-radius:12px;
+  margin-bottom:12px;overflow:hidden}
+.exbrief > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;
+  padding:12px 14px;font-size:12.5px;font-weight:650;color:var(--txt)}
+.exbrief > summary::-webkit-details-marker{display:none}
+.exbrief > summary .chev{margin-left:auto;color:var(--dim);font-size:11px;transition:.15s}
+.exbrief[open] > summary .chev{transform:rotate(90deg)}
+.exbrief .bb{padding:0 14px 14px}
+.exbrief .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--dim);margin:10px 0 6px}
+.exbrief .lbl:first-child{margin-top:0}
+.exbrief .tip{font-size:12px;line-height:1.5;color:var(--txt);opacity:.9;margin-bottom:5px}
+.exbrief .tip.warn{color:var(--gold)}
+.exresume{position:relative;display:flex;align-items:center;gap:13px;width:100%;
+  padding:15px 16px;border-radius:12px;background:var(--surface2);border:1px solid var(--line2);
+  text-align:left;margin-bottom:14px;overflow:hidden}
+.exresume::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold)}
+.exresume .rem{font-size:20px;flex:none}
+.exresume .rnm{font-size:13.5px;font-weight:650}
+.exresume .rds{font-size:11.5px;color:var(--dim);margin-top:3px}
+.simbtn.tts.on{border-color:var(--cyan);color:var(--cyan)}
+
 /* ---------- study mode ---------- */
 .stucard{position:relative;display:flex;align-items:flex-start;gap:13px;width:100%;
   padding:15px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--line);
@@ -1166,6 +1189,9 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
         <div class="cells" id="chargeCells"></div>
         <button class="unlockbtn" id="unlockBtn">Unlock ▸</button>
       </div>
+      <details class="exbrief hidden" id="exBrief"><summary><span>📘</span>
+        <span id="exBriefTitle">Before you answer</span><span class="chev">›</span></summary>
+        <div class="bb" id="exBriefBody"></div></details>
       <div class="qcard">
         <div class="qtext" id="qText"></div>
         <div class="multi hidden" id="qMulti"></div>
@@ -1176,6 +1202,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
         <div class="simnav">
           <button class="simbtn" id="simPrev">‹ Prev</button>
           <button class="simbtn" id="simFlag">⚑ Flag</button>
+        <button class="simbtn tts" id="simTts" title="Read the question aloud">🔊 Read</button>
           <button class="simbtn" id="simNext">Next ›</button>
           <button class="simbtn danger" id="simQuit">Quit</button>
         </div>
@@ -1378,6 +1405,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
       <h2 class="head">📄 Practice Exams</h2>
       <p class="sub" id="paperSub"></p>
     </div>
+    <button class="exresume hidden" id="exResume"></button>
     <div class="statstrip" id="paperStats" style="margin-bottom:14px"></div>
     <div class="chiprow" style="justify-content:center;margin-bottom:14px">
       <button class="minichip" id="paperCsv">⬇ Export flagged &amp; missed (CSV)</button>
@@ -1878,7 +1906,7 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
     <button class="backbtn" id="shopBack">‹</button>
     <div style="text-align:center;margin-bottom:14px">
       <h2 class="head">Upgrade Bay</h2>
-      <p class="sub">Spend coins earned from questions and mini-games.</p>
+      <p class="sub">Everything here is free — coins are just your score now. Take what helps.</p>
     </div>
     <div class="list" id="shopList"></div>
   </div>
@@ -2195,6 +2223,8 @@ function loadQuestionInto(qi){
   $('qConfirm').style.display='';
   $('lifeFifty').style.display=''; $('lifeSkip').style.display='';
   $('hintBtn').style.display='';
+  $('exBrief').classList.add('hidden');
+  ttsStop();
   $('lifeFifty').disabled=!diff().lifelines;
   $('lifeSkip').disabled=false;
   hideExplain(); pendingAdvance=null;
@@ -2311,18 +2341,17 @@ function showVerdict(ok,c,x,mult){
 }
 function useFifty(){
   if(answeredThis) return;
-  if(P.coins<30){ toast('Need 30 coins'); return; }
+
   const q=QS[curQ];
   const wrong=q.o.map(o=>o[0]).filter(l=>!q.a.includes(l));
   const drop=wrong.sort(()=>Math.random()-.5).slice(0,Math.max(1,Math.floor(wrong.length/2)));
   drop.forEach(l=>{ eliminated.add(l); chosen.delete(l); });
   [...$('qOpts').children].forEach(el=>{ if(eliminated.has(el.dataset.ltr)){ el.classList.add('dim'); el.classList.remove('sel'); } });
-  addCoins(-30); $('lifeFifty').disabled=true; sfx.coin();
+  $('lifeFifty').disabled=true; sfx.tap();
 }
 function useSkip(){
   if(answeredThis||curQ<0||!QS[curQ]) return;
-  if(P.coins<20){ toast('Need 20 coins'); return; }
-  addCoins(-20); P.seen[curQ]=1; saveProfile(); nextQuestion();
+  P.seen[curQ]=1; saveProfile(); nextQuestion();
 }
 
 // ================= MINI-GAME FRAMEWORK =================
@@ -2892,7 +2921,7 @@ function renderDiff(){
 
 // ================= CHARGE METER (streak gate) =================
 function chargeNeed(){ return diff().need; }
-function unlockCost(){ return Math.max(15,(chargeNeed()-(P.charge||0))*25); }
+function unlockCost(){ return 0; }        // unlocking a reward round is free
 function renderCharge(){
   const need=chargeNeed(), have=Math.min(P.charge||0,need);
   const box=$('chargeCells'); if(!box) return;
@@ -2904,13 +2933,12 @@ function renderCharge(){
   const btn=$('unlockBtn');
   $('chargeBar').classList.toggle('ready',have>=need);
   if(have>=need){ btn.textContent='⚡ Ready'; btn.disabled=true; }
-  else { btn.textContent='Unlock '+unlockCost()+'🪙'; btn.disabled=P.coins<unlockCost(); }
+  else { btn.textContent='Unlock now'; btn.disabled=false; }
 }
 function buyUnlock(){
   const cost=unlockCost();
   if((P.charge||0)>=chargeNeed()) return;
-  if(P.coins<cost){ toast('Need '+cost+' coins'); return; }
-  addCoins(-cost); P.charge=chargeNeed(); saveProfile();
+  P.charge=chargeNeed(); saveProfile();
   renderCharge(); sfx.coin(); toast('⚡ Reward round unlocked');
   openReel();
 }
@@ -3182,14 +3210,13 @@ function conceptsFor(q){
   }
   return found;
 }
-const STUDY_COST=15;
+const STUDY_COST=0;        // study cards are free
 function openStudy(){
   if(curQ<0) return;
   const q=QS[curQ]; if(!q) return;
   const free=!!P.upgrades.codex;
   if(!free){
-    if(P.coins<STUDY_COST){ toast('Need '+STUDY_COST+' coins (or buy Codex Access)'); return; }
-    addCoins(-STUDY_COST);
+
   }
   const keys=conceptsFor(q);
   const ansTxt=q.o.filter(o=>q.a.includes(o[0])).map(o=>o[0]+') '+o[1]).join('<br><br>');
@@ -3286,8 +3313,7 @@ function useFreeze(){
   toast('❄️ +10s on your next mini-game'); return true;
 }
 function buyCons(it){
-  if(P.coins<it.cost) return;
-  addCoins(-it.cost);
+
   P.inv=P.inv||{}; P.inv[it.id]=invCount(it.id)+1;
   saveProfile(); sfx.coin(); toast(it.em+' '+it.nm+' ×'+invCount(it.id));
   renderShop(); checkBadges();
@@ -3308,8 +3334,8 @@ function renderShop(){
       u.onclick=()=>{ (it.id==='potion'?usePotion():useFreeze()); renderShop(); };
       row.appendChild(u);
     }
-    const b=document.createElement('button'); b.className='buy'; b.textContent=it.cost+' 🪙';
-    b.disabled=P.coins<it.cost; b.onclick=()=>buyCons(it);
+    const b=document.createElement('button'); b.className='buy'; b.textContent='Take';
+    b.onclick=()=>buyCons(it);
     row.appendChild(b); L.appendChild(row);
   });
 
@@ -3321,9 +3347,8 @@ function renderShop(){
       '</div><div class="ds">'+it.ds+'</div></div>';
     if(owned){ const o=document.createElement('div'); o.className='owned'; o.textContent='OWNED'; row.appendChild(o); }
     else{
-      const b=document.createElement('button'); b.className='buy'; b.textContent=it.cost+' 🪙';
-      b.disabled=P.coins<it.cost;
-      b.onclick=()=>{ if(P.coins<it.cost) return; addCoins(-it.cost); P.upgrades[it.id]=1;
+      const b=document.createElement('button'); b.className='buy'; b.textContent='Unlock';
+      b.onclick=()=>{ P.upgrades[it.id]=1;
         saveProfile(); sfx.rank(); toast(it.em+' '+it.nm+' unlocked'); syncLifeCosts(); renderShop(); checkBadges(); };
       row.appendChild(b);
     }
@@ -3978,8 +4003,8 @@ function openPicker(){
     row.innerHTML='<div class="em">'+g.em+'</div><div style="flex:1"><div class="nm">'+g.nm+
       '</div><div class="ds">'+g.prompt+'</div></div>';
     const b=document.createElement('button'); b.className='buy';
-    b.textContent=PICK_COST+' 🪙'; b.disabled=P.coins<PICK_COST;
-    b.onclick=()=>{ if(P.coins<PICK_COST) return; addCoins(-PICK_COST); saveProfile(); launchGame(g.id); };
+    b.textContent='Play'; b.disabled=false;
+    b.onclick=()=>{ saveProfile(); launchGame(g.id); };
     row.appendChild(b); L.appendChild(row);
   });
   go('pickScreen');
@@ -4402,9 +4427,9 @@ let THEME_ACTIVE=THEME_LIST[0];
 
 function themeById(id){ return THEME_LIST.find(t=>t.id===id)||THEME_LIST[0]; }
 function themeOwned(t){
-  if(t.free) return true;
+  // nothing is sold any more: a theme is either earned by playing, or simply yours
   if(t.earn) return !!t.earn();
-  return (P.themes||[]).indexOf(t.id)>=0;
+  return true;
 }
 function hexRgb(h){
   const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(h).trim());
@@ -4437,8 +4462,7 @@ function applyTheme(id){
 function buyTheme(t){
   if(themeOwned(t)) { applyTheme(t.id); renderThemes(); return; }
   if(t.earn){ toast('🔒 '+t.sub); return; }
-  if(P.coins<t.cost){ toast('Need '+t.cost+' coins'); return; }
-  addCoins(-t.cost);
+
   P.themes=(P.themes||[]).concat(t.id);
   applyTheme(t.id); saveProfile(); sfx.rank(); celebrate();
   toast('🎨 '+t.nm+' unlocked');
@@ -4464,7 +4488,7 @@ function renderThemes(){
     if(active){ b.textContent='ACTIVE'; b.disabled=true; }
     else if(has){ b.textContent='USE'; }
     else if(t.earn){ b.textContent='🔒'; b.disabled=true; }
-    else { b.textContent=t.cost+' 🪙'; b.disabled=P.coins<t.cost; }
+    else { b.textContent='Use'; b.disabled=false; }
     b.onclick=()=>{ if(has&&!active){ applyTheme(t.id); renderThemes(); toast('🎨 '+t.nm); } else buyTheme(t); };
     row.appendChild(sw); row.appendChild(info); row.appendChild(b);
     L.appendChild(row);
@@ -4804,6 +4828,11 @@ function simLoad(){
   $('hintBtn').style.display='none';
   $('simFlag').textContent=sim.flag[sim.i]?'🚩 Flagged':'⚑ Flag';
   $('simFlag').classList.toggle('on',!!sim.flag[sim.i]);
+  renderExamBrief(qi);
+  renderTtsBtn();
+  ttsStop();
+  if(P.ttsAuto) simSpeak();
+  simPersist();
   $('simPrev').disabled=sim.i===0;
   $('simNext').textContent=sim.i===simLen()-1?'Review ▸':'Next ›';
   renderSimStrip();
@@ -4817,6 +4846,7 @@ function simPick(ltr){
   if(cur.has(ltr)) cur.delete(ltr);
   else { if(need===1) cur.clear(); if(cur.size>=need) return; cur.add(ltr); }
   sim.ans[sim.i]=[...cur];
+  simPersist();
   chosen.clear(); cur.forEach(l=>chosen.add(l));
   [...$('qOpts').children].forEach(el=>el.classList.toggle('sel',cur.has(el.dataset.ltr)));
   sfx.tap(); renderSimStrip();
@@ -4832,6 +4862,7 @@ function simJump(i){ if(!sim) return; sim.i=i; simLoad(); }
 function simFlagToggle(){
   if(!sim) return;
   sim.flag[sim.i]=!sim.flag[sim.i];
+  simPersist();
   $('simFlag').textContent=sim.flag[sim.i]?'🚩 Flagged':'⚑ Flag';
   $('simFlag').classList.toggle('on',!!sim.flag[sim.i]);
   renderSimStrip();
@@ -4883,6 +4914,7 @@ function simSubmit(auto){
     return;
   }
   sim.running=false;
+  ttsStop(); simClearSave();
   const paper=sim.paper||0;
   let correct=0; const byDom={0:[0,0],1:[0,0],2:[0,0],3:[0,0]}; const missed=[];
   const csv=[];
@@ -4944,13 +4976,19 @@ function simSubmit(auto){
 }
 function simAbandon(){
   if(!sim) return;
+  const paper=sim.paper||0;
+  simPersist();                 // keep it: the Practice Exams screen offers it back
+  ttsStop();
   sim=null; renderClock();
   $('simBar').classList.remove('show');
   $('chargeBar').style.display='';
   $('qConfirm').style.display='';
   $('lifeFifty').style.display=''; $('lifeSkip').style.display='';
   $('hintBtn').style.display='';
-  go('homeScreen'); renderHome();
+  // land where the saved run is offered back, not on the home screen
+  if(paper){ renderPapers(); go('paperScreen'); }
+  else { go('homeScreen'); renderHome(); }
+  syncNav();
 }
 // ---------- numbered practice exams ----------
 // Paper N is always the same 65 questions, cut from the bank in order, so the
@@ -4960,6 +4998,7 @@ function startPaper(n){
   ensureAudio(); exitStudyMode();
   reviewMode=false; markMode=false; mock=null;
   const qs=paperQs(n);
+  simClearSave();
   sim={qs,i:0,ans:{},flag:{},running:true,paper:n,mins:PAPER_MIN,
        startAt:Date.now(),endAt:Date.now()+PAPER_MIN*60000};
   saveProfile();
@@ -4967,6 +5006,111 @@ function startPaper(n){
   simLoad();
 }
 function paperRec(n){ return (P.papers||{})[n]||null; }
+
+// ---------- a paper you walk away from is kept ----------
+// The clock is stored as time remaining, not as a deadline: an exam you come back
+// to tomorrow resumes where it stopped instead of having expired overnight.
+function simPersist(){
+  if(!sim||!sim.running) return;
+  P.simSave={paper:sim.paper||0, qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag,
+             left:Math.max(0,sim.endAt-Date.now()), mins:sim.mins||SIM_MIN, at:Date.now()};
+  saveProfile();
+}
+function simClearSave(){ if(P.simSave){ delete P.simSave; saveProfile(); } }
+function simSaved(){
+  const sv=P.simSave;
+  if(!sv||!sv.qs||!sv.qs.length||sv.left<=0) return null;
+  if(sv.qs.some(i=>!QS[i])) return null;          // the bank changed under it
+  return sv;
+}
+function simResume(){
+  const sv=simSaved(); if(!sv){ toast('Nothing to resume'); return; }
+  ensureAudio(); exitStudyMode();
+  reviewMode=false; markMode=false; mock=null;
+  sim={qs:sv.qs, i:Math.min(sv.i||0,sv.qs.length-1), ans:sv.ans||{}, flag:sv.flag||{},
+       running:true, paper:sv.paper||0, mins:sv.mins,
+       startAt:Date.now()-((sv.mins*60000)-sv.left), endAt:Date.now()+sv.left};
+  renderClock(); simLoad();
+}
+function simAnsweredIn(sv){ return Object.keys(sv.ans||{}).filter(k=>(sv.ans[k]||[]).length).length; }
+
+// ---------- read the question aloud ----------
+const ttsOk=()=>typeof window!=='undefined'&&'speechSynthesis' in window;
+function ttsStop(){ try{ if(ttsOk()) window.speechSynthesis.cancel(); }catch(e){} }
+function ttsText(q,i,total){
+  return 'Question '+(i+1)+' of '+total+'. '+q.q+' '+
+    q.o.map(o=>'Option '+o[0]+'. '+o[1]+'.').join(' ');
+}
+function ttsSpeak(text){
+  if(!ttsOk()) { toast('This browser cannot read aloud'); return false; }
+  try{
+    window.speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.rate=P.ttsRate||1; u.lang='en-US';
+    const v=(window.speechSynthesis.getVoices()||[]).find(x=>/^en/i.test(x.lang));
+    if(v) u.voice=v;
+    window.speechSynthesis.speak(u);
+    // a browser with no voices installed accepts speak() and stays silent, so say so
+    // rather than leaving the reader wondering whether the tap registered
+    if(!TEST) setTimeout(()=>{
+      try{
+        const ss=window.speechSynthesis;
+        if(!ss.speaking&&!ss.pending&&!(ss.getVoices()||[]).length)
+          toast('No speech voices are installed in this browser');
+      }catch(e){}
+    },400);
+    return true;
+  }catch(e){ return false; }
+}
+function simSpeak(){
+  if(!sim) return false;
+  const q=QS[sim.qs[sim.i]];
+  return ttsSpeak(ttsText(q,sim.i,sim.qs.length));
+}
+function ttsToggle(){
+  // one tap reads this question; a second tap turns auto-read on for the rest
+  if(!ttsOk()){ toast('This browser cannot read aloud'); return; }
+  if(P.ttsAuto){ P.ttsAuto=0; ttsStop(); toast('\U0001f507 Auto-read off'); }
+  else if(window.speechSynthesis.speaking){ P.ttsAuto=1; toast('🔊 Auto-read on'); }
+  else { simSpeak(); }
+  saveProfile(); renderTtsBtn();
+}
+function renderTtsBtn(){
+  const b=$('simTts'); if(!b) return;
+  b.classList.toggle('on',!!P.ttsAuto);
+  b.textContent=P.ttsAuto?'🔊 Auto':'🔊 Read';
+}
+
+// ---------- the first five papers come with a briefing ----------
+const BRIEF_PAPERS=5;
+function renderExamBrief(qi){
+  const box=$('exBrief');
+  if(!box) return;
+  if(!sim||!sim.paper||sim.paper>BRIEF_PAPERS){ box.classList.add('hidden'); return; }
+  const b=buildBriefing(qi);
+  box.classList.remove('hidden');
+  box.open=P.briefOpen!==0;
+  $('exBriefTitle').textContent='Before you answer — '+b.sector;
+  const body=$('exBriefBody'); body.innerHTML='';
+  const label=t=>{ const d=document.createElement('div'); d.className='lbl'; d.textContent=t;
+    body.appendChild(d); };
+  const card=(term,def,cls)=>{ const d=document.createElement('div');
+    d.className='concept'+(cls?' '+cls:'');
+    d.innerHTML='<b>'+esc(term.toUpperCase())+'</b><span>'+esc(def)+'</span>';
+    body.appendChild(d); };
+  // a briefing longer than the question defeats the point; cap it
+  if(b.concepts.length){ label('What this question turns on');
+    b.concepts.slice(0,4).forEach(k=>card(k,CODEX[k])); }
+  else { label('How to read this one');
+    card('scenario','No single service decides it. Read the requirement twice, then drop every option that adds operational overhead without meeting it.'); }
+  if(b.distractors.length){ label('Also named — know the difference');
+    b.distractors.slice(0,3).forEach(k=>card(k,CODEX[k],'alt')); }
+  if(b.tips.length){ label('How the exam phrases it');
+    b.tips.forEach(t=>{ const d=document.createElement('div'); d.className='tip';
+      d.textContent='\U0001f4a1 '+t; body.appendChild(d); }); }
+  if(b.multi){ const d=document.createElement('div'); d.className='tip warn';
+    d.textContent='⚠ More than one answer is required here.'; body.appendChild(d); }
+}
 function renderPapers(){
   const L=$('paperList'); if(!L) return;
   L.innerHTML='';
@@ -4977,6 +5121,16 @@ function renderPapers(){
   $('paperSub').textContent=QS.length+' questions cut into '+PAPER_COUNT+' papers — '+
     PAPER_LEN+' questions each, '+PAPER_MIN+' minutes, nothing repeated inside a paper '+
     'and nothing shared between papers.';
+  const sv=simSaved(), rbtn=$('exResume');
+  if(sv&&rbtn){
+    rbtn.classList.remove('hidden');
+    rbtn.innerHTML='<span class="rem">⏸</span><span style="flex:1;min-width:0">'+
+      '<div class="rnm">Resume '+(sv.paper?'Exam '+sv.paper:'the mock exam')+'</div>'+
+      '<div class="rds">Question '+((sv.i||0)+1)+' of '+sv.qs.length+' · '+
+      simAnsweredIn(sv)+' answered · '+fmtClock(sv.left)+' left</div></span>'+
+      '<span class="buy">Resume</span>';
+    rbtn.onclick=simResume;
+  } else if(rbtn) rbtn.classList.add('hidden');
   $('paperStats').innerHTML=
     '<div class="stat"><b>'+done+' / '+PAPER_COUNT+'</b><span>Attempted</span></div>'+
     '<div class="stat"><b>'+passedN+'</b><span>Passed</span></div>'+
@@ -5422,6 +5576,8 @@ $('simAgain').onclick=()=>{
   else startSim();
 };
 $('simCsv').onclick=exportLastExam;
+$('simTts').onclick=ttsToggle;
+$('exBrief').ontoggle=()=>{ P.briefOpen=$('exBrief').open?1:0; saveProfile(); };
 $('simHome').onclick=()=>{ go('homeScreen'); renderHome(); };
 $('paperOpen').onclick=()=>{ renderPapers(); go('paperScreen'); };
 $('paperBack').onclick=()=>{ go('homeScreen'); renderHome(); };
@@ -5544,15 +5700,13 @@ function syncLifeCosts(){
 }
 const _useFifty=useFifty;
 useFifty=function(){
-  const cost=P.upgrades.autoFifty?10:30;
   if(answeredThis||curQ<0||!QS[curQ]) return;
-  if(P.coins<cost){ toast('Need '+cost+' coins'); return; }
   const q=QS[curQ];
   const wrong=q.o.map(o=>o[0]).filter(l=>!q.a.includes(l));
   const drop=wrong.sort(()=>Math.random()-.5).slice(0,Math.max(1,Math.floor(wrong.length/2)));
   drop.forEach(l=>{ eliminated.add(l); chosen.delete(l); });
   [...$('qOpts').children].forEach(el=>{ if(eliminated.has(el.dataset.ltr)){ el.classList.add('dim'); el.classList.remove('sel'); } });
-  addCoins(-cost); $('lifeFifty').disabled=true; sfx.coin();
+  $('lifeFifty').disabled=true; sfx.tap();
 };
 $('lifeFifty').onclick=()=>useFifty();
 
@@ -7375,6 +7529,9 @@ if(TEST){
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_LEN, SIM_MIN, SIM_PASS, get sim(){return sim;},
     PAPER_LEN, PAPER_MIN, PAPER_COUNT, paperQs, startPaper, renderPapers, paperRec,
+    simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
+    useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
+    simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing,
     csvCell, csvRows, exportReview, exportLastExam, get lastExamCsv(){return lastExamCsv;},
     simLen, simMins,
     TIER, TIER_NAMES, tierOfQ, tierName, tierPool, tierCounts, skill, skillTier, skillLabel,

@@ -202,9 +202,11 @@ async function abandonCheck(){
   t.startPaper(3); await sleep(20);
   hittable($('simQuit'),'quit button');
   $('simQuit').click(); await sleep(30);
-  eq(t.route,'homeScreen','quitting returns home');
+  eq(t.route,'paperScreen','quitting a paper lands on the exam list, where it is offered back');
   ok(!t.sim,'quitting clears the exam');
   eq((t.paperRec(3)||{tries:0}).tries, tries3, 'an abandoned exam is not scored');
+  ok(!!t.simSaved(),'and the run is kept so it can be resumed');
+  t.simClearSave();
   ok(!/⏳/.test($('playClock').textContent),'the countdown stops after quitting');
 }
 
@@ -447,6 +449,192 @@ async function retiredDrillChecks(){
   t.go('homeScreen');
 }
 
+// ---------- leaving a paper and coming back ----------
+async function resumeChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  t.simClearSave();
+  ok(!t.simSaved(),'nothing is saved to begin with');
+
+  t.startPaper(4); await sleep(20);
+  const q0=t.QS[t.sim.qs[0]];
+  q0.a.forEach(l=>t.simPick(l));
+  t.simGo(1); await sleep(10);
+  t.simFlagToggle();
+  t.simGo(1); await sleep(10);
+  const before=t.simTimeLeft();
+  ok(before>0,'the clock is running');
+  eq(t.sim.i,2,'we are on the third question');
+
+  // walking out keeps it
+  $('simQuit').click(); await sleep(30);
+  const sv=t.simSaved();
+  ok(!!sv,'quitting saved the run');
+  eq(sv.paper,4,'the saved run knows its paper');
+  eq(sv.i,2,'the saved run knows the question');
+  eq(Object.keys(sv.ans).filter(k=>sv.ans[k].length).length,1,'the saved run kept the answer');
+  ok(sv.flag[1],'the saved run kept the flag');
+  ok(sv.left>0&&sv.left<=t.PAPER_MIN*60000,'the saved run kept the remaining time');
+
+  // the clock does not run down while you are away
+  const frozen=sv.left;
+  await sleep(120);
+  eq(t.simSaved().left,frozen,'the clock is frozen while the exam is closed');
+
+  // the Practice Exams screen offers it
+  t.renderPapers(); t.go('paperScreen'); await sleep(20);
+  ok(!$('exResume').classList.contains('hidden'),'the resume card is shown');
+  ok(/Exam 4/.test($('exResume').textContent),'it names the paper');
+  ok(/Question 3 of 65/.test($('exResume').textContent),'it names the question');
+  hittable($('exResume'),'resume card');
+
+  $('exResume').click(); await sleep(30);
+  ok(!!t.sim,'it resumed');
+  eq(t.sim.paper,4,'the same paper');
+  eq(t.sim.i,2,'the same question');
+  eq((t.sim.ans[0]||[]).length,q0.a.length,'the same answers');
+  ok(!!t.sim.flag[1],'the same flags');
+  ok(Math.abs(t.simTimeLeft()-frozen)<4000,'the same time left, give or take a moment');
+  eq($('qCount').textContent,'3 / 65','the counter picks up where it stopped');
+
+  // submitting clears the save
+  t.simSubmit(true); await sleep(40);
+  ok(!t.simSaved(),'a submitted paper is not offered again');
+  t.renderPapers();
+  ok($('exResume').classList.contains('hidden'),'and the card is hidden');
+
+  // starting a different paper replaces a stale save
+  t.startPaper(6); await sleep(20);
+  t.simGo(1); await sleep(10);
+  eq(t.simSaved().paper,6,'a new run overwrites the old save');
+  t.startPaper(7); await sleep(20);
+  eq(t.simSaved().paper,7,'starting another paper replaces it again');
+  eq(t.simSaved().i,0,'and it starts at question one');
+  t.simAbandon(); await sleep(20);
+}
+
+// ---------- read aloud ----------
+async function ttsChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  // stub the speech engine so the harness can see exactly what was asked for
+  const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis');
+  const spoken=[]; let cancels=0, speaking=false;
+  Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
+    speak(u){ spoken.push(u.text); speaking=true; },
+    cancel(){ cancels++; speaking=false; },
+    getVoices(){ return [{lang:'en-US',name:'Test'}]; },
+    get speaking(){ return speaking; }
+  }});
+  const realU=window.SpeechSynthesisUtterance;
+  window.SpeechSynthesisUtterance=function(text){ this.text=text; };
+
+  ok(t.ttsOk(),'the engine reports available');
+  const q=t.QS[0];
+  const txt=t.ttsText(q,0,65);
+  ok(txt.indexOf('Question 1 of 65')===0,'the reading opens with the position');
+  ok(txt.indexOf(q.q)>0,'it reads the stem');
+  q.o.forEach(o=>ok(txt.indexOf('Option '+o[0]+'. '+o[1])>0,'it reads option '+o[0]));
+
+  t.startPaper(8); await sleep(20);
+  eq($('simTts').textContent,'🔊 Read','the button offers a read');
+  const n0=spoken.length;
+  $('simTts').click(); await sleep(10);
+  eq(spoken.length,n0+1,'tapping it speaks');
+  ok(spoken[spoken.length-1].indexOf('Question 1 of 65')===0,'it spoke this question');
+  ok(!t.P.ttsAuto,'one tap does not turn auto-read on');
+
+  // a second tap while it is still speaking arms auto-read
+  $('simTts').click(); await sleep(10);
+  ok(!!t.P.ttsAuto,'the second tap arms auto-read');
+  eq($('simTts').textContent,'🔊 Auto','and the button says so');
+
+  const n1=spoken.length, c1=cancels;
+  t.simGo(1); await sleep(10);
+  ok(cancels>c1,'moving on cancels the previous reading');
+  eq(spoken.length,n1+1,'and reads the next question automatically');
+  ok(spoken[spoken.length-1].indexOf('Question 2 of 65')===0,'the right one');
+
+  // turning it off
+  $('simTts').click(); await sleep(10);
+  ok(!t.P.ttsAuto,'a third tap turns auto-read off');
+  const n2=spoken.length;
+  t.simGo(1); await sleep(10);
+  eq(spoken.length,n2,'and nothing is read after that');
+
+  // leaving the exam stops the voice
+  const c2=cancels;
+  t.simAbandon(); await sleep(20);
+  ok(cancels>c2,'quitting stops the voice');
+
+  // practice questions are never read aloud
+  const n3=spoken.length;
+  t.startSession(3); await sleep(10);
+  eq(spoken.length,n3,'practice does not speak');
+
+  window.SpeechSynthesisUtterance=realU;
+  if(real) Object.defineProperty(window,'speechSynthesis',real);
+  else delete window.speechSynthesis;
+  t.simClearSave();
+}
+
+// ---------- the briefing on the first five papers ----------
+async function briefChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  eq(t.BRIEF_PAPERS,5,'the first five papers are briefed');
+  for(const n of [1,3,5]){
+    t.startPaper(n); await sleep(20);
+    ok(!$('exBrief').classList.contains('hidden'),'exam '+n+' shows a briefing');
+    ok($('exBrief').open,'exam '+n+': it starts open');
+    ok(/Before you answer/.test($('exBriefTitle').textContent),'exam '+n+': it is labelled');
+    ok($('exBriefBody').children.length>0,'exam '+n+': the briefing has content');
+    const sec=t.SHORT[t.QS[t.sim.qs[0]].s];
+    ok($('exBriefTitle').textContent.indexOf(sec)>0,'exam '+n+': it names the sector');
+    // it follows the walk
+    const first=$('exBriefBody').innerHTML;
+    t.simGo(1); await sleep(10);
+    ok($('exBriefBody').innerHTML!==first||t.QS[t.sim.qs[0]].s===t.QS[t.sim.qs[1]].s,
+       'exam '+n+': the briefing follows the question');
+    t.simAbandon(); await sleep(10);
+  }
+  for(const n of [6,12,19]){
+    t.startPaper(n); await sleep(20);
+    ok($('exBrief').classList.contains('hidden'),'exam '+n+' has no briefing');
+    t.simAbandon(); await sleep(10);
+  }
+  // and practice never shows it
+  t.startSession(2); await sleep(10);
+  ok($('exBrief').classList.contains('hidden'),'practice has no briefing');
+  t.simClearSave();
+}
+
+// ---------- nothing costs coins ----------
+async function freeChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  eq(t.STUDY_COST,0,'a study card is free');
+  eq(t.unlockCost(),0,'unlocking a reward round is free');
+  t.P.coins=0;
+  const before=t.P.coins;
+  t.renderShop(); await sleep(10);
+  const buys=[...document.querySelectorAll('#shopList .buy')];
+  ok(buys.length>0,'the shop has items');
+  ok(buys.every(b=>!b.disabled),'nothing in the shop is locked behind coins');
+  ok(buys.every(b=>!/\d+\s*🪙/.test(b.textContent)),'no price tags left in the shop');
+  buys[0].click(); await sleep(10);
+  ok(t.P.coins>=before,'taking an item costs nothing');
+  t.renderThemes(); await sleep(10);
+  const buyable=t.THEME_LIST.filter(x=>!x.earn&&!x.free).length;
+  const usable=[...document.querySelectorAll('#themeList .buy')]
+    .filter(b=>/USE|ACTIVE/.test(b.textContent)).length;
+  ok(usable>=buyable,'every purchasable theme is already usable, got '+usable+' of '+buyable);
+  const priced=[...document.querySelectorAll('#themeList .buy')].filter(b=>/\d/.test(b.textContent));
+  eq(priced.length,0,'no theme still shows a price');
+  // the lifelines
+  t.P.coins=0;
+  t.startSession(1); await sleep(10);
+  t.useFifty(); await sleep(5);
+  ok(t.P.coins===0,'50/50 costs nothing');
+  eq(t.P.coins,0,'and the balance is untouched');
+}
+
 window.QA_BANK=async function(opts){
   opts=opts||{};
   pass=0; fails=[];
@@ -459,6 +647,7 @@ window.QA_BANK=async function(opts){
   paperChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
+  if(opts.extras!==false){ await resumeChecks(); await ttsChecks(); await briefChecks(); await freeChecks(); }
   if(opts.quick!==true){
     await runPaper(1,{});
     csvChecks();
