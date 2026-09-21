@@ -12,7 +12,7 @@ Push to `main` and Pages redeploys in about a minute.
 |---|---|
 | Study guide `AWS-SAA-C03-Combined.md` | Two sources merged into one 24-topic guide |
 | **Question bank** | 1,201 questions, every answer read and verified one by one. The old 2,502-question bank is gone |
-| **Practice Exams** | The **Exam** tab. 19 numbered papers — 65 questions each (the last holds 31), 170 minutes, countdown, score, CSV export. A paper you leave is kept and offered back; exams 1–10 brief you before each question and explain every answer; any question's stem can be read aloud on request |
+| **Practice Exams** | The **Exam** tab. 19 numbered papers — 65 questions each (the last holds 31), **90 seconds a question**, score, CSV export. A paper you leave is kept and offered back; exams 1–10 brief you before each question and explain every answer; any question's stem can be read aloud on request |
 | **Study** | The **Study** tab. The whole syllabus as 13 readable chapters, 76 topics, with authored comparison tables, decision trees and flows, and 3 checks per chapter |
 | Practice, mock, exam, flashcards | Original app, still running on the new bank |
 | **Learn a Subject** | The main mode. 23 subjects, 97 parts, 388 check questions, 230 exam questions — all authored, none drawn from the bank |
@@ -108,6 +108,21 @@ visual language. Chapters are coloured by the exam domain they mostly serve.
   with no voices installed fires `onerror: synthesis-failed`, so the button never lies about
   reading; it also accepts `speak()` silently in some builds, so the page checks 400ms later
   and says so rather than leaving you wondering.
+- **Ninety seconds a question.** `SIM_QSEC=90`. The top clock counts the current question
+  down, not the whole paper, and the bar above the question drains with it. When it reaches
+  zero the paper moves to the next question whether or not anything was answered — a blank
+  question scores as wrong, and the clock never waits for a right answer. On the last question
+  it lands on the review screen instead.
+  What is left is kept per question in `sim.qt`, so going back to a question gives back the
+  time it had and the save survives leaving and resuming. It does not run while the app is in
+  the background or while you are on the review screen. A question whose time is gone can
+  still be opened and answered from the review list — it shows an empty clock rather than
+  bouncing you straight back out, which is what `if(simQLeft<=0){ simQStop(); return; }` at
+  the top of `simQTick` is for.
+  On papers 1–10 the same 90 seconds covers reading the feedback, so it can move on mid-read.
+  The whole-paper budget is `simBudget(n) = ceil(n * 90 / 60)` — 98 minutes for 65 questions,
+  47 for the short one — so the two clocks agree instead of contradicting each other. It is
+  still enforced by `simCheckTime`, and the review screen is where it is shown.
 - **Papers 1–10 teach; 11–19 test.** On the first ten, a collapsible panel above each question
   (`buildBriefing()`) names the services it turns on, the ones it name-drops as distractors and
   how the exam phrases the ask — capped at four concepts and three distractors. And the moment

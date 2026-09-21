@@ -390,7 +390,8 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .unlockbtn:disabled{background:rgba(255,255,255,.09);color:var(--dim)}
 #qTimerWrap{height:5px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:2px}
 #qTimerWrap.hidden{display:none}
-#qTimerFill{display:block;height:100%;width:100%;background:var(--lime);transition:width .25s linear}
+/* it ticks once a second, so the ease has to be about a second or it looks like a stutter */
+#qTimerFill{display:block;height:100%;width:100%;background:var(--lime);transition:width .95s linear}
 #qTimerFill.low{background:var(--red);animation:tick .6s ease-in-out infinite}
 @keyframes tick{50%{opacity:.55}}
 /* boss HP bar inside a mini-game */
@@ -1169,7 +1170,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     <div class="tiles">
       <button class="tile hero-tile" id="practiceTile"><span class="ic">⚡</span><b>Practice</b><span>Answer &amp; earn games</span></button>
       <button class="tile hero-tile" id="simOpen"><span class="ic">🧪</span><b>Random mock exam</b><span>65 drawn fresh to the real domain weights · 130 minutes</span></button>
-      <button class="tile hero-tile" id="paperOpen"><span class="ic">📄</span><b>Practice Exams</b><span>The whole bank as numbered papers · 65 questions · 170 minutes</span></button>
+      <button class="tile hero-tile" id="paperOpen"><span class="ic">📄</span><b>Practice Exams</b><span>The whole bank as numbered papers · 65 questions · 90 seconds a question</span></button>
       <button class="tile hero-tile" id="courseOpen"><span class="ic">🎓</span><b>Learn a Subject</b><span>Module by module · read a part, prove you got it, then a 10-question exam on what you learned</span></button>
       <button class="tile" id="studyModeOpen"><span class="ic">🧠</span><b>Briefed drill</b><span>A briefing before each question</span></button>
       <button class="tile" id="mockOpen"><span class="ic">📝</span><b>Mock exam</b><span>20 Q · by domain</span></button>
@@ -4802,11 +4803,13 @@ function renderClock(){
   const el=$('playClock'); if(!el) return;
   // an exam in progress owns the clock
   if(sim&&sim.running){
-    const left=Math.max(0,sim.endAt-Date.now());
+    // the question's own 90 seconds is what governs now, so that is what the clock shows;
+    // the paper's remaining budget is on the review screen, where it is actually useful
+    const left=simQLeft*1000;
     el.textContent='⏳ '+fmtClock(left);
-    el.classList.toggle('warn',left<10*60000);
-    el.classList.toggle('crit',left<2*60000);
-    const sub0=$('clockSub'); if(sub0) sub0.textContent=sim.paper?('exam '+sim.paper):'exam';
+    el.classList.toggle('warn',simQLeft<=30);
+    el.classList.toggle('crit',simQLeft<=10);
+    const sub0=$('clockSub'); if(sub0) sub0.textContent='this question';
     return;
   }
   if(typeof timerRunning==='function'&&timerRunning()){
@@ -4827,10 +4830,15 @@ function sessionTime(){ return sessMs; }
 
 // ================= FULL EXAM SIMULATION =================
 // 65 questions, 130 minutes, domain-weighted — the shape of the real SAA-C03.
-const SIM_LEN=65, SIM_MIN=130, SIM_PASS=72;
+const SIM_LEN=65, SIM_PASS=72;
+// Every question is capped at 90 seconds, so the budget for a whole paper is
+// just that times the number of questions — the two clocks cannot disagree.
+const SIM_QSEC=90;
+const simBudget=n=>Math.ceil(n*SIM_QSEC/60);
+const SIM_MIN=simBudget(SIM_LEN);
 // Numbered practice exams: the bank cut into fixed papers, in bank order, so
 // every question is used exactly once and paper N is the same paper every time.
-const PAPER_LEN=65, PAPER_MIN=170;
+const PAPER_LEN=65, PAPER_MIN=simBudget(PAPER_LEN);
 const PAPER_COUNT=Math.ceil(QS.length/PAPER_LEN);
 function paperQs(n){                       // n is 1-based
   const from=(n-1)*PAPER_LEN;
@@ -4855,8 +4863,8 @@ function startSim(){
   ensureAudio(); exitStudyMode();
   reviewMode=false; markMode=false; mock=null;
   sim={qs:simBuild(),i:0,ans:{},flag:{},rev:{},running:true,
-       paper:0,mins:SIM_MIN,
-       startAt:Date.now(),endAt:Date.now()+SIM_MIN*60000};
+       paper:0,mins:simBudget(qs.length),qt:{},
+       startAt:Date.now(),endAt:Date.now()+simBudget(qs.length)*60000};
   saveProfile();
   renderClock();          // switch to the exam countdown immediately, not on the next tick
   simLoad();
@@ -4864,6 +4872,55 @@ function startSim(){
 function simTimeLeft(){ return sim?Math.max(0,sim.endAt-Date.now()):0; }
 function simCheckTime(){
   if(sim&&sim.running&&simTimeLeft()<=0){ toast('⏳ Time expired — submitting'); simSubmit(true); }
+}
+// ---------- ninety seconds a question ----------
+let simQLeft=0, simQIv=null;
+function simQStop(){ if(simQIv){ clearInterval(simQIv); simQIv=null; } }
+function simQLeftFor(i){
+  const v=sim&&sim.qt?sim.qt[i]:undefined;
+  return (typeof v==='number')?Math.max(0,v):SIM_QSEC;
+}
+function simQStart(){
+  simQStop();
+  if(!sim||!sim.running) return;
+  simQLeft=simQLeftFor(sim.i);
+  renderSimQ();
+  // a question whose time is already gone can still be opened from the review list —
+  // it just shows an empty clock instead of bouncing you straight out of it again
+  if(simQLeft<=0) return;
+  if(TEST) return;                        // the tests drive it with simQTick()
+  simQIv=setInterval(()=>simQTick(1),1000);
+}
+function simQTick(by){
+  if(!sim||!sim.running){ simQStop(); return; }
+  if(simQLeft<=0){ simQStop(); return; }                        // it only runs out once
+  if(route!=='quizScreen') return;                              // not on the review screen
+  if(typeof document!=='undefined'&&document.hidden) return;    // nor in the background
+  simQLeft=Math.max(0,simQLeft-(by||1));
+  sim.qt=sim.qt||{}; sim.qt[sim.i]=simQLeft;
+  renderSimQ();
+  if(simQLeft<=0) simQTimeUp();
+}
+function simQTimeUp(){
+  simQStop();
+  if(!sim||!sim.running) return;
+  ttsStop();
+  // 90 seconds covers reading it, answering it and reading the feedback. When they
+  // are gone the paper moves on regardless — a blank question simply scores as wrong,
+  // because an exam does not wait for you to get it right.
+  const last=sim.i>=simLen()-1;
+  toast(last?'⏳ Time — on to the review':'⏳ 90 seconds — next question');
+  simGo(1);
+}
+function renderSimQ(){
+  const wrap=$('qTimerWrap'), fill=$('qTimerFill');
+  if(!wrap||!fill) return;
+  if(!sim||!sim.running){ wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  const f=Math.max(0,Math.min(1,simQLeft/SIM_QSEC));
+  fill.style.width=(f*100)+'%';
+  fill.classList.toggle('low',simQLeft<=20);
+  renderClock();
 }
 function simLoad(){
   if(!sim) return;
@@ -4888,7 +4945,6 @@ function simLoad(){
   });
   $('simBar').classList.add('show');
   $('chargeBar').style.display='none';
-  $('qTimerWrap').classList.add('hidden');
   $('studyBtn').classList.add('hidden');
   $('qConfirm').style.display='none';
   $('lifeFifty').style.display='none'; $('lifeSkip').style.display='none';
@@ -4909,7 +4965,7 @@ function simLoad(){
   $('simPrev').disabled=sim.i===0;
   $('simNext').textContent=sim.i===simLen()-1?'Review ▸':'Next ›';
   renderSimStrip();
-  renderClock();
+  simQStart();
   go('quizScreen');
 }
 function simPick(ltr){
@@ -5022,6 +5078,7 @@ function simReview(){
   go('simRevScreen');
 }
 function simSubmit(auto){
+  simQStop();
   if(!sim) return;
   if(!auto && simAnsweredCount()<simLen() &&
      !$('simSubmit').dataset.armed){
@@ -5095,7 +5152,7 @@ function simAbandon(){
   if(!sim) return;
   const paper=sim.paper||0;
   simPersist();                 // keep it: the Practice Exams screen offers it back
-  ttsStop(); hideExplain();
+  simQStop(); ttsStop(); hideExplain();
   sim=null; renderClock();
   $('simBar').classList.remove('show');
   $('chargeBar').style.display='';
@@ -5116,8 +5173,9 @@ function startPaper(n){
   reviewMode=false; markMode=false; mock=null;
   const qs=paperQs(n);
   simClearSave();
-  sim={qs,i:0,ans:{},flag:{},rev:{},running:true,paper:n,mins:PAPER_MIN,
-       startAt:Date.now(),endAt:Date.now()+PAPER_MIN*60000};
+  const budget=simBudget(qs.length);
+  sim={qs,i:0,ans:{},flag:{},rev:{},qt:{},running:true,paper:n,mins:budget,
+       startAt:Date.now(),endAt:Date.now()+budget*60000};
   saveProfile();
   renderClock();
   simLoad();
@@ -5169,6 +5227,7 @@ function renderBankStats(){
 function simPersist(){
   if(!sim||!sim.running) return;
   P.simSave={paper:sim.paper||0, qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
+             qt:sim.qt||{},
              left:Math.max(0,sim.endAt-Date.now()), mins:sim.mins||SIM_MIN, at:Date.now()};
   saveProfile();
 }
@@ -5184,7 +5243,7 @@ function simResume(){
   ensureAudio(); exitStudyMode();
   reviewMode=false; markMode=false; mock=null;
   sim={qs:sv.qs, i:Math.min(sv.i||0,sv.qs.length-1), ans:sv.ans||{}, flag:sv.flag||{},
-       rev:sv.rev||{}, running:true, paper:sv.paper||0, mins:sv.mins,
+       rev:sv.rev||{}, qt:sv.qt||{}, running:true, paper:sv.paper||0, mins:sv.mins,
        startAt:Date.now()-((sv.mins*60000)-sv.left), endAt:Date.now()+sv.left};
   renderClock(); simLoad();
 }
@@ -5369,7 +5428,7 @@ function renderPapers(){
   const best=recs.length?Math.max(...recs.map(r=>r.best)):0;
   const passedN=recs.filter(r=>r.best>=SIM_PASS).length;
   $('paperSub').textContent=QS.length+' questions cut into '+PAPER_COUNT+' papers — '+
-    PAPER_LEN+' questions each, '+PAPER_MIN+' minutes, nothing repeated inside a paper '+
+    PAPER_LEN+' questions each, '+SIM_QSEC+' seconds a question, nothing repeated inside a paper '+
     'and nothing shared between papers.';
   const sv=simSaved(), rbtn=$('exResume');
   if(sv&&rbtn){
@@ -5393,7 +5452,7 @@ function renderPapers(){
     const len=qs.length;
     const meta=rec
       ? rec.tries+' attempt'+(rec.tries>1?'s':'')+' · last '+rec.last
-      : len+' questions · '+PAPER_MIN+' minutes';
+      : len+' questions · '+SIM_QSEC+'s each · '+simBudget(len)+' min';
     const col=rec?(rec.best>=SIM_PASS?'var(--lime)':'var(--gold)'):'var(--line2)';
     row.style.setProperty('--dcol',col);
     row.innerHTML='<div class="em">'+em+'</div><div style="flex:1;min-width:0">'+
@@ -7829,6 +7888,8 @@ if(TEST){
     fmtClock, clockTick, renderClock, toggleClockView, sessionTime, startClock,
     startSim, simLoad, simPick, simGo, simJump, simFlagToggle, simSubmit, simReview,
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
+    SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
+    get simQLeft(){return simQLeft;},
     SIM_LEN, SIM_MIN, SIM_PASS, get sim(){return sim;},
     PAPER_LEN, PAPER_MIN, PAPER_COUNT, paperQs, startPaper, renderPapers, paperRec,
     EXAM_CHEER, examCheer, BANK_STATS, renderBankStats,

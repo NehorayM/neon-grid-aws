@@ -63,7 +63,10 @@ function bankChecks(){
 function paperChecks(){
   const t=T();
   eq(t.PAPER_LEN,65,'papers are 65 questions');
-  eq(t.PAPER_MIN,170,'papers run 170 minutes');
+  eq(t.SIM_QSEC,90,'a question gets 90 seconds');
+  eq(t.PAPER_MIN,98,'a 65-question paper is budgeted at 90s each');
+  eq(t.simBudget(65),98,'65 questions, 98 minutes');
+  eq(t.simBudget(31),47,'the short paper is budgeted the same way');
   eq(t.PAPER_COUNT, Math.ceil(t.QS.length/65), 'paper count covers the bank');
   const seen=new Set();
   for(let n=1;n<=t.PAPER_COUNT;n++){
@@ -100,8 +103,14 @@ async function runPaper(n,{answerAll=true,rightRatio=0.6,flagEvery=7}={}){
   eq(t.route,'quizScreen','it jumped to the question screen');
   eq(sim.qs.length, t.paperQs(n).length, 'it loaded the whole paper');
   const left=t.simTimeLeft();
-  ok(left>169*60000&&left<=170*60000,'the countdown starts at 170 minutes, got '+Math.round(left/60000));
-  ok(/⏳/.test($('playClock').textContent),'the top bar shows the exam countdown');
+  const bud=t.simBudget(sim.qs.length);
+  ok(left>(bud-1)*60000&&left<=bud*60000,
+     'the paper budget starts at '+bud+' minutes, got '+Math.round(left/60000));
+  eq(t.simQLeft,t.SIM_QSEC,'and the question starts on a full 90 seconds');
+  eq($('playClock').textContent,'⏳ 1:30','the top bar counts this question down');
+  eq($('clockSub').textContent,'this question','and says what it is counting');
+  eq($('qSector').textContent,'EXAM '+n,'the exam is named in the header, not twice');
+  ok(!$('qTimerWrap').classList.contains('hidden'),'the countdown bar is showing');
   eq($('qSector').textContent,'EXAM '+n,'the header names the exam');
 
   eq(getComputedStyle($('hintBtn')).display,'none','the hint button is hidden during an exam');
@@ -224,7 +233,7 @@ function homeCheck(){
   const t=T();
   hittable($('paperOpen'),'Practice Exams tile');
   ok(/Practice Exams/.test($('paperOpen').textContent),'the tile is labelled');
-  ok(/170/.test($('paperOpen').textContent),'the tile states the duration');
+  ok(/90 seconds a question/.test($('paperOpen').textContent),'the tile states the per-question limit');
 }
 
 // The rest of the app reads the same bank; these walk each mode far enough to
@@ -517,6 +526,90 @@ async function resumeChecks(){
   eq(t.simSaved().paper,7,'starting another paper replaces it again');
   eq(t.simSaved().i,0,'and it starts at question one');
   t.simAbandon(); await sleep(20);
+}
+
+// ---------- ninety seconds a question ----------
+async function qClockChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  t.simClearSave();
+  t.startPaper(11); await sleep(20);            // 11 does not teach, so nothing else is on screen
+  eq(t.simQLeft,90,'a fresh question has the full 90 seconds');
+  eq($('qTimerFill').style.width,'100%','and a full bar');
+
+  t.simQTick(60); await sleep(5);
+  eq(t.simQLeft,30,'it counts down');
+  eq($('playClock').textContent,'⏳ 0:30','the clock follows');
+  ok($('playClock').classList.contains('warn'),'it warns at 30 seconds');
+  ok(!$('playClock').classList.contains('crit'),'but is not critical yet');
+  t.simQTick(21); await sleep(5);
+  ok($('playClock').classList.contains('crit'),'it goes critical at 9 seconds');
+  ok($('qTimerFill').classList.contains('low'),'and the bar turns');
+
+  // running out moves to the next question, answered or not
+  eq(t.sim.i,0,'still on the first question');
+  const blank=(t.sim.ans[0]||[]).length;
+  t.simQTick(9); await sleep(20);
+  eq(t.sim.i,1,'running out moves to the next question');
+  eq(t.simQLeft,90,'which starts on a full 90 seconds');
+  eq((t.sim.ans[0]||[]).length,blank,'the question it left stays blank');
+  eq(t.simAnsweredCount(),0,'so it counts as unanswered, which scores as wrong');
+
+  // what is left is remembered per question
+  t.simQTick(40); await sleep(5);
+  eq(t.simQLeft,50,'question two is down to 50');
+  t.simJump(2); await sleep(20);
+  eq(t.simQLeft,90,'a question never opened is still on 90');
+  t.simJump(1); await sleep(20);
+  eq(t.simQLeft,50,'and coming back to question two gives back its 50');
+
+  // a spent question can be reopened without being thrown out of it again
+  t.simJump(0); await sleep(20);
+  eq(t.simQLeft,0,'a spent question shows an empty clock');
+  t.simQTick(5); await sleep(20);
+  eq(t.sim.i,0,'and ticking it does not bounce you forward again');
+  const opt=$('qOpts').firstChild.dataset.ltr;
+  t.simPick(opt); await sleep(10);
+  eq((t.sim.ans[0]||[]).join(''),opt,'you can still answer it from the review list');
+
+  // it does not burn seconds where you cannot see the question
+  t.simJump(3); await sleep(20);
+  t.simReview(); await sleep(20);
+  const held=t.simQLeft;
+  t.simQTick(30); await sleep(5);
+  eq(t.simQLeft,held,'the review screen does not spend the question clock');
+
+  // the last question runs out into the review, not into nothing
+  t.simJump(t.simLen()-1); await sleep(20);
+  t.simQTick(90); await sleep(20);
+  eq(t.route,'simRevScreen','running out of the last question lands on the review');
+
+  // and it survives walking away
+  t.simJump(4); await sleep(20);
+  t.simQTick(25); await sleep(5);
+  eq(t.simQLeft,65,'question five is down to 65');
+  t.simAbandon(); await sleep(20);
+  const sv=t.simSaved();
+  ok(!!sv,'the paper was saved');
+  eq(sv.qt[4],65,'the save kept what was left of that question');
+  t.simResume(); await sleep(20);
+  eq(t.sim.i,4,'it resumed on the same question');
+  eq(t.simQLeft,65,'with the same time left');
+
+  // the teaching papers spend the same 90 on reading the feedback
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  t.startPaper(1); await sleep(20);
+  const q=t.QS[t.sim.qs[0]];
+  q.a.forEach(l=>t.simPick(l)); await sleep(20);
+  ok($('explain').classList.contains('show'),'paper 1 explains the answer');
+  eq(t.simQLeft,90,'and the clock did not stop for it');
+  t.simQTick(89); await sleep(5);
+  eq(t.sim.i,0,'reading is on the same 90 seconds');
+  ok($('explain').classList.contains('show'),'still reading');
+  t.simQTick(1); await sleep(20);
+  eq(t.sim.i,1,'when they are gone it moves on mid-read');
+  ok(!$('explain').classList.contains('show'),'and clears the explanation');
+
+  t.simAbandon(); await sleep(20); t.simClearSave();
 }
 
 // ---------- read aloud ----------
@@ -964,7 +1057,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
