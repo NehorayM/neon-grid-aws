@@ -312,6 +312,25 @@ inside a paused paper, the strip agrees with the sum, an interval exists exactly
 AUDIT5 drives the new surfaces sideways (sheets outliving their context, rapid taps, the short
 paper, every question spent, the voice screen opened mid-paper).
 
+## The arithmetic underneath the screens
+
+`audit6.js` drives the quiet logic that no screen test reaches: clock formatting, day keys,
+the spaced-repetition scheduler, export, CSV, badge progress, the daily reset.
+
+- **`fmtClock` guards its input.** It rendered `-1:-1` for a negative, `NaN:NaN` for NaN and
+  `Infinity:NaN:NaN` for Infinity. Most callers clamp; `P.playMs` and `sessMs` come from a
+  merged profile and do not. One guard in the formatter beats auditing every caller forever.
+- **Day keys are zero-padded.** They read `2026-1-5`, which as a string sorts *after*
+  `2026-1-12`. Nothing orders them today — every use is `!==` — so it was a trap rather than a
+  live bug, and precisely the one that bites whoever first writes `logs.sort()`. `sameDay()`
+  compares loosely so dates already stored unpadded still match and no daily counter resets.
+- **`badgeProgress` clamps to its goal.** A best streak of 12 against a goal of 5 read `12/5`.
+
+Two of the audit's fifteen findings were the audit's own fault and the audit was fixed instead:
+`srSchedule` measures in **questions answered**, not time, and the check called it twice without
+moving `P.answered`; and the badge checks used 1e6 values no profile reaches. Worth remembering
+when reading audit output — a finding is a hypothesis until the code is read.
+
 ## Closing the page does not stop the clock
 
 Reported as an exploit, and it was one. The save stores time **remaining** rather than a

@@ -543,6 +543,55 @@ function fmtMs(ms){
 
 function renderClockSafe(t){ try{ t.renderClock(); }catch(e){} }
 
+// ---------- the arithmetic underneath the screens ----------
+function arithmeticChecks(){
+  const t=T();
+  // fmtClock is handed counters from a merged profile among other things, and "-1:-1" or
+  // "NaN:NaN" on screen is worse than a wrong number
+  eq(t.fmtClock(0),'0:00','zero');
+  eq(t.fmtClock(59000),'0:59','under a minute');
+  eq(t.fmtClock(60000),'1:00','a minute');
+  eq(t.fmtClock(3599000),'59:59','under an hour');
+  eq(t.fmtClock(3600000),'1:00:00','an hour');
+  eq(t.fmtClock(3661000),'1:01:01','an hour and change');
+  eq(t.fmtClock(-1000),'0:00','a negative renders as zero, not "-1:-1"');
+  eq(t.fmtClock(NaN),'0:00','NaN too');
+  eq(t.fmtClock(Infinity),'0:00','and Infinity');
+  eq(t.fmtClock(undefined),'0:00','and nothing at all');
+
+  // day keys used to read "2026-1-5", which as a string sorts AFTER "2026-1-12"
+  const k=t.dayKey();
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(k),'the day key is zero-padded: '+k);
+  ok('2026-01-05'<'2026-01-12','and therefore sorts within a month');
+  ok('2026-01-31'<'2026-02-01','and across one');
+  ok(t.sameDay('2026-1-5','2026-01-05'),'a date written before the padding still matches');
+  ok(t.sameDay('2026-1-5','2026-1-5'),'and one written after it');
+  ok(!t.sameDay('2026-01-05','2026-01-06'),'while different days still differ');
+
+  // badge progress cannot exceed its goal — a best streak of 12 against a goal of 5 read "12/5"
+  const keep=JSON.parse(JSON.stringify(t.P));
+  Object.assign(t.P,{bestStreak:40,answered:1200,coins:9000,gamesPlayed:60});
+  t.BADGES.forEach(b=>{
+    const pr=t.badgeProgress(b);
+    if(!pr) return;
+    ok(isFinite(pr[0])&&isFinite(pr[1]),b.id+' progress is numeric');
+    ok(pr[0]<=pr[1],b.id+' does not claim more progress than its goal ('+pr.join('/')+')');
+    ok(pr[0]>=0,b.id+' is not negative');
+  });
+  Object.keys(t.P).forEach(x=>delete t.P[x]); Object.assign(t.P,keep);
+
+  // the CSV has to survive a stem with a quote and a comma in it
+  const q=t.QS[0], was=q.q;
+  q.q='He said "yes, definitely" \u2014 then, later, no';
+  const lines=t.csvRows([{i:0,why:'Flagged'}]).split('\r\n');
+  q.q=was;
+  const cols=l=>(l.match(/","/g)||[]).length+1;
+  eq(cols(lines[1]),cols(lines[0]),'a quote and a comma do not shift the columns');
+  ok(lines[1].indexOf('""yes')>=0,'and the quotes are doubled as CSV requires');
+  ok(!/[^"]\n/.test(lines[1]),'with no raw newline in the row');
+  eq((lines[1].match(/"/g)||[]).length%2,0,'and an even number of quotes');
+}
+
 // ---------- closing the page does not stop the clock ----------
 // The save stores time remaining, so shutting the tab used to freeze the paper indefinitely:
 // leave for ten minutes, look everything up, come back, and the clock was where you left it.
@@ -1902,7 +1951,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ arithmeticChecks(); await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -2160,7 +2160,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 12:27 UTC';
+const BUILD='2026-09-22 12:32 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -3572,10 +3572,11 @@ function dueForReview(){
 }
 
 // ================= DAILY GOAL =================
-function today(){ const d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+function today(){ const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dailyState(){
   P.day=P.day||{date:today(),n:0,claimed:false};
-  if(P.day.date!==today()) P.day={date:today(),n:0,claimed:false};
+  if(!sameDay(P.day.date,today())) P.day={date:today(),n:0,claimed:false};
   return P.day;
 }
 const DAILY_TARGET=10;
@@ -4124,10 +4125,18 @@ const QUEST_POOL=[
   {id:'q_boss',   nm:'Defeat a boss',            goal:1,  reward:45, ev:'boss'},
   {id:'q_hard',   nm:'Answer 5 on Hard',         goal:5,  reward:35, ev:'hard'}
 ];
-function dayKey(){ const d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+// Zero-padded so the keys sort. They used to read "2026-1-5", which as a string is AFTER
+// "2026-1-12". Nothing orders them today — every use is an equality check — but it is exactly
+// the trap that bites whoever first writes logs.sort().
+const pad2=n=>String(n).padStart(2,'0');
+function dayKey(){ const d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+// Dates written before the padding still have to match today, or every daily counter and quest
+// set resets once for no reason.
+const dayNorm=k=>String(k||'').split('-').map((p,i)=>i?pad2(Number(p)):p).join('-');
+const sameDay=(a,b)=>dayNorm(a)===dayNorm(b);
 function daySeed(){ let h=0; const k=dayKey(); for(let i=0;i<k.length;i++) h=(h*31+k.charCodeAt(i))|0; return Math.abs(h); }
 function questState(){
-  if(!P.quests||P.quests.date!==dayKey()){
+  if(!P.quests||!sameDay(P.quests.date,dayKey())){
     const seed=daySeed(), ids=[], pool=QUEST_POOL.slice();
     for(let i=0;i<3&&pool.length;i++) ids.push(pool.splice((seed*(i+3))%pool.length,1)[0].id);
     P.quests={date:dayKey(),ids,prog:{},claimed:[]};
@@ -4313,7 +4322,11 @@ function badgeProgress(b){
     streak5:[P.bestStreak,5],streak12:[P.bestStreak,12],rich:[P.coins,500],
     scholar:[P.studyOpened||0,15],exam5:[P.examsPassed||0,5],boss5:[P.bossesBeaten||0,5],
     codex25:[(P.known||[]).length,25],marks10:[(P.marks||[]).length,10],frugal:[P.coins,250]};
-  return m[b.id]||null;
+  const p=m[b.id];
+  if(!p) return null;
+  // a best streak of 12 against a goal of 5 used to render "12/5"
+  const goal=Number(p[1])||0, cur=Number(p[0]);
+  return [Math.max(0,Math.min(goal,isFinite(cur)?cur:0)),goal];
 }
 
 // --- F: medals on records ---
@@ -4539,7 +4552,7 @@ function logReadiness(){
   const r=readiness();
   P.rHist=P.rHist||[];
   const k=dayKey();
-  if(!P.rHist.length||P.rHist[P.rHist.length-1].d!==k) P.rHist.push({d:k,p:r.pct});
+  if(!P.rHist.length||!sameDay(P.rHist[P.rHist.length-1].d,k)) P.rHist.push({d:k,p:r.pct});
   else P.rHist[P.rHist.length-1].p=r.pct;
   P.rHist=P.rHist.slice(-30);
 }
@@ -5062,6 +5075,10 @@ function checkStageUp(){
 // backgrounded, and rolls into a lifetime total.
 let sessMs=0, clockLast=Date.now(), clockIv=null, showLifetime=false;
 function fmtClock(ms){
+  // Called with a merged profile's counters among other things, and "-1:-1" or "NaN:NaN" on
+  // screen is worse than a wrong number — one guard here beats auditing every caller forever.
+  ms=Number(ms);
+  if(!isFinite(ms)||ms<0) ms=0;
   const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60;
   return h>0 ? (h+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'))
              : (m+':'+String(ss).padStart(2,'0'));
@@ -9028,7 +9045,9 @@ if(TEST){
     EXAM_CHEER, examCheer, BANK_STATS, renderBankStats,
     EXPLAIN_PAPERS, simTeaches, simReveal, simRevealed, simScore, simPaintRevealed,
     buildExplain, renderExplain, hideExplain,
-    syncQBar, leaveExam, pctW, plural, accPct, BUILD, chestProgress, normaliseProfile, timerClamp,
+    syncQBar, leaveExam, pctW, plural, accPct, BUILD,
+    fmtClock, dayKey, sameDay, dayNorm, srSchedule, exportProfile, csvRows, badgeProgress,
+    dailyState, BADGES, chestProgress, normaliseProfile, timerClamp,
     examDaysLeft, dailyPace, startTimer, renderBank, renderRecords, startMock, startPaper, TIMER_MAX, examDaysLabel, EXAM_MAX_DAYS,
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
