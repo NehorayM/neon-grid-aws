@@ -631,6 +631,16 @@ are where the CSV disagrees with this bank's recorded answer (22) or matched not
 confidently (2). **An explanation arguing for C under a question this app marks D is worse than
 no explanation**, so those keep the sections they had.
 
+**Each option is a block, not a line.** "More than a few sentences" — so an option now shows
+its full text (no truncation), the sentence saying why it stands or falls, and the Hebrew
+definition of every service it names, printed against the first option that names it so nothing
+repeats down the list. Below them, the sector's **decision rules** from the course recap, which
+were only ever shown as a fallback when nothing else matched and are the most transferable thing
+on the page. The panel went from roughly 700 characters to about 2,800.
+
+The two standalone Hebrew blocks are gone — their content is what now sits under each option.
+They still render when a question has no written explanation to hang them from.
+
 `whyByOption()` splits the write-up and puts each sentence against the option it names —
 "B and D require Lambda to poll the logs" lands on both B and D. Sentences naming **no** option
 are the case for the right answer (these write-ups open by saying why the winner wins, then name
@@ -642,9 +652,13 @@ honest "the write-up does not single this one out".
 **BANKV is not bumped** — it hashes stem, options, answer and sector, none of which changed, so
 adding prose does not invalidate anybody's progress. The page went from 3.11 MB to 3.62 MB.
 
-Watch the direction: these rows live inside `.exwhy`, which is RTL for the Hebrew glossary, and
-inherited it — every option rendered right-aligned with its full stops on the wrong side until
-`.exwhy.exeach` was given `direction:ltr`.
+**Watch the direction.** These rows live inside `.exwhy`, which is RTL for the Hebrew glossary,
+and inherit it — the option text, then the decision rules, each rendered right-aligned with
+their full stops on the wrong side until given `direction:ltr` explicitly. Any English block
+added under `.exwhy` needs the same, and the Hebrew service lines nested inside an option need
+it put back. The assertions look at `.svcline>span` for the Hebrew and at the option's own `<b>`
+for the English: an option's outer span holds both, so testing it finds Hebrew in its
+descendants and LTR on the element itself.
 
 ## The service explanations are Hebrew
 

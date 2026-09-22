@@ -280,11 +280,25 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .vvoice .vtag.bad{color:var(--red);border-color:var(--red)}
 .vvoice .vtag.good{color:var(--lime);border-color:var(--lime)}
 /* The Hebrew glossary rows inside .exwhy are RTL by design; these carry English and were
-   inheriting it, so every option and its reasoning rendered right-aligned with the full stops
-   on the wrong side. */
-.exwhy.exeach .exitem span,.exwhy.exeach .exitem b,.exwhy.exeach .exitem i{
+   inheriting it, so every option, every decision rule and its reasoning rendered right-aligned
+   with the full stops on the wrong side. Any English block added under .exwhy needs this. */
+.exwhy.exeach .exitem span,.exwhy.exeach .exitem b,.exwhy.exeach .exitem i,
+.exwhy.exrules .exitem span,.exwhy.exrules .exitem i,.exwhy.exrules .exitem b{
   direction:ltr;unicode-bidi:isolate;text-align:left}
+/* ...except the Hebrew service lines deliberately nested inside an option */
+.exeach .exopt .svcline>span{direction:rtl;text-align:right}
 .exeach .exopt{align-items:flex-start;gap:10px}
+/* <u> was chosen as a container because b/i were taken; it underlines by default */
+.exeach .exopt .exsvc{display:block;text-decoration:none;margin-top:7px;
+  border-top:1px solid var(--line);padding-top:7px}
+.exeach .exopt .svcline{display:block;margin-top:5px}
+.exeach .exopt .svcline>b{display:inline-block;font-family:var(--mono);font-size:10px;
+  letter-spacing:.4px;color:var(--cyan);margin:0 0 2px;text-transform:uppercase}
+.exeach .exopt .svcline>span{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
+  font-size:11.5px;line-height:1.55;color:var(--dim)}
+.exrules .exopt{align-items:flex-start}
+.exrules .exopt .k{color:var(--gold);border-color:var(--gold)}
+.exrules .exopt i{font-size:12.5px;line-height:1.6}
 .exeach .exopt .k{flex:none;font-family:var(--mono);font-size:11px;font-weight:700;
   padding:3px 7px;border-radius:6px;border:1px solid var(--line2);color:var(--dim)}
 .exeach .exopt.good .k{color:var(--lime);border-color:var(--lime)}
@@ -2176,7 +2190,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 13:21 UTC';
+const BUILD='2026-09-22 13:33 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -7261,26 +7275,52 @@ function renderExplain(q,picked,ok){
   // explanation for the question, split so each line sits against the option it is about.
   if(e.full){
     bits.push('<div class="exlbl">Why each answer</div>');
+    const seenTerm=new Set();
     bits.push('<div class="exwhy exeach">'+q.o.map(([ltr,txt])=>{
       const right=q.a.includes(ltr);
       const line=e.why.byLetter[ltr]||'';
+      // What this option actually proposes, not just whether it is wrong. A definition is
+      // printed against the first option that names it, so nothing repeats down the list.
+      const terms=exFind(txt,3).filter(t=>{
+        const k=t.t.toLowerCase();
+        if(seenTerm.has(k)) return false;
+        seenTerm.add(k); return true;
+      });
       return '<div class="exitem exopt '+(right?'good':'bad')+'">'+
         '<span class="k">'+ltr+(right?' \u2713':' \u2717')+'</span>'+
-        '<span><b>'+esc(txt.length>86?txt.slice(0,86)+'\u2026':txt)+'</b>'+
+        '<span><b>'+esc(txt)+'</b>'+
         (line?'<i>'+esc(line)+'</i>'
              :'<i class="dim">'+(right?'The answer this question is testing.'
                                       :'Wrong, but the write-up does not single this one out.')+'</i>')+
+        (terms.length?'<u class="exsvc">'+terms.map(t=>
+          '<span class="svcline"><b>'+esc(t.t)+'</b><span dir="rtl">'+esc(t.d)+'</span></span>'
+        ).join('')+'</u>':'')+
         '</span></div>';
     }).join('')+'</div>');
     if(e.why.rest) bits.push('<div class="exnote exrest">'+esc(e.why.rest)+'</div>');
   }
 
-  if(e.correctTerms.length){
+  // How to tell questions of this shape apart in general — the sector's own decision rules.
+  // These were only ever shown when nothing else matched; they are the most transferable thing
+  // on the page and belong on every question.
+  const rules=exFallback(e.sec);
+  if(rules.length){
+    bits.push('<div class="exlbl">How to decide questions like this</div>');
+    bits.push('<div class="exwhy exrules">'+rules.map(r=>
+      '<div class="exitem exopt"><span class="k">\u2192</span><span><i>'+mdInline(r)+'</i></span></div>'
+    ).join('')+'</div>');
+  }
+
+  // The service definitions used to live in two blocks here. They now sit under the option
+  // that names them, where they explain what that option is proposing — printing them again
+  // would just be the same Hebrew twice. They are still shown this way when there is no
+  // written explanation to hang them from.
+  if(!e.full&&e.correctTerms.length){
     bits.push('<div class="exlbl heb" dir="rtl">למה זו התשובה</div>');
     bits.push('<div class="exwhy">'+e.correctTerms.map(t=>
       '<div class="exitem"><span class="k">'+esc(t.t)+'</span><span>'+esc(t.d)+'</span></div>').join('')+'</div>');
   }
-  const named=e.distractors.filter(d=>d.terms.length);
+  const named=e.full?[]:e.distractors.filter(d=>d.terms.length);
   if(named.length){
     bits.push('<div class="exlbl heb" dir="rtl">למה האחרות לא</div>');
     bits.push('<div class="exwhy">'+named.map(d=>
@@ -7288,13 +7328,7 @@ function renderExplain(q,picked,ok){
       esc(d.terms[0].d)+'</span></div>').join('')+'</div>');
   }
   if(e.cue) bits.push('<div class="excue">💡 Exam cue — if a question says '+esc(e.cue.c)+' think <b>'+esc(e.cue.a)+'</b></div>');
-  if(!e.correctTerms.length&&!named.length&&!e.cue){
-    const rules=exFallback(e.sec);
-    if(rules.length){
-      bits.push('<div class="exlbl">Decision rules for this sector</div>');
-      bits.push('<div class="exwhy">'+rules.map(r=>'<div class="exitem ltr"><span>'+mdInline(r)+'</span></div>').join('')+'</div>');
-    }
-  }
+
   if(simTeaches()){
     if(sim) bits.push(cheerHTML(sim.i,sim.qs.length));
     bits.push('<div class="exfoot">Papers 1–'+EXPLAIN_PAPERS+' explain as you go. '+

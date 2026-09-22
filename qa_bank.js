@@ -1946,19 +1946,22 @@ function hebrewChecks(){
   if(q){
     t.renderExplain(q,new Set([q.o.find(o=>!q.a.includes(o[0]))[0]]),false);
     const box=$('explain');
-    // .exeach holds the per-option write-up, which is English and deliberately LTR; the
-    // Hebrew glossary rows are the ones that must read right to left
-    const items=[...box.querySelectorAll('.exwhy:not(.exeach) .exitem')];
-    ok(items.length>0,'the panel renders its Hebrew explanation rows');
-    items.forEach((el,i)=>{
-      const sp=[...el.querySelectorAll('span')].pop();
-      ok(getComputedStyle(sp).direction==='rtl','Hebrew row '+i+' reads right to left');
-      const b=el.querySelector('b');
-      if(b) ok(getComputedStyle(b).unicodeBidi==='isolate',
-               'row '+i+' isolates its Latin service name');
+    // The Hebrew definitions used to sit in two blocks of their own. They now live under the
+    // option that names them, where they say what that option is actually proposing.
+    const svc=[...box.querySelectorAll('.exeach .svcline')];
+    ok(svc.length>0,'the options carry service definitions');
+    svc.forEach((el,i)=>{
+      const sp=el.querySelector('span');
+      ok(HEB.test(sp.textContent),'service line '+i+' is in Hebrew');
+      eq(getComputedStyle(sp).direction,'rtl','service line '+i+' reads right to left');
+      const nm=el.querySelector('b');
+      ok(nm&&!HEB.test(nm.textContent),'and its service name stays Latin');
     });
-    const labels=[...box.querySelectorAll('.exlbl')].map(e=>e.textContent);
-    ok(labels.some(l=>HEB.test(l)),'the Hebrew sections carry Hebrew headings');
+    // the English around them must NOT have inherited that direction
+    const optB=box.querySelector('.exeach .exopt>span>b');
+    if(optB) eq(getComputedStyle(optB).direction,'ltr','the option text reads left to right');
+    const ruleI=box.querySelector('.exrules .exopt i');
+    if(ruleI) eq(getComputedStyle(ruleI).direction,'ltr','and so do the decision rules');
     // one service may explain only one distractor, or the panel repeats itself
     const e=t.buildExplain(q,new Set([q.a[0]]),true);
     const names=e.distractors.filter(d=>d.terms.length).map(d=>d.terms[0].t.toLowerCase());
@@ -2036,12 +2039,17 @@ async function integrationChecks(){
   const q=t.QS[t.sim.qs[0]];
   q.a.forEach(l=>t.simPick(l)); await sleep(30);
   ok($('explain').classList.contains('show'),'paper 1 explains');
-  const rows=[...$('explain').querySelectorAll('.exwhy .exitem span')]
-    .filter(e=>!e.classList.contains('k'));
-  ok(rows.length>0,'the explanation has reasoning rows');
-  ok(rows.some(e=>HEB.test(e.textContent)),'which are in Hebrew');
-  rows.forEach((e,i)=>{ if(HEB.test(e.textContent))
-    eq(getComputedStyle(e).direction,'rtl','Hebrew row '+i+' reads right to left'); });
+  // An option's outer span now holds English text with Hebrew service lines nested inside it,
+  // so testing the outer one finds Hebrew in its descendants and LTR on the element itself.
+  // The Hebrew leaf is .svcline > span.
+  const heb=[...$('explain').querySelectorAll('.svcline>span')];
+  ok(heb.length>0,'the options carry Hebrew service definitions');
+  heb.forEach((e,i)=>{
+    ok(HEB.test(e.textContent),'service line '+i+' is Hebrew');
+    eq(getComputedStyle(e).direction,'rtl','service line '+i+' reads right to left');
+  });
+  const eng=$('explain').querySelector('.exeach .exopt>span>b');
+  if(eng) eq(getComputedStyle(eng).direction,'ltr','while the option text stays left to right');
   eq(t.simQLeft,90,'and the clock did not pause to let us read');
   t.simQTick(90); await sleep(30);
   eq(t.sim.i,1,'it moved on mid-read');
