@@ -2160,7 +2160,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 12:51 UTC';
+const BUILD='2026-09-22 12:57 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -2407,6 +2407,18 @@ const sfx={
 const SCREENS=['homeScreen','quizScreen','reelScreen','gameScreen','gresScreen','shopScreen','achScreen','flashScreen','recScreen','sumScreen','pickScreen','logScreen','briefScreen','studyPickScreen','readyScreen','themeScreen','voiceScreen','pathScreen','bankScreen','simRevScreen','simDoneScreen','paperScreen','stuPickScreen','stuReadScreen','timerScreen',
   'learnPickScreen','learnMapScreen','learnReadScreen','learnQuizScreen','learnRecapScreen','learnSimScreen','learnDoneScreen','authScreen','casinoScreen'];
 let route='homeScreen';
+// Walking away from a mini-game used to leave its animation loop running: still stepping
+// physics, still ticking the clock, still adding score against a canvas nobody can see — and
+// when the timer finally ran out it paid coins, XP, a high score and quest progress for a game
+// that had been abandoned minutes earlier. Leaving abandons it; endGame() is for finishing it.
+function leaveGame(){
+  if(typeof gRunning==='undefined'||!gRunning) return;
+  gRunning=false;
+  try{ if(gRaf) cancelAnimationFrame(gRaf); }catch(e){}
+  gRaf=null;
+  const hp=$('bossHP'); if(hp) hp.classList.add('hidden');
+}
+
 // Anything that takes over the question screen calls this first, so two engines can never
 // both be driving it. It keeps the paper, which the Practice Exams screen offers back.
 function leaveExam(){
@@ -7039,6 +7051,7 @@ go=function(id){
     if(!brkLeft()) return;                   // no breaks left: the paper keeps you
   }
   if(id!=='quizScreen') stopQTimer();        // leaving the quiz freezes the countdown
+  if(id!=='gameScreen'&&typeof leaveGame==='function') leaveGame();
   _go(id);
   if(id==='quizScreen') resumeQTimer();      // coming back continues from where it stopped
   syncNav();
@@ -9062,6 +9075,7 @@ if(TEST){
     launchGame, gStep, endGame, checkBadges, renderShop, renderBadges, rankFor,
     openStudy, closeStudy, conceptsFor, CODEX,
     STORE_PERM, STORE_CONS, applyTheme, invCount, renderInv, renderDaily, bumpDaily,
+    buyCons, usePotion, useFreeze, THEME_LIST, themeOwned, renderThemes,
     dueForReview, srSchedule,
     syncNav, applyFS, NAVS, DIFFS, QD, setDifficulty, diff, chargeNeed, unlockCost,
     buyUnlock, renderCharge, poolByDifficulty, bandOf, startQTimer, tickQTimer, timeUp,
@@ -9093,7 +9107,7 @@ if(TEST){
     EXAM_CHEER, examCheer, BANK_STATS, renderBankStats,
     EXPLAIN_PAPERS, simTeaches, simReveal, simRevealed, simScore, simPaintRevealed,
     buildExplain, renderExplain, hideExplain,
-    syncQBar, leaveExam, pctW, plural, accPct, BUILD,
+    syncQBar, leaveExam, leaveGame, pctW, plural, accPct, BUILD,
     fmtClock, dayKey, sameDay, dayNorm, srSchedule, exportProfile, csvRows, badgeProgress,
     dailyState, BADGES, chestProgress, normaliseProfile, timerClamp,
     examDaysLeft, dailyPace, startTimer, renderBank, renderRecords, startMock, startPaper, TIMER_MAX, examDaysLabel, EXAM_MAX_DAYS,

@@ -312,6 +312,26 @@ inside a paused paper, the strip agrees with the sum, an interval exists exactly
 AUDIT5 drives the new surfaces sideways (sheets outliving their context, rapid taps, the short
 paper, every question spent, the voice screen opened mid-paper).
 
+## A mini-game stops when you leave it
+
+`audit8.js` drives all nine games — launch, step, end — and found that navigating away from
+`gameScreen` left `gRunning` true with the requestAnimationFrame loop alive. It kept stepping
+physics, ticking the clock and adding score against a canvas nobody could see, and when the
+timer finally ran out it paid coins, XP, a high score and quest progress for a game abandoned
+minutes earlier. Same class as the exam that survived the back arrow, same fix: `leaveGame()`,
+called from the router. Leaving abandons the run; `endGame()` is for finishing it.
+
+**`audit7.js`** covers the modes around the paper — booting back into a paper that is on a
+break, six start/quit cycles checked for leaked intervals, the shop and inventory at their
+bounds, every mode entering and leaving the question screen coherently, all ten themes for
+readable contrast, and the boot resume against the other modes. It reports zero, and that zero
+was checked with a negative control: breaking an item count and a theme's contrast on purpose
+both get caught.
+
+**Verify an audit can fail before trusting that it passed.** Two of audit7's probes were
+silently doing nothing because `buyCons`, `usePotion` and `THEME_LIST` were not on the test
+surface — a clean result from a probe that never ran is worth nothing.
+
 ## The arithmetic underneath the screens
 
 `audit6.js` drives the quiet logic that no screen test reaches: clock formatting, day keys,

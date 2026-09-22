@@ -543,6 +543,51 @@ function fmtMs(ms){
 
 function renderClockSafe(t){ try{ t.renderClock(); }catch(e){} }
 
+// ---------- a mini-game stops when you leave it ----------
+async function gameLifetimeChecks(){
+  const t=T();
+  if(!t.GAMES||typeof t.launchGame!=='function'){ ok(false,'the games are not exposed'); return; }
+  const keepHighs=JSON.parse(JSON.stringify(t.P.highs||{}));
+  const keepPlayed=t.P.gamesPlayed, keepCoins=t.P.coins;
+
+  // Walking away used to leave the animation loop running: still stepping, still ticking,
+  // still scoring against a canvas nobody could see — and paying out when the clock ran down.
+  t.launchGame(t.GAMES[0].id); await sleep(20);
+  ok(t.gRunning,'a game starts running');
+  eq(t.route,'gameScreen','on the game screen');
+  t.go('homeScreen'); await sleep(30);
+  ok(!t.gRunning,'leaving the screen stops the game');
+  const coinsAfterLeaving=t.P.coins, playedAfterLeaving=t.P.gamesPlayed;
+  for(let i=0;i<200;i++) t.gStep(1/30);        // nothing should happen at all
+  eq(t.P.coins,coinsAfterLeaving,'and it cannot pay out after you have gone');
+  eq(t.P.gamesPlayed,playedAfterLeaving,'nor count itself as played');
+
+  // every game launches, steps and ends without producing an impossible number
+  for(const g of t.GAMES){
+    t.launchGame(g.id); await sleep(10);
+    eq(t.route,'gameScreen',g.id+' opens the game screen');
+    for(let i=0;i<40&&t.gRunning;i++) t.gStep(1/30);
+    ok(isFinite(t.gScore),g.id+' keeps its score a number');
+    ok(t.gScore>=0,g.id+' does not go negative');
+    t.endGame(); await sleep(20);
+    ok(!t.gRunning,g.id+' stops when it ends');
+    const hi=(t.P.highs||{})[g.id];
+    ok(hi===undefined||(isFinite(hi)&&hi>=0),g.id+' writes a sane high score');
+    t.go('homeScreen'); await sleep(10);
+  }
+
+  // one game straight after another must not leave the first alive
+  t.launchGame(t.GAMES[0].id); await sleep(10);
+  t.launchGame(t.GAMES[1].id); await sleep(10);
+  for(let i=0;i<20;i++) t.gStep(1/30);
+  ok(isFinite(t.gScore),'starting a second game does not corrupt the score');
+  t.endGame(); await sleep(20);
+  ok(!t.gRunning,'and ending it really ends it');
+
+  t.P.highs=keepHighs; t.P.gamesPlayed=keepPlayed; t.P.coins=keepCoins;
+  t.go('homeScreen');
+}
+
 // ---------- the arithmetic underneath the screens ----------
 function arithmeticChecks(){
   const t=T();
@@ -2026,7 +2071,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ arithmeticChecks(); await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
