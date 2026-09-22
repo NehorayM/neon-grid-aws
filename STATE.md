@@ -401,6 +401,21 @@ does not hand the breaks back. `body.asking` hides the nav while the sheet is op
 is taller than a padding-bottom can allow for, and nothing under a modal should be competing
 for the same taps.
 
+## A resume has to land somewhere you can work
+
+Away long enough for the away-charge to drain the question you were on, you used to resume
+straight back onto it — a dead `0:00` clock, question 1 of 65, and no way forward but Next.
+`simQStart()` deliberately does not bounce you out of a spent question, which is right when you
+open one from the review list and wrong here, because this is not somewhere you chose to be.
+A resume now moves to the first question that still has time, and if none do it submits and
+scores what was answered rather than resuming into limbo.
+
+**The headline is whichever clock binds.** The strip read `PAPER REMAINING 1:36:00` above
+"the paper clock runs out first — 1:16:12 of wall time". Both numbers were true — the first is
+what the questions still hold, the second is the paper's own budget — but quoting the larger,
+less binding one in the big type reads as a contradiction of its own subtitle. It now shows
+`min(question sum, wall clock)` and the subtitle says which of the two it is.
+
 ## The clock is a deadline, not a count of ticks
 
 Reported as frozen — neither the question countdown nor the paper total moving — while it

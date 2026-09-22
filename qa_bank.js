@@ -606,7 +606,9 @@ async function refreshChecks(){
   t.P.simSave.at-=10*60*1000;
   eq(t.simAwayCost(t.P.simSave),600,'ten minutes away is measured in seconds, not milliseconds');
   t.simResume(); await sleep(40);
-  eq(t.simQLeft,0,'the question it was on is spent — it only had '+q0+' seconds');
+  eq(t.sim.qt[0],0,'the question it was on is spent — it only had '+q0+' seconds');
+  ok(t.sim.i>0,'so the resume moves past it rather than stranding you on a 0:00 clock');
+  eq(t.simQLeft,t.SIM_QSEC,'landing on one that still has its full ninety');
   const charged=w0-Math.round(t.simTimeLeft()/1000);
   ok(Math.abs(charged-600)<5,'and the paper is charged the ten minutes ('+charged+'s)');
   t.simAbandon(); await sleep(30); t.simClearSave();
@@ -669,6 +671,34 @@ async function refreshChecks(){
      'the current question is saved with the seconds it actually has');
   ok(typeof t.simSaveTick==='number','a running paper writes itself down on a timer');
   t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // Away long enough to drain the question you were on, you used to resume onto it with a
+  // dead 0:00 clock and no way forward but Next. Unlike opening a spent question from the
+  // review list, that is not somewhere you chose to be.
+  await setup();
+  t.simPersist();
+  t.P.simSave.paused=0; t.P.simSave.at-=21*60*1000;
+  t.simResume(); await sleep(60);
+  ok(t.simQLeft>0,'a resume does not land on a question with no time left');
+  ok(t.sim.i>0,'it moves past the one that was drained (now on '+(t.sim.i+1)+')');
+  eq(t.route,'quizScreen','and it is still a paper you can work on');
+  // the headline is whichever clock binds, not the larger of the two
+  const head=$('simTotalVal').textContent, sub=$('simTotalSub').textContent;
+  const wall=Math.floor(t.simTimeLeft()/1000), byQ=t.simTotalLeft();
+  eq(head,fmtMs(Math.min(wall,byQ)*1000),'the big number is the one that runs out first');
+  if(wall<byQ) ok(/own clock is what runs out/.test(sub),'and the subtitle says which');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // and with nothing left anywhere it scores rather than stranding
+  const qs=t.paperQs(4), qtAll={};
+  qs.forEach((_,i)=>qtAll[i]=0);
+  t.P.simSave={paper:4,qs,i:3,ans:{},flag:{},rev:{},qt:qtAll,brkUsed:0,brkUntil:0,
+               dev:t.DEVICE_ID,devKind:t.DEVICE_KIND,claimAt:Date.now(),
+               left:40*60*1000,mins:98,at:Date.now()-60*1000,paused:0};
+  t.simResume(); await sleep(120);
+  ok(!(t.sim&&t.sim.running),'a paper with no time on any question does not resume into limbo');
+  eq(t.route,'simDoneScreen','it scores what was answered instead');
+  t.simClearSave();
 
   // the shape the whole thing rests on
   eq(t.simAwayCost(null),0,'no save, no charge');
@@ -1330,7 +1360,7 @@ async function qClockChecks(){
   ok(!totBox.classList.contains('tight'),'ordinary play does not cry wolf');
   t.sim.endAt=Date.now()+60*1000; t.renderSimTotal();
   ok(totBox.classList.contains('tight'),'it warns when the paper clock becomes the binding one');
-  ok(/paper clock runs out first/.test($('simTotalSub').textContent),'and says why');
+  ok(/own clock is what runs out/.test($('simTotalSub').textContent),'and says why');
   t.sim.endAt=Date.now()+99*60*1000; t.renderSimTotal();
   ok(!totBox.classList.contains('tight'),'and calms down again');
 

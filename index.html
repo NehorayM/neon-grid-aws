@@ -2160,7 +2160,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 12:39 UTC';
+const BUILD='2026-09-22 12:46 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -5614,12 +5614,18 @@ function renderSimTotal(){
   const box=$('simTotal'); if(!box) return;
   if(!sim||!sim.running){ box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  const left=simTotalLeft(), full=simTotalFull(), qs=simQsLeft();
+  const byQuestion=simTotalLeft(), full=simTotalFull(), qs=simQsLeft();
+  const wms=(typeof simTimeLeft==='function')?simTimeLeft():Infinity;
+  const byWall=isFinite(wms)?Math.floor(wms/1000):Infinity;
+  // Two true numbers: what the questions still hold, and what the paper's own clock has left.
+  // The headline has to be whichever runs out first, or it contradicts its own subtitle —
+  // "1:36:00" sitting above "the paper clock runs out first, 1:16:12".
+  const left=Math.min(byQuestion,byWall);
   $('simTotalVal').textContent=fmtClock(left*1000);
   $('simTotalFill').style.width=pctW(left/Math.max(1,full)*100);
-  const wallMs=(typeof simTimeLeft==='function')?simTimeLeft():Infinity;
-  $('simTotalSub').textContent=(isFinite(wallMs)&&wallMs<left*1000)
-    ? ('the paper clock runs out first \u2014 '+fmtClock(wallMs)+' of wall time')
+  $('simTotalSub').textContent=(byWall<byQuestion)
+    ? ('the paper\u2019s own clock is what runs out \u2014 the questions still hold '+
+       fmtClock(byQuestion*1000))
     : (plural(qs,'question')+' still open \u00b7 '+SIM_QSEC+'s each \u00b7 '+
        fmtClock(full*1000)+' for the paper');
   // ticked once per question, capped so the ticks do not turn into a solid block
@@ -5628,8 +5634,7 @@ function renderSimTotal(){
   // Amber when the PAPER's wall clock, not the per-question budget, becomes the binding
   // constraint — that is the only way you can be cut off with question time still on the
   // board. Comparing against qs*90 was useless: it goes amber the moment you spend a second.
-  const wall=(typeof simTimeLeft==='function')?Math.floor(simTimeLeft()/1000):Infinity;
-  box.classList.toggle('tight',wall<left);
+  box.classList.toggle('tight',byWall<byQuestion);
 }
 function renderSimQ(){
   const wrap=$('qTimerWrap'), fill=$('qTimerFill');
@@ -6017,6 +6022,21 @@ function simResume(){
        dev:sv.dev||DEVICE_ID, devKind:sv.devKind||DEVICE_KIND, claimAt:sv.claimAt||0,
        startAt:Date.now()-((sv.mins*60000)-left), endAt:Date.now()+left};
   if(away>30) toast('\u23f1 '+fmtClock(away*1000)+' passed while the paper was open elsewhere');
+  // Being away can drain the question you were on. Landing back on it means a dead 0:00
+  // clock and no way forward but Next — and unlike opening a spent question from the
+  // review list, this is not somewhere you chose to be. Go to one that still has time.
+  const spent=k=>{ const v=sim.qt[k]; return (typeof v==='number')&&v<=0; };
+  if(spent(sim.i)){
+    let nx=-1;
+    for(let k=0;k<simLen();k++){ if(!spent(k)){ nx=k; break; } }
+    if(nx>=0){
+      sim.i=nx;
+      if(away>30) toast('\u{1f4cd} Moved to question '+(nx+1)+
+        ' — the one you left had no time on it');
+    }else{
+      renderClock(); simClaim(); simSubmit(true); return;   // nothing left anywhere
+    }
+  }
   renderClock(); simLoad(); simClaim();
   // If that emptied the paper it is not lost — simCheckTime() submits within the second, so
   // the score for whatever was answered still lands.
