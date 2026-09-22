@@ -884,10 +884,20 @@ async function ttsChecks(){
   eq(lossy,0,'every question in the bank chunks without losing or reordering a word');
   eq(over,0,'and no piece exceeds the limit');
 
+  // the fallback the watchdog falls back to: one utterance, no voice override, no chunking
+  const nBefore=spoken.length;
+  const live=t.ttsSend('One. Two. Three. '+('padding words here. '.repeat(20)),999,true);
+  eq(spoken.length,nBefore+1,'the plain retry sends exactly one utterance');
+  ok(spoken[spoken.length-1].length>160,'unchunked, so an engine that dislikes queues gets one');
+  ok(typeof live==='function','and it reports whether anything started');
+  const nChunked=spoken.length;
+  t.ttsSend('One. Two. Three. '+('padding words here. '.repeat(20)),999,false);
+  ok(spoken.length>nChunked+1,'while the normal path chunks');
+
   t.startPaper(8); await sleep(20);
   eq($('simTts').textContent,'🔊 Read','the button offers a read');
   const n0=spoken.length;
-  $('simTts').click(); await sleep(10);
+  $('simTts').click(); await sleep(30);   // ttsSpeak yields a tick before speaking
   ok(spoken.length>n0,'tapping it speaks');
   ok(spoken[n0].indexOf('Question 1 of 65')===0,'starting with this question');
   ok(spoken[n0].length<=160,'and the first thing sent is short');
@@ -908,7 +918,7 @@ async function ttsChecks(){
   t.simGo(1); await sleep(10);
   eq(spoken.length,n1,'moving to the next question does not read it');
   eq($('simTts').textContent,'🔊 Read','and the button stays a read');
-  $('simTts').click(); await sleep(10);
+  $('simTts').click(); await sleep(30);
   ok(spoken.length>n1,'but asking for it still works');
   ok(spoken[n1].indexOf('Question 2 of 65')===0,'and reads the right one');
 
@@ -918,14 +928,14 @@ async function ttsChecks(){
   ok(!$('simTts').classList.contains('on'),'and clears its state');
 
   // and a reading still in progress is cancelled by moving on
-  $('simTts').click(); await sleep(10);
+  $('simTts').click(); await sleep(30);
   const c1=cancels;
   t.simGo(1); await sleep(10);
   ok(cancels>c1,'moving on cancels a reading in progress');
   eq($('simTts').textContent,'🔊 Read','and the button follows');
 
   // leaving the exam stops the voice
-  $('simTts').click(); await sleep(10);
+  $('simTts').click(); await sleep(30);
   const c2=cancels;
   t.simAbandon(); await sleep(20);
   ok(cancels>c2,'quitting stops the voice');
@@ -1316,7 +1326,7 @@ async function integrationChecks(){
   window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };
 
   t.startPaper(11); await sleep(30);
-  $('simTts').click(); await sleep(10);
+  $('simTts').click(); await sleep(30);
   eq($('simTts').textContent,'\u23f9 Stop','reading aloud mid-exam');
   ok(spoken.length>=1,'it spoke');
   ok(spoken[0].length<=160,'starting with a short piece, so sound is immediate');
@@ -1328,7 +1338,7 @@ async function integrationChecks(){
   eq($('simTts').textContent,'\ud83d\udd0a Read','and put the button back');
 
   // --- speech + a takeover: losing the exam must also silence it
-  $('simTts').click(); await sleep(10);
+  $('simTts').click(); await sleep(30);
   eq($('simTts').textContent,'\u23f9 Stop','reading again');
   const c1=cancels;
   t.P.simSave=Object.assign({},t.P.simSave,

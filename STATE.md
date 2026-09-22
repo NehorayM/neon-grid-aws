@@ -447,6 +447,23 @@ an assertion that every question in the bank chunks losslessly.
   polls briefly as well as listening for `voiceschanged`.
 - Chrome can leave synthesis paused, which queues `speak()` in silence. `resume()` first.
 
+**The second pass made it worse — no sound at all.** Two things in it could do that, and both
+were reasoning about a browser that cannot be tested here:
+
+- The zero-volume warm-up utterance. Some engines never emit a silent utterance but still hold
+  it in the queue, and everything spoken afterwards queues behind it. Removed.
+- `ttsStop()` cancelling only when `speaking || pending`. An utterance the engine has lost track
+  of reports neither, which is the whole reason this is a known Chrome bug — so nothing ever
+  cleared the queue and everything after it was silent.
+
+**What replaced the guessing.** Pressing Read always cancels first and speaks on the next tick;
+yielding a tick is what avoids the cancel/speak race, rather than skipping the cancel and hoping
+the queue is empty. Then a watchdog: if no sound has started after 900ms it cancels, drops the
+voice override and the chunking, and sends one plain utterance. If that is silent too it says so
+and puts the button back. The worst case is a stutter, never a button that does nothing.
+`ttsStop()` still avoids cancelling an idle engine on every question load — the one part of the
+second pass that is safe, and the likeliest cause of the original delay.
+
 **`tts_probe.html` measures this on a real device** — open it on the phone, tap Run, and it times
 how long each of eight strategies takes to make its first sound (bare speak, speak after an idle
 cancel, one long utterance, a local voice, a network voice, after a warm-up). Use it rather than
