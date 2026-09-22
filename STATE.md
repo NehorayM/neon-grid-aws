@@ -618,6 +618,34 @@ python3 hebrew_blueprint.py       # ...and the Learn service cards with it
 explanations are meant to be Hebrew. Run them or the panel reverts silently — `QA_BANK()`
 will fail with the name of the first term that slipped back.
 
+## Every option says why it stands or falls
+
+The panel used to explain the right answer by naming the services in it, and the wrong ones
+only when they happened to name a service the right answer did not — so most distractors got
+nothing. Now every option gets a row, marked ✓ or ✗, with the reasoning for that specific
+option.
+
+The text comes from the `explanation` column of `aws_saa_questions_explained_FIXED_FINAL.csv`,
+attached to each question as `q.w` by `attach_why.py`. 1,177 of 1,201 carry one; the other 24
+are where the CSV disagrees with this bank's recorded answer (22) or matched nothing
+confidently (2). **An explanation arguing for C under a question this app marks D is worse than
+no explanation**, so those keep the sections they had.
+
+`whyByOption()` splits the write-up and puts each sentence against the option it names —
+"B and D require Lambda to poll the logs" lands on both B and D. Sentences naming **no** option
+are the case for the right answer (these write-ups open by saying why the winner wins, then name
+the losers), so they go there rather than into a leftover block. One naming *every* option is
+too general to pin on one and goes to the right answer too. Result: 83% of options across the
+bank get their own line, 52% of questions have every option covered; the rest fall back to an
+honest "the write-up does not single this one out".
+
+**BANKV is not bumped** — it hashes stem, options, answer and sector, none of which changed, so
+adding prose does not invalidate anybody's progress. The page went from 3.11 MB to 3.62 MB.
+
+Watch the direction: these rows live inside `.exwhy`, which is RTL for the Hebrew glossary, and
+inherited it — every option rendered right-aligned with its full stops on the wrong side until
+`.exwhy.exeach` was given `direction:ltr`.
+
 ## The service explanations are Hebrew
 
 The same AWS services are defined in three places, and all three now answer in Hebrew:

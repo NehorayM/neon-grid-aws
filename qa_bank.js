@@ -543,6 +543,51 @@ function fmtMs(ms){
 
 function renderClockSafe(t){ try{ t.renderClock(); }catch(e){} }
 
+// ---------- every option carries its own reasoning ----------
+function whyChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const withW=t.QS.filter(q=>q.w).length;
+  ok(withW>1100,withW+' of '+t.QS.length+' questions carry a written explanation');
+  // the 24 without one are where the source disagreed with this bank's answer, or matched
+  // nothing confidently — an explanation arguing for a different letter is worse than none
+  ok(t.QS.length-withW<40,'and the ones without are the handful that could not be trusted');
+
+  // the splitter puts each sentence against the option it names
+  const w=t.whyByOption(
+    'EventBridge matches the call directly - one rule, one target. '+
+    'B and D require Lambda to poll the logs. A adds a queue for no benefit.',
+    ['A','B','C','D'],['C']);
+  eq(w.byLetter.A,'A adds a queue for no benefit.','a sentence naming one option goes to it');
+  ok(/B and D/.test(w.byLetter.B),'one naming two goes to both');
+  eq(w.byLetter.B,w.byLetter.D,'the same line, against each of them');
+  ok(/EventBridge matches/.test(w.byLetter.C),
+     'and the part naming nobody explains the right answer, which is what it is for');
+  eq(w.rest,'','so nothing is left over');
+  // a sentence naming every option is too general to pin on any one
+  const gen=t.whyByOption('A, B, C and D all use S3.',['A','B','C','D'],['A']);
+  ok(/all use S3/.test(gen.byLetter.A),'a line naming everything lands with the right answer');
+
+  // and it renders: one row per option, right and wrong, each marked
+  const q=t.QS.find(x=>x.w&&x.o.length===4);
+  ok(!!q,'there is a four-option question with a write-up');
+  t.renderExplain(q,new Set([q.o.find(o=>!q.a.includes(o[0]))[0]]),false);
+  const rows=[...document.querySelectorAll('#explain .exeach .exopt')];
+  eq(rows.length,q.o.length,'every option gets a row, not just the ones that were picked');
+  rows.forEach((el,i)=>{
+    const L=q.o[i][0], right=q.a.includes(L);
+    const k=el.querySelector('.k').textContent;
+    ok(k.indexOf(L)===0,'row '+i+' is labelled '+L);
+    ok(/[\u2713\u2717]/.test(k),'and marked right or wrong');
+    eq(el.classList.contains('good'),right,'with the marking matching the answer');
+    ok((el.querySelector('i').textContent||'').length>10,'and carries a line of reasoning');
+  });
+  // English, so it must not inherit the Hebrew glossary's direction
+  const b=document.querySelector('#explain .exeach .exopt b');
+  eq(getComputedStyle(b).direction,'ltr','the write-up reads left to right');
+  eq(getComputedStyle(b).textAlign,'left','and is aligned that way');
+  t.hideExplain();
+}
+
 // ---------- a mini-game stops when you leave it ----------
 async function gameLifetimeChecks(){
   const t=T();
@@ -1901,11 +1946,13 @@ function hebrewChecks(){
   if(q){
     t.renderExplain(q,new Set([q.o.find(o=>!q.a.includes(o[0]))[0]]),false);
     const box=$('explain');
-    const items=[...box.querySelectorAll('.exwhy .exitem')];
-    ok(items.length>0,'the panel renders its explanation rows');
+    // .exeach holds the per-option write-up, which is English and deliberately LTR; the
+    // Hebrew glossary rows are the ones that must read right to left
+    const items=[...box.querySelectorAll('.exwhy:not(.exeach) .exitem')];
+    ok(items.length>0,'the panel renders its Hebrew explanation rows');
     items.forEach((el,i)=>{
       const sp=[...el.querySelectorAll('span')].pop();
-      ok(getComputedStyle(sp).direction==='rtl','explanation row '+i+' reads right to left');
+      ok(getComputedStyle(sp).direction==='rtl','Hebrew row '+i+' reads right to left');
       const b=el.querySelector('b');
       if(b) ok(getComputedStyle(b).unicodeBidi==='isolate',
                'row '+i+' isolates its Latin service name');
@@ -2071,7 +2118,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
