@@ -310,6 +310,14 @@ sound — a plain picker would let someone choose one and get silence with no ex
 anything quiet for two seconds is marked SILENT, greyed and disabled. Results cache in
 `voiceProbe` for the session. "Let the browser choose" is the default and is marked SAFE.
 
+**Each preset binds to a working voice, not just a speed.** They used to share one voice and
+differ only in rate, which made them sound like one person in a hurry. Each now carries `want`,
+a list of name fragments in preference order, and `voiceForPreset()` takes the first match that
+is not in the Chrome OS family and not marked dead — so Invigilator and Deep Focus land on the
+UK male voice, Bright and Night Study on the UK female, Sprint and Dictation on US, and Standard
+deliberately asks for nothing and stays on the browser's own default. Each row shows which voice
+it resolved to. Probe results persist in `P.voiceProbe`, so a device only gets tested once.
+
 Speed and pitch sliders sit over the preset — `P.ttsRate` had been read by the speech path
 since the beginning and nothing ever set it. Both are clamped (`voiceRate` 0.5–2.2,
 `voicePitch` 0.4–2) and an unknown preset falls back to Standard.

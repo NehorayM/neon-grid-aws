@@ -594,6 +594,18 @@ async function voiceChecks(){
   ok(good&&!good.disabled,'the working one can be');
   ok(/do not actually make a sound/.test($('voiceFoot').textContent),'and the footer explains it');
 
+  // a preset must never land on a voice that does not speak
+  t.VOICE_PRESETS.forEach(p=>{
+    const v=t.voiceForPreset(p);
+    ok(!v||!/Chrome OS/i.test(v.name),p.nm+' does not pick a Chrome OS voice');
+    ok(!v||t.voiceProbe[v.name]!=='dead',p.nm+' does not pick a voice known to be silent');
+  });
+  const used=t.VOICE_PRESETS.map(p=>{ const v=t.voiceForPreset(p); return v?v.name:'default'; });
+  ok(new Set(used).size>1,'the presets do not all sound like the same person');
+  eq(t.voiceForPreset(t.VOICE_PRESETS[0]),null,'Standard stays on the browser default');
+  ok(t.P.voiceProbe&&Object.keys(t.P.voiceProbe).length>0,
+     'what works on this device is remembered between sessions');
+
   window.SpeechSynthesisUtterance=realU;
   if(real) Object.defineProperty(window,'speechSynthesis',real); else delete window.speechSynthesis;
 

@@ -259,6 +259,9 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .vpre .vem{font-size:19px;flex:none}
 .vpre .vnm{display:block;font-size:14px;font-weight:600;margin-bottom:1px}
 .vpre .vds{display:block;font-size:11.5px;color:var(--dim);line-height:1.45}
+.vpre .vuses{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.3px;
+  color:var(--cyan);opacity:.75;margin-top:3px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
 .vpre .vheb{font-size:11.5px;color:var(--dim);direction:rtl;unicode-bidi:isolate;text-align:right;
   display:block;margin-top:1px}
 .vpre .vtest{flex:none;font-size:11px;font-weight:650;padding:7px 11px;border-radius:8px;
@@ -5020,30 +5023,58 @@ function sessionTime(){ return sessMs; }
 // rate, a pitch and a purpose, applied over whichever voice actually works here.
 const VOICE_PRESETS=[
   {id:'standard', em:'🎙️', nm:'Standard',    rate:1.0,  pitch:1.0,
+   want:[],
    ds:'The plain reading. What you get if you never come here.',
-   heb:'\u05d4\u05e7\u05e8\u05d9\u05d0\u05d4 \u05d4\u05e8\u05d2\u05d9\u05dc\u05d4.'},
-  {id:'exam',     em:'🧑‍⚖️', nm:'Exam Room', rate:0.85, pitch:0.95,
-   ds:'Even and unhurried, the pace an invigilator reads at.',
-   heb:'\u05e7\u05e6\u05d1 \u05e9\u05dc \u05de\u05e9\u05d2\u05d9\u05d7 \u05d1\u05d1\u05d7\u05d9\u05e0\u05d4.'},
+   heb:'הקריאה הרגילה.'},
+  {id:'exam',     em:'🧑‍⚖️', nm:'Invigilator', rate:0.85, pitch:0.88,
+   want:['UK English Male','English Male','UK English'],
+   ds:'Low, even and unhurried — the pace an exam is read at.',
+   heb:'נמוך ואחיד, כמו משגיח בבחינה.'},
   {id:'review',   em:'⚡', nm:'Quick Review', rate:1.35, pitch:1.0,
+   want:['US English','English Female'],
    ds:'Faster, for a second pass over something you have already read.',
-   heb:'\u05dc\u05de\u05e2\u05d1\u05e8 \u05e9\u05e0\u05d9 \u05e2\u05dc \u05d7\u05d5\u05de\u05e8 \u05de\u05d5\u05db\u05e8.'},
-  {id:'sprint',   em:'🏃', nm:'Sprint',      rate:1.8,  pitch:1.05,
+   heb:'למעבר שני על חומר מוכר.'},
+  {id:'sprint',   em:'🏃', nm:'Sprint',      rate:1.8,  pitch:1.12,
+   want:['US English','English Female'],
    ds:'As fast as it stays intelligible. For the night before.',
-   heb:'\u05de\u05d4\u05e8 \u05db\u05db\u05dc \u05e9\u05e2\u05d5\u05d3 \u05d0\u05e4\u05e9\u05e8 \u05dc\u05d4\u05d1\u05d9\u05df.'},
-  {id:'focus',    em:'🧘', nm:'Deep Focus',  rate:0.92, pitch:0.85,
-   ds:'Low and steady. Easier to sit with for a long paper.',
-   heb:'\u05e0\u05de\u05d5\u05da \u05d5\u05e8\u05d2\u05d5\u05e2, \u05dc\u05de\u05d1\u05d7\u05df \u05d0\u05e8\u05d5\u05da.'},
-  {id:'bright',   em:'☀️', nm:'Bright',      rate:1.1,  pitch:1.25,
-   ds:'Higher and lighter, if the default sends you to sleep.',
-   heb:'\u05d2\u05d1\u05d5\u05d4 \u05d5\u05e2\u05e8\u05e0\u05d9 \u05d9\u05d5\u05ea\u05e8.'},
-  {id:'night',    em:'🌙', nm:'Night Study', rate:0.95, pitch:0.9, volume:0.55,
-   ds:'Quieter and gentler, for late sessions and headphones.',
-   heb:'\u05e9\u05e7\u05d8 \u05d9\u05d5\u05ea\u05e8, \u05dc\u05dc\u05de\u05d9\u05d3\u05d4 \u05d1\u05dc\u05d9\u05dc\u05d4.'},
+   heb:'מהר ככל שעוד אפשר להבין.'},
+  {id:'focus',    em:'🧘', nm:'Deep Focus',  rate:0.92, pitch:0.78,
+   want:['UK English Male','English Male'],
+   ds:'The deepest voice here, steady. Easier to sit with for a long paper.',
+   heb:'הקול הנמוך כאן, למבחן ארוך.'},
+  {id:'bright',   em:'☀️', nm:'Bright',      rate:1.1,  pitch:1.32,
+   want:['UK English Female','English Female','US English'],
+   ds:'Higher and lighter, if the others send you to sleep.',
+   heb:'גבוה וערני יותר.'},
+  {id:'night',    em:'🌙', nm:'Night Study', rate:0.95, pitch:0.92, volume:0.55,
+   want:['UK English Female','English Female'],
+   ds:'Softer and quieter, for late sessions and headphones.',
+   heb:'רך ושקט, ללמידה בלילה.'},
   {id:'dictation',em:'✍️', nm:'Dictation',   rate:0.7,  pitch:1.0, gap:true,
+   want:['US English','UK English Male'],
    ds:'Slow, with a breath between sentences, so you can write along.',
-   heb:'\u05d0\u05d9\u05d8\u05d9 \u05e2\u05dd \u05d4\u05e4\u05e1\u05e7\u05d5\u05ea, \u05db\u05d3\u05d9 \u05dc\u05db\u05ea\u05d5\u05d1 \u05ea\u05d5\u05da \u05db\u05d3\u05d9 \u05db\u05da.'}
+   heb:'איטי עם הפסקות, כדי לכתוב תוך כדי כך.'}
 ];
+// A preset asks for a timbre by name fragment. It never matches the Chrome OS family, which is
+// the one that reports localService:true and never speaks, and it skips anything the liveness
+// check has already caught being silent.
+function voiceUsable(v){
+  if(!v) return false;
+  if(/Chrome OS/i.test(v.name||'')) return false;
+  return voiceProbe[v.name]!=='dead';
+}
+function voiceForPreset(p){
+  p=p||voicePreset();
+  const en=ttsVoicesEn().filter(voiceUsable);
+  if(!en.length) return null;
+  for(const frag of (p.want||[])){
+    const hit=en.find(v=>(v.name||'').toLowerCase().indexOf(frag.toLowerCase())>=0);
+    if(hit) return hit;
+  }
+  // Standard deliberately asks for nothing, so it stays on the browser's own default
+  if(!(p.want||[]).length) return null;
+  return en.find(v=>voiceProbe[v.name]==='live')||en[0]||null;
+}
 const voicePreset=()=>VOICE_PRESETS.find(p=>p.id===(P.voicePreset||'standard'))||VOICE_PRESETS[0];
 function voiceRate(){ const p=voicePreset(); return clamp01(P.ttsRate!=null?P.ttsRate:p.rate,0.5,2.2); }
 function voicePitch(){ const p=voicePreset(); return clamp01(P.ttsPitch!=null?P.ttsPitch:p.pitch,0.4,2); }
@@ -5053,7 +5084,9 @@ function clamp01(n,lo,hi){ n=Number(n); return isFinite(n)?Math.min(hi,Math.max(
 // ---------- which voices on this machine actually speak ----------
 // Eight of the reporter's thirty-four report localService:true and never produce a sound.
 // Offering a voice that cannot speak is worse than offering none, so each is tried once.
-const voiceProbe={};          // name -> 'live' | 'dead' | 'testing'
+// name -> 'live' | 'dead' | 'testing'. Seeded from the profile, so a device that has been
+// checked once does not have to be checked again every session.
+const voiceProbe=Object.assign({},(P&&P.voiceProbe)||{});
 function voiceTest(v){
   if(!v||!ttsOk()) return Promise.resolve(false);
   if(voiceProbe[v.name]==='live') return Promise.resolve(true);
@@ -5061,7 +5094,12 @@ function voiceTest(v){
   voiceProbe[v.name]='testing';
   return new Promise(res=>{
     let done=false;
-    const finish=ok=>{ if(done) return; done=true; voiceProbe[v.name]=ok?'live':'dead'; res(ok); };
+    const finish=ok=>{
+      if(done) return; done=true;
+      voiceProbe[v.name]=ok?'live':'dead';
+      P.voiceProbe=P.voiceProbe||{}; P.voiceProbe[v.name]=voiceProbe[v.name];
+      res(ok);
+    };
     try{
       const u=new SpeechSynthesisUtterance('ok');
       u.voice=v; u.volume=0; u.rate=1.6; u.lang=v.lang||'en-US';
@@ -5074,8 +5112,12 @@ function voiceTest(v){
   });
 }
 function voiceChosen(){
-  if(!P.ttsVoice) return null;
-  return ttsVoicesEn().find(v=>v.name===P.ttsVoice)||null;
+  // an explicitly picked voice wins; otherwise the preset's own timbre
+  if(P.ttsVoice){
+    const pick=ttsVoicesEn().find(v=>v.name===P.ttsVoice);
+    if(pick&&voiceUsable(pick)) return pick;
+  }
+  return voiceForPreset();
 }
 
 const VOICE_SAMPLE='Question 1 of 65. A company needs a storage solution that stays '+
@@ -5098,7 +5140,11 @@ function renderVoice(){
     b.innerHTML='<span class="vem">'+p.em+'</span><span style="flex:1;min-width:0">'+
       '<span class="vnm">'+esc(p.nm)+'</span>'+
       '<span class="vds">'+esc(p.ds)+'</span>'+
-      '<span class="vheb" dir="rtl">'+esc(p.heb)+'</span></span>'+
+      '<span class="vheb" dir="rtl">'+esc(p.heb)+'</span>'+
+      (()=>{ const v=voiceForPreset(p);
+             return '<span class="vuses">'+esc(v?v.name:'the browser\u2019s own voice')+
+                    ' \u00b7 '+p.rate+'\u00d7 \u00b7 pitch '+p.pitch+'</span>'; })()+
+      '</span>'+
       '<span class="vtest">\u25b6</span>';
     b.setAttribute('aria-label',p.nm+' \u2014 '+p.ds);
     b.onclick=e=>{
@@ -8571,6 +8617,7 @@ if(TEST){
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
     ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
+    voiceForPreset, voiceUsable,
     voiceTest, voiceProbe, renderVoice, voiceSay, voiceCheckAll, openVoice, VOICE_SAMPLE,
     get ttsVoices(){return ttsVoices;}, get ttsWarmed(){return ttsWarmed;},
     simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing,
