@@ -1302,10 +1302,15 @@ async function integrationChecks(){
 
   // --- speech + the question clock: running out has to silence the voice
   const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis');
-  const spoken=[]; let cancels=0, last=null;
+  // ttsStop() only cancels an engine that is actually busy — firing cancel() at an idle one
+  // is what delayed Chrome's next speak(). The stub has to model that or it tests nothing.
+  const spoken=[]; let cancels=0, last=null, busy=false;
   Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
-    speak(u){ spoken.push(u.text); last=u; }, cancel(){ cancels++; },
-    getVoices(){ return [{lang:'xx-XX',name:'T'}]; }, get speaking(){ return false; }
+    speak(u){ spoken.push(u.text); last=u; busy=true; },
+    cancel(){ cancels++; busy=false; },
+    getVoices(){ return [{lang:'xx-XX',name:'T'}]; },
+    addEventListener(){}, removeEventListener(){},
+    get speaking(){ return busy; }, get pending(){ return false; }, get paused(){ return false; }
   }});
   const realU=window.SpeechSynthesisUtterance;
   window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };

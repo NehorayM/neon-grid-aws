@@ -2236,8 +2236,9 @@ function toast(t){ const d=document.createElement('div'); d.className='toast'; d
 
 // ---------- audio ----------
 let AC=null, muted=false;
-function ensureAudio(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; } }
-  if(AC&&AC.state==='suspended') AC.resume(); }
+function ensureAudio(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ AC=null; } }
+  if(AC&&AC.state==='suspended') AC.resume();
+  if(typeof ttsWarm==='function') ttsWarm(); }
 function beep(f,d,type,v,glide){ if(!AC||muted) return; const t=AC.currentTime;
   const o=AC.createOscillator(), g=AC.createGain(); o.type=type||'sine'; o.frequency.setValueAtTime(f,t);
   if(glide) o.frequency.exponentialRampToValueAtTime(Math.max(30,f+glide),t+d);
@@ -5420,8 +5421,30 @@ let ttsOn=false;
 let ttsSeq=0;
 function ttsStop(){
   ttsOn=false; ttsSeq++;              // anything still queued from before is now stale
-  try{ if(ttsOk()) window.speechSynthesis.cancel(); }catch(e){}
+  try{
+    // Only cancel something that is actually running. simLoad() calls ttsStop() on every
+    // question load, so this used to fire cancel() at an idle engine constantly — and a
+    // cancel with nothing to cancel is what leaves Chrome's next speak() sitting there.
+    const ss=window.speechSynthesis;
+    if(ttsOk()&&(ss.speaking||ss.pending)) ss.cancel();
+  }catch(e){}
   renderTtsBtn();
+}
+
+// The speech engine is cold until something asks it for audio, and waking it takes seconds
+// on Android. Ask for silence on the first user gesture — the same one that already wakes the
+// Web Audio context — so it is up long before anyone presses Read.
+let ttsWarmed=false;
+function ttsWarm(){
+  if(ttsWarmed||!ttsOk()||TEST) return;
+  ttsWarmed=true;
+  try{
+    const ss=window.speechSynthesis;
+    const u=new SpeechSynthesisUtterance(' ');
+    u.volume=0; u.rate=1; u.lang='en-US';
+    ss.speak(u);
+    setTimeout(()=>{ try{ if(!ttsOn&&!ss.speaking) ss.cancel(); }catch(e){} },1200);
+  }catch(e){}
 }
 
 // getVoices() is filled in asynchronously and the first call usually returns nothing,
@@ -5441,8 +5464,12 @@ function ttsVoice(){
 }
 if(typeof window!=='undefined'&&'speechSynthesis' in window){
   ttsLoadVoices();
-  try{ window.speechSynthesis.addEventListener('voiceschanged',ttsLoadVoices); }
-  catch(e){ try{ window.speechSynthesis.onvoiceschanged=ttsLoadVoices; }catch(e2){} }
+  const onVoices=()=>{ ttsLoadVoices(); if(typeof renderTtsBtn==='function') renderTtsBtn(); };
+  try{ window.speechSynthesis.addEventListener('voiceschanged',onVoices); }
+  catch(e){ try{ window.speechSynthesis.onvoiceschanged=onVoices; }catch(e2){} }
+  // some builds only fill the list after it has been asked for a few times
+  let tries=0;
+  const poll=setInterval(()=>{ if(ttsLoadVoices().length||++tries>10) clearInterval(poll); },300);
 }
 
 // The engine prepares a whole utterance before it makes a sound, and the median question
@@ -5482,6 +5509,8 @@ function ttsSpeak(text){
     // only cancel if there is something to cancel: cancel() straight into speak() is a
     // long-standing Chrome race that delays or drops the utterance entirely
     if(ss.speaking||ss.pending) ss.cancel();
+    // Chrome can leave synthesis paused, and a paused engine queues speak() in silence
+    try{ if(ss.paused) ss.resume(); }catch(e){}
     const chunks=ttsChunks(text);
     if(!chunks.length) return false;
     const voice=ttsVoice();
@@ -8267,7 +8296,8 @@ if(TEST){
     examDaysLeft, dailyPace, startTimer, renderBank, renderRecords, startMock, startPaper, TIMER_MAX, examDaysLabel, EXAM_MAX_DAYS,
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
-    ttsChunks, ttsVoice, ttsLoadVoices, get ttsVoices(){return ttsVoices;},
+    ttsChunks, ttsVoice, ttsLoadVoices, ttsWarm, get ttsVoices(){return ttsVoices;},
+    get ttsWarmed(){return ttsWarmed;},
     simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing,
     csvCell, csvRows, exportReview, exportLastExam, get lastExamCsv(){return lastExamCsv;},
     simLen, simMins,

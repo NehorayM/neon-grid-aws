@@ -1,0 +1,111 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Read-aloud probe</title>
+<style>
+ :root{color-scheme:dark}
+ body{margin:0;padding:18px;background:#0e1319;color:#dfe5ec;
+      font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+ h1{font-size:18px;margin:0 0 4px}
+ p{color:#93a0b0;margin:0 0 14px;font-size:13.5px}
+ button{width:100%;padding:15px;margin:8px 0;font-size:16px;font-weight:600;
+        border-radius:11px;border:1px solid #2b3642;background:#18202a;color:#dfe5ec}
+ button.go{background:#3f7fd0;border-color:#3f7fd0;color:#fff}
+ #out{white-space:pre-wrap;font:12.5px/1.6 ui-monospace,Menlo,Consolas,monospace;
+      background:#121821;border:1px solid #232d38;border-radius:11px;padding:12px;margin-top:12px}
+ .n{color:#79d18a}.b{color:#e2795f}
+</style>
+<h1>Read-aloud probe</h1>
+<p>Tap <b>Run the probe</b>, then leave the phone alone for about a minute with the
+volume up. It speaks several short things and times how long each one takes to
+actually start. Then copy the result out.</p>
+<button class="go" id="run">Run the probe</button>
+<button id="copy">Copy the result</button>
+<div id="out">not run yet</div>
+<script>
+const out=document.getElementById('out');
+const log=(s,cls)=>{ out.innerHTML+=(out.innerHTML?'\n':'')+(cls?'<span class="'+cls+'">'+s+'</span>':s); };
+const ss=window.speechSynthesis;
+
+function voices(){ try{ return ss.getVoices()||[]; }catch(e){ return []; } }
+
+// speak one thing and report how long until it actually starts making sound
+function timed(text,opts){
+  opts=opts||{};
+  return new Promise(res=>{
+    let started=false;
+    const t0=performance.now();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='en-US';
+    if(opts.voice) u.voice=opts.voice;
+    if(opts.volume!=null) u.volume=opts.volume;
+    u.onstart=()=>{ started=true; res({ms:Math.round(performance.now()-t0),ok:true}); };
+    u.onerror=e=>{ if(!started) res({ms:Math.round(performance.now()-t0),ok:false,err:(e&&e.error)||'error'}); };
+    setTimeout(()=>{ if(!started) res({ms:-1,ok:false,err:'never started within 15s'}); },15000);
+    if(opts.cancelFirst) ss.cancel();
+    ss.speak(u);
+  });
+}
+const settle=ms=>new Promise(r=>setTimeout(r,ms));
+async function quiet(){ try{ ss.cancel(); }catch(e){} await settle(700); }
+
+const SHORT='Question one of sixty five.';
+const LONG='Question 1 of 65. A company wants to manage Amazon Machine Images. '+
+  'The company currently copies AMIs to the same AWS Region where the AMIs were created. '+
+  'The company needs to design an application that captures AWS API calls and sends alerts '+
+  'whenever the Amazon EC2 CreateImage API operation is called within the company account. '+
+  'Which solution will meet these requirements with the least operational overhead?';
+
+document.getElementById('run').onclick=async()=>{
+  out.innerHTML='';
+  document.getElementById('run').disabled=true;
+  log('userAgent: '+navigator.userAgent);
+  log('');
+
+  let v=voices();
+  if(!v.length){
+    log('getVoices() was empty — waiting for voiceschanged…');
+    await new Promise(r=>{ const h=()=>{ ss.removeEventListener('voiceschanged',h); r(); };
+      ss.addEventListener('voiceschanged',h); setTimeout(r,3000); });
+    v=voices();
+  }
+  log('voices installed: '+v.length);
+  const en=v.filter(x=>/^en/i.test(x.lang||''));
+  en.slice(0,12).forEach(x=>log('   '+(x.localService?'[local]  ':'[network]')+' '+x.lang+'  '+x.name));
+  const local=en.find(x=>x.localService), net=en.find(x=>!x.localService);
+  log('');
+
+  const rows=[];
+  const step=async(name,text,opts)=>{
+    await quiet();
+    const r=await timed(text,opts);
+    const line=name.padEnd(42)+(r.ok?(r.ms+' ms'):('FAILED '+(r.err||'')));
+    log(line, r.ok?(r.ms>1500?'b':'n'):'b');
+    rows.push({name,...r});
+    await settle(500);
+    try{ ss.cancel(); }catch(e){}
+  };
+
+  log('--- timings (time until sound actually starts) ---');
+  await step('1. short text, default voice',        SHORT,{});
+  await step('2. short text, right after cancel()', SHORT,{cancelFirst:true});
+  await step('3. LONG text in one go',              LONG,{});
+  await step('4. short text again',                 SHORT,{});
+  if(local) await step('5. short text, LOCAL voice',    SHORT,{voice:local});
+  else log('5. no local English voice installed','b');
+  if(net)   await step('6. short text, NETWORK voice',  SHORT,{voice:net});
+  else log('6. no network English voice in the list');
+  await step('7. silent warm-up utterance',         ' ',{volume:0});
+  await step('8. short text right after the warm-up',SHORT,{});
+
+  log('');
+  const slow=rows.filter(r=>r.ok&&r.ms>1500);
+  log(slow.length?('SLOW: '+slow.map(r=>r.name.trim()+' = '+r.ms+'ms').join('  |  '))
+                 :'nothing was slow in this run');
+  document.getElementById('run').disabled=false;
+};
+document.getElementById('copy').onclick=async()=>{
+  try{ await navigator.clipboard.writeText(out.innerText); alert('Copied.'); }
+  catch(e){ alert('Select the text and copy it by hand.'); }
+};
+</script>

@@ -433,6 +433,30 @@ Watch `ttsChunks()` — its first version flushed a long clause straight to the 
 earlier piece was still buffered, so the reading came out reordered with words missing. There is
 an assertion that every question in the bank chunks losslessly.
 
+**That first pass did not fix it.** A second round found what it had missed:
+
+- `ttsStop()` was still calling `cancel()` unconditionally, and `simLoad()` calls `ttsStop()` on
+  every question load. Guarding the cancel inside `ttsSpeak()` was pointless while the other
+  caller kept firing it at an idle engine, which is the state that delays Chrome's next
+  `speak()`. Both are guarded now.
+- The engine is cold until something asks it for audio, and waking Android's TTS takes seconds.
+  `ttsWarm()` speaks a zero-volume utterance on the first user gesture, hooked into
+  `ensureAudio()` — the same gesture that already wakes the Web Audio context.
+- If the voice list was still empty at the tap, `ttsVoice()` returned null and the engine used
+  its own default, which on Chrome is usually the network voice this was meant to avoid. It now
+  polls briefly as well as listening for `voiceschanged`.
+- Chrome can leave synthesis paused, which queues `speak()` in silence. `resume()` first.
+
+**`tts_probe.html` measures this on a real device** — open it on the phone, tap Run, and it times
+how long each of eight strategies takes to make its first sound (bare speak, speak after an idle
+cancel, one long utterance, a local voice, a network voice, after a warm-up). Use it rather than
+guessing; the preview browser has no voices installed, so none of this can be measured here.
+
+**Careful when probing `speechSynthesis` by hand.** Redefining `speaking` or `pending` with
+`Object.defineProperty` and forgetting to restore it poisons the page: `ttsStop()` then reads a
+frozen value and fifteen unrelated exam-clock assertions fail in a way that looks like a real
+regression. Reload before believing a failing run that follows a manual probe.
+
 ## Known gaps / next up
 
 - `supabase_duel.sql` must be re-run in the SQL editor whenever the bank changes; the page alone
