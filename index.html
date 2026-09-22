@@ -119,6 +119,17 @@ h2.head{font-size:18px;font-weight:650;letter-spacing:.2px;margin-bottom:4px}
 .exbrief .lbl:first-child{margin-top:0}
 .exbrief .tip{font-size:12px;line-height:1.5;color:var(--txt);opacity:.9;margin-bottom:5px}
 .exbrief .tip,.sheet .tip{direction:rtl;unicode-bidi:isolate;text-align:right}
+/* The rules and traps are English; the briefing's Hebrew cards sit beside them, so these
+   have to state their own direction rather than inherit the panel's. */
+.brule{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;margin-top:6px;
+  border-radius:10px;background:var(--surface);border:1px solid var(--line);
+  direction:ltr;unicode-bidi:isolate;text-align:left}
+.brule>span:last-child{flex:1;min-width:0;font-size:12.5px;line-height:1.6;color:var(--txt)}
+.brule .ba{flex:none;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--gold)}
+.brule.trap{background:color-mix(in srgb, var(--red) 6%, var(--surface));
+  border-color:color-mix(in srgb, var(--red) 28%, var(--line))}
+.brule.trap .ba{color:var(--red)}
+.brule.trap>span:last-child{color:var(--dim)}
 .exbrief .tip.warn{color:var(--gold)}
 .exresume{position:relative;display:flex;align-items:center;gap:13px;width:100%;
   padding:15px 16px;border-radius:12px;background:var(--surface2);border:1px solid var(--line2);
@@ -2190,7 +2201,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 13:33 UTC';
+const BUILD='2026-09-22 13:41 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -4476,10 +4487,20 @@ function distractorConcepts(q){
   }
   return out;
 }
+// The traps recorded for a sector, phrased as mistakes rather than as answers — safe to show
+// before the question is answered, because they describe the family, not this one.
+function trapsFor(sec){
+  try{
+    const d=subjectData(sec);
+    return ((d&&d.traps)||[]).map(t=>t.trap).filter(Boolean).slice(0,3);
+  }catch(e){ return []; }
+}
 function buildBriefing(qi){
   const q=QS[qi];
   return { sector:SHORT[q.s]||SECTIONS[q.s], concepts:conceptsFor(q),
-           distractors:distractorConcepts(q), tips:hintsFor(q), multi:q.a.length>1 };
+           distractors:distractorConcepts(q), tips:hintsFor(q), multi:q.a.length>1,
+           // how to choose, not just what the words mean — the part the question tests
+           rules:exFallback(q.s).slice(0,3), traps:trapsFor(q.s) };
 }
 function startStudyMode(sec){
   ensureAudio();
@@ -4518,6 +4539,18 @@ function renderBriefing(){
   if(b.distractors.length){
     section('Also referenced — know the difference');
     b.distractors.forEach(k=>card(k,CODEX[k],'alt'));
+  }
+  if(b.rules.length){
+    section('How to choose in this area');
+    b.rules.forEach(r=>{ const d=document.createElement('div'); d.className='brule';
+      d.innerHTML='<span class="ba">→</span><span>'+mdInline(r)+'</span>';
+      box.appendChild(d); });
+  }
+  if(b.traps.length){
+    section('What people get wrong here');
+    b.traps.forEach(tp=>{ const d=document.createElement('div'); d.className='brule trap';
+      d.innerHTML='<span class="ba">✗</span><span>'+esc(tp)+'</span>';
+      box.appendChild(d); });
   }
   if(b.tips.length){
     section('How the exam phrases it');
@@ -6396,6 +6429,16 @@ function renderExamBrief(qi){
     card('scenario','No single service decides it. Read the requirement twice, then drop every option that adds operational overhead without meeting it.'); }
   if(b.distractors.length){ label('Also named — know the difference');
     b.distractors.slice(0,3).forEach(k=>card(k,CODEX[k],'alt')); }
+  // Definitions tell you what the services are; these tell you how to pick between them,
+  // which is what the question is actually testing. Neither names the answer.
+  if(b.rules.length){ label('How to choose in this area');
+    b.rules.forEach(r=>{ const d=document.createElement('div'); d.className='brule';
+      d.innerHTML='<span class="ba">→</span><span>'+mdInline(r)+'</span>';
+      body.appendChild(d); }); }
+  if(b.traps.length){ label('What people get wrong here');
+    b.traps.forEach(tp=>{ const d=document.createElement('div'); d.className='brule trap';
+      d.innerHTML='<span class="ba">✗</span><span>'+esc(tp)+'</span>';
+      body.appendChild(d); }); }
   if(b.tips.length){ label('How the exam phrases it');
     b.tips.forEach(t=>{ const d=document.createElement('div'); d.className='tip';
       d.textContent='💡 '+t; body.appendChild(d); }); }
@@ -9224,7 +9267,7 @@ if(TEST){
     voiceForPreset, voiceUsable,
     voiceTest, voiceProbe, renderVoice, voiceSay, voiceCheckAll, openVoice, VOICE_SAMPLE,
     get ttsVoices(){return ttsVoices;}, get ttsWarmed(){return ttsWarmed;},
-    simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing,
+    simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing, trapsFor,
     csvCell, csvRows, exportReview, exportLastExam, get lastExamCsv(){return lastExamCsv;},
     simLen, simMins,
     TIER, TIER_NAMES, tierOfQ, tierName, tierPool, tierCounts, skill, skillTier, skillLabel,

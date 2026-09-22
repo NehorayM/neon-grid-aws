@@ -618,6 +618,24 @@ python3 hebrew_blueprint.py       # ...and the Learn service cards with it
 explanations are meant to be Hebrew. Run them or the panel reverts silently — `QA_BANK()`
 will fail with the name of the first term that slipped back.
 
+## The briefing says how to choose, not just what things are
+
+"Before you answer" listed the services in play with their Hebrew definitions and a note on the
+exam's phrasing — all vocabulary, nothing about how to pick between them, which is the skill the
+question tests. Two sections added, both from material already in the page:
+
+- **How to choose in this area** — the sector's decision rules, from `exFallback(sec)`. Every
+  one of the 23 sectors has them.
+- **What people get wrong here** — the traps in `#subjectdata`, already phrased as mistakes.
+  18 of 23 sectors have them.
+
+Neither names the correct option: they describe the family of questions, which is what makes
+them safe in a panel shown *before* answering. Measured over the ten briefed papers, the
+briefing is now median 1,286 characters, minimum 728 (a sector with no recorded traps), maximum
+1,798 — the assertion floor is set from that measurement rather than guessed.
+
+Both also go into the briefed-drill panel, which shares `buildBriefing()`.
+
 ## Every option says why it stands or falls
 
 The panel used to explain the right answer by naming the services in it, and the wrong ones

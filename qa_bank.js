@@ -1637,6 +1637,21 @@ async function briefChecks(){
     ok($('exBrief').open,'exam '+n+': it starts open');
     ok(/Before you answer/.test($('exBriefTitle').textContent),'exam '+n+': it is labelled');
     ok($('exBriefBody').children.length>0,'exam '+n+': the briefing has content');
+    // Definitions say what the services are; these say how to pick between them, which is
+    // what the question is testing. Neither names the answer, so both are safe before it.
+    const bl=[...$('exBriefBody').querySelectorAll('.lbl')].map(e=>e.textContent);
+    ok(bl.some(x=>/How to choose/.test(x)),'exam '+n+': it says how to choose in this area');
+    const rules=[...$('exBriefBody').querySelectorAll('.brule:not(.trap)')];
+    ok(rules.length>0,'exam '+n+': with decision rules under it');
+    rules.forEach((r,k)=>{
+      const sp=r.querySelector('span:last-child');
+      eq(getComputedStyle(sp).direction,'ltr','rule '+k+' reads left to right beside the Hebrew');
+      ok(sp.textContent.trim().length>15,'rule '+k+' says something');
+    });
+    // Measured across the ten briefed papers: median 1,286 characters, min 728 where the
+    // sector has no recorded traps, max 1,798. Every one has its decision rules.
+    ok($('exBriefBody').innerText.length>600,
+       'exam '+n+': the briefing is substantial ('+$('exBriefBody').innerText.length+' chars)');
     const sec=t.SHORT[t.QS[t.sim.qs[0]].s];
     ok($('exBriefTitle').textContent.indexOf(sec)>0,'exam '+n+': it names the sector');
     // it follows the walk
