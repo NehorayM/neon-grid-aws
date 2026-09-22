@@ -11,6 +11,8 @@
  button{width:100%;padding:15px;margin:8px 0;font-size:16px;font-weight:600;
         border-radius:11px;border:1px solid #2b3642;background:#18202a;color:#dfe5ec}
  button.go{background:#3f7fd0;border-color:#3f7fd0;color:#fff}
+ .applink{display:block;padding:16px;margin:10px 0 2px;border-radius:11px;text-align:center;
+   background:#2f8f5b;color:#fff;font-size:16px;font-weight:700;text-decoration:none}
  #out{white-space:pre-wrap;font:12.5px/1.6 ui-monospace,Menlo,Consolas,monospace;
       background:#121821;border:1px solid #232d38;border-radius:11px;padding:12px;margin-top:12px}
  .n{color:#79d18a}.b{color:#e2795f}
@@ -19,6 +21,11 @@
 <p>Tap <b>Run the probe</b>, then leave the phone alone for about a minute with the
 volume up. It speaks several short things and times how long each one takes to
 actually start. Then copy the result out.</p>
+<a class="applink" href="./index.html?ttsdebug=1">Open the app and test Read &rarr;</a>
+<p style="margin:6px 0 14px">The probe below tests the browser's speech engine on its own.
+The link above opens the real app with its timing readout switched on &mdash; press
+<b>&#128266; Read</b> inside any exam and it shows how long the sound took to start.
+<b>That is the number that matters now.</b></p>
 <button class="go" id="run">Run the probe</button>
 <button id="copy">Copy the result</button>
 <div id="out">not run yet</div>
