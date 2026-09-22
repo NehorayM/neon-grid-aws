@@ -541,6 +541,97 @@ function fmtMs(ms){
              : (m+':'+String(ss).padStart(2,'0'));
 }
 
+// ---------- two six-minute breaks per paper ----------
+async function breakChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  t.simClearSave(); t.startPaper(1); await sleep(30);
+  eq(t.BREAK_MAX,2,'a paper allows two breaks');
+  eq(t.BREAK_SECS,360,'of six minutes each');
+  eq(t.brkLeft(),2,'both are in hand at the start');
+  ok(!t.brkOn(),'and none is running');
+
+  // leaving asks rather than just going
+  $('navHome').click(); await sleep(20);
+  ok(!$('brkAsk').classList.contains('hidden'),'leaving a running paper asks first');
+  eq(t.route,'quizScreen','and does not leave yet');
+  eq($('brkAskLen').textContent,'6:00','the sheet states the length');
+  eq($('brkAskLeft').textContent,'2','and how many are left');
+  ok(document.body.classList.contains('asking'),'the nav steps aside while it is open');
+  $('brkAskNo').click(); await sleep(20);
+  eq(t.route,'quizScreen','declining keeps you on the question');
+  eq(t.brkLeft(),2,'and costs nothing');
+  ok(!document.body.classList.contains('asking'),'the nav comes back');
+
+  // taking one
+  const qBefore=t.simQLeft, totBefore=t.simTotalLeft();
+  const wallBefore=Math.round(t.simTimeLeft()/1000);
+  $('navHome').click(); await sleep(20);
+  $('brkAskGo').click(); await sleep(40);
+  ok(t.brkOn(),'confirming starts the break');
+  eq(t.brkLeft(),1,'and spends one of the two');
+  eq(t.route,'homeScreen','and lets you go where you were heading');
+  ok(!$('brkBar').classList.contains('hidden'),'a banner counts it down');
+  eq($('brkClock').textContent,'6:00','from six minutes');
+  ok(t.brkRemain()>350&&t.brkRemain()<=360,'with the full six on the clock');
+
+  // nothing is spent while it runs
+  t.simQSync(); await sleep(20);
+  eq(t.simQLeft,qBefore,'the question clock is frozen');
+  eq(t.simTotalLeft(),totBefore,'and so is the paper total');
+  t.simCheckTime();
+  ok(!!t.sim,'a paused paper cannot time out from under you');
+
+  // you can move around freely during it
+  $('navPlay').click(); await sleep(30);
+  eq(t.route,'stuPickScreen','a break lets you go wherever');
+  ok(t.brkOn(),'without ending it');
+
+  // and the clocks are paid back in full when it ends
+  t.brkEnd(true); await sleep(40);
+  ok(!t.brkOn(),'the break is over');
+  eq(t.route,'quizScreen','and it hands you back to the question');
+  const wallAfter=Math.round(t.simTimeLeft()/1000);
+  ok(Math.abs((wallAfter-wallBefore)-360)<5,
+     'the paper budget is paid back the full six minutes ('+(wallAfter-wallBefore)+'s)');
+
+  // the second one behaves the same
+  $('navHome').click(); await sleep(20);
+  $('brkAskGo').click(); await sleep(40);
+  eq(t.brkLeft(),0,'the second spends the last one');
+  t.brkEnd(true); await sleep(40);
+
+  // and then leaving is refused
+  eq(t.route,'quizScreen','back on the paper');
+  $('navHome').click(); await sleep(30);
+  eq(t.route,'quizScreen','with none left, Home is refused');
+  ok($('brkAsk').classList.contains('hidden'),'and it does not even ask');
+  $('navPlay').click(); await sleep(30);
+  eq(t.route,'quizScreen','Study too');
+  $('navShop').click(); await sleep(30);
+  eq(t.route,'quizScreen','and the Shop');
+  const q=t.simQLeft; t.simQTick(5); await sleep(10);
+  eq(t.simQLeft,q-5,'and the clock keeps running, which is the point');
+
+  // the paper's own screens are not "leaving"
+  t.simReview(); await sleep(20);
+  eq(t.route,'simRevScreen','the review screen is still inside the paper');
+  t.simJump(0); await sleep(20);
+  eq(t.route,'quizScreen','and so is coming back from it');
+
+  // a break belongs to the run, so it survives walking away and resuming
+  t.simAbandon(); await sleep(30);
+  const sv=t.simSaved();
+  eq(sv.brkUsed,2,'the save remembers both were used');
+  t.simResume(); await sleep(40);
+  eq(t.brkLeft(),0,'so resuming does not hand them back');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // a fresh paper gets its own two
+  t.startPaper(2); await sleep(30);
+  eq(t.brkLeft(),2,'a new paper starts with two again');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+}
+
 // ---------- resuming from the paper's own row ----------
 async function paperRowChecks(){
   const t=T(), $=id=>document.getElementById(id);
@@ -1676,7 +1767,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -293,6 +293,32 @@ fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel
 pot twice. Anything touching `supabase_*.sql` should run it first.
 
+## Two six-minute breaks per paper
+
+Leaving the question screen mid-paper used to keep both clocks running, so a glance at Study
+cost exam time. Now it is a decision: `BREAK_MAX=2` breaks of `BREAK_SECS=360`, and the paper
+is frozen for the whole of one.
+
+`go()` is the interception point — it already wrapped the router, and it now refuses to leave a
+running paper except through a break. `IN_PAPER` lists the screens that are still part of it
+(`quizScreen`, `simRevScreen`, `simDoneScreen`), so moving between them is not leaving.
+
+- **With a break in hand:** a sheet opens saying what it costs and how many are left. It is the
+  only real yes/no sheet in the app — the arm-then-confirm buttons used everywhere else are too
+  easy to trip for something that spends one of two breaks and freezes a running exam.
+- **During a break:** both clocks stop. Because they are deadlines, the break is paid for by
+  pushing `sim.endAt` and `sim.qEndAt` out by the full 360s when it ends, so nothing is spent
+  while you are away. `simCheckTime()` also refuses to expire a paused paper.
+- **Six minutes, not five, not seven.** Coming back early is not a way to bank one; the break
+  runs its length and then calls `simLoad()` to hand you back to the question you were on.
+- **With both spent:** leaving is refused and the clock keeps running. That is the point of
+  having exactly two.
+
+`brkUsed` and `brkUntil` live on the run and go into `P.simSave`, so walking away and resuming
+does not hand the breaks back. `body.asking` hides the nav while the sheet is open — the sheet
+is taller than a padding-bottom can allow for, and nothing under a modal should be competing
+for the same taps.
+
 ## The clock is a deadline, not a count of ticks
 
 Reported as frozen — neither the question countdown nor the paper total moving — while it

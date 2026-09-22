@@ -360,6 +360,28 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .owned{flex:none;font-size:11.5px;font-weight:650;color:var(--lime)}
 
 /* study card + daily + exam */
+#brkAsk{position:absolute;inset:0;z-index:72;display:flex;flex-direction:column;
+  justify-content:flex-end;background:rgba(6,9,13,.72)}
+#brkAsk.hidden{display:none}
+/* The nav sits at the bottom on its own layer and the sheet is taller than the padding trick
+   allows for, so the nav simply goes away while a decision is on screen. Nothing under a modal
+   should be competing for the same taps anyway. */
+body.asking #nav{opacity:0;pointer-events:none}
+.brkfacts{display:flex;gap:10px;margin-top:12px}
+.brkfact{flex:1;text-align:center;padding:12px 8px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line)}
+.brkfact b{display:block;font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan)}
+.brkfact span{display:block;font-size:10.5px;color:var(--dim);margin-top:3px;letter-spacing:.3px}
+#brkBar{position:fixed;left:10px;right:10px;bottom:74px;z-index:60;display:flex;align-items:center;
+  gap:10px;padding:11px 14px;border-radius:13px;
+  background:color-mix(in srgb, var(--cyan) 14%, var(--bg2));
+  border:1px solid color-mix(in srgb, var(--cyan) 45%, var(--line));
+  box-shadow:0 8px 26px rgba(0,0,0,.42)}
+#brkBar.hidden{display:none}
+#brkBar .bem{font-size:17px;flex:none}
+#brkBar .btxt{flex:1;min-width:0;font-size:12.5px;color:var(--txt)}
+#brkBar .bclock{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--cyan);
+  font-variant-numeric:tabular-nums}
 #studyModal{position:absolute;inset:0;z-index:70;display:flex;flex-direction:column;justify-content:flex-end;
   background:color-mix(in srgb, var(--bg) 88%, transparent)}
 #studyModal.hidden{display:none}
@@ -2049,6 +2071,26 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
   </div>
 
   <!-- STUDY CARD -->
+  <!-- exam break -->
+  <div id="brkAsk" class="hidden">
+    <div class="sheet">
+      <h3>☕ Take a break?</h3>
+      <p class="sub" id="brkAskSub"></p>
+      <div class="brkfacts">
+        <div class="brkfact"><b id="brkAskLen">6:00</b><span>each break</span></div>
+        <div class="brkfact"><b id="brkAskLeft">2</b><span>left on this paper</span></div>
+      </div>
+      <p class="sub" id="brkAskNote" style="margin-top:10px"></p>
+      <button class="btn wide" id="brkAskGo" style="margin-top:12px">☕ Start the break</button>
+      <button class="btn ghost sm" id="brkAskNo" style="width:100%;margin-top:8px">Stay on the question</button>
+    </div>
+  </div>
+  <div id="brkBar" class="hidden">
+    <span class="bem">☕</span>
+    <span class="btxt">Break — the paper is paused</span>
+    <span class="bclock" id="brkClock">6:00</span>
+  </div>
+
   <div id="studyModal" class="hidden">
     <div class="sheet">
       <h3>📖 Study Card</h3>
@@ -5023,7 +5065,8 @@ function clockTick(){
   if(typeof renderTimer==='function') renderTimer();
   // If an exam is running with no question interval behind it, the display would sit frozen
   // with nothing to show for it. This runs every second anyway, so it can put it back.
-  if(typeof sim!=='undefined'&&sim&&sim.running&&!TEST){
+  if(typeof brkTick==='function') brkTick();
+  if(typeof sim!=='undefined'&&sim&&sim.running&&!brkOn()&&!TEST){
     if(!simQIv&&simQLeft>0&&route==='quizScreen') simQStart();
     else if(typeof simQSync==='function') simQSync();
   }
@@ -5087,6 +5130,81 @@ function renderClock(){
 function toggleClockView(){ showLifetime=!showLifetime; renderClock(); }
 function sessionTime(){ return sessMs; }
 
+
+
+// ---------- two six-minute breaks per paper ----------
+// Leaving the question screen used to cost exam time, so a glance at Study was expensive.
+// A paper now allows exactly two breaks of exactly six minutes, and both clocks stop for one.
+const BREAK_MAX=2, BREAK_SECS=360;
+const brkLeft=()=>sim?Math.max(0,BREAK_MAX-(sim.brkUsed||0)):0;
+const brkOn=()=>!!(sim&&sim.brkUntil&&sim.brkUntil>Date.now());
+const brkRemain=()=>brkOn()?Math.max(0,Math.ceil((sim.brkUntil-Date.now())/1000)):0;
+
+function brkStart(){
+  if(!sim||!sim.running||brkOn()||!brkLeft()) return false;
+  sim.brkUsed=(sim.brkUsed||0)+1;
+  sim.brkUntil=Date.now()+BREAK_SECS*1000;
+  simQStop();                       // the question's own countdown stops dead
+  ttsStop();
+  simPersist();
+  renderBrk();
+  toast('\u2615 Break started \u2014 6 minutes, the paper is paused');
+  return true;
+}
+// Both clocks are deadlines, so a break is paid for by pushing them out by its full length.
+function brkEnd(quiet){
+  if(!sim||!sim.brkUntil) return;
+  const over=BREAK_SECS*1000;
+  sim.brkUntil=0;
+  if(sim.running){
+    if(sim.endAt) sim.endAt+=over;                 // the paper's budget
+    if(sim.qEndAt) sim.qEndAt+=over;               // and this question's
+  }
+  simPersist();
+  renderBrk();
+  if(!quiet) toast('\u23f0 Break over \u2014 back to the paper');
+  if(sim&&sim.running){ simLoad(); }
+}
+function brkTick(){
+  if(!sim||!sim.brkUntil) return;
+  if(brkRemain()<=0){ brkEnd(false); return; }
+  renderBrk();
+}
+function renderBrk(){
+  const bar=$('brkBar'); if(!bar) return;
+  if(!brkOn()){ bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  $('brkClock').textContent=fmtClock(brkRemain()*1000);
+}
+
+// Asking. This is the one place in the app with a real yes/no sheet, because it costs one of
+// only two breaks and freezes a running exam — an arm-then-confirm button is too easy to trip.
+let brkPending=null;
+function brkAsk(go2){
+  if(!sim||!sim.running) return false;
+  if(brkOn()) return false;
+  if(!brkLeft()){
+    toast('\u23f1 No breaks left \u2014 the clock keeps running');
+    return false;
+  }
+  brkPending=go2||null;
+  $('brkAskSub').textContent='Leaving the paper pauses it. This is one of your '+
+    BREAK_MAX+' breaks, and it runs for the full six minutes \u2014 the paper waits and comes '+
+    'back to this question when it ends.';
+  $('brkAskLen').textContent=fmtClock(BREAK_SECS*1000);
+  $('brkAskLeft').textContent=brkLeft();
+  $('brkAskNote').textContent=brkLeft()===1
+    ? 'This is your last one. After it, leaving the paper is not offered and the clock keeps running.'
+    : 'You have '+plural(brkLeft(),'break')+' on this paper.';
+  $('brkAsk').classList.remove('hidden');
+  if(document.body) document.body.classList.add('asking');
+  return true;
+}
+function brkAskClose(){
+  $('brkAsk').classList.add('hidden');
+  if(document.body) document.body.classList.remove('asking');
+  brkPending=null;
+}
 
 // ================= READING VOICE =================
 // Eight characters rather than eight engine voices. Which engine voices exist differs wildly
@@ -5347,6 +5465,7 @@ function startSim(){
 }
 function simTimeLeft(){ return sim?Math.max(0,sim.endAt-Date.now()):0; }
 function simCheckTime(){
+  if(brkOn()) return;                       // a paused paper cannot expire
   if(sim&&sim.running&&simTimeLeft()<=0){ toast('⏳ Time expired — submitting'); simSubmit(true); }
 }
 // ---------- ninety seconds a question ----------
@@ -5373,6 +5492,7 @@ function simQStart(){
 // fire shows up a moment late rather than costing a second that never comes back.
 function simQSync(){
   if(!sim||!sim.running){ simQStop(); return; }
+  if(brkOn()) return;                                           // the paper is paused
   if(!sim.qEndAt) return;
   if(route!=='quizScreen') return;                              // not on the review screen
   if(typeof document!=='undefined'&&document.hidden) return;    // nor in the background
@@ -5713,6 +5833,8 @@ function simAbandon(){
   simPersist();                 // keep it: the Practice Exams screen offers it back
   simQStop(); ttsStop(); hideExplain();
   { const stb=$('simTotal'); if(stb) stb.classList.add('hidden'); }
+  { const bb=$('brkBar'); if(bb) bb.classList.add('hidden'); }
+  brkAskClose();
   sim=null; renderClock();
   $('simBar').classList.remove('show');
   $('chargeBar').style.display='';
@@ -5788,7 +5910,8 @@ function renderBankStats(){
 function simPersist(){
   if(!sim||!sim.running) return;
   P.simSave={paper:sim.paper||0, qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
-             qt:sim.qt||{}, dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
+             qt:sim.qt||{}, brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
+             dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
              claimAt:sim.claimAt||0,
              left:Math.max(0,sim.endAt-Date.now()), mins:sim.mins||SIM_MIN, at:Date.now()};
   saveProfile();
@@ -5805,7 +5928,8 @@ function simResume(){
   ensureAudio(); exitStudyMode();
   reviewMode=false; markMode=false; mock=null;
   sim={qs:sv.qs, i:Math.min(sv.i||0,sv.qs.length-1), ans:sv.ans||{}, flag:sv.flag||{},
-       rev:sv.rev||{}, qt:sv.qt||{}, running:true, paper:sv.paper||0, mins:sv.mins,
+       rev:sv.rev||{}, qt:sv.qt||{}, brkUsed:sv.brkUsed||0, brkUntil:sv.brkUntil||0,
+       running:true, paper:sv.paper||0, mins:sv.mins,
        dev:sv.dev||DEVICE_ID, devKind:sv.devKind||DEVICE_KIND, claimAt:sv.claimAt||0,
        startAt:Date.now()-((sv.mins*60000)-sv.left), endAt:Date.now()+sv.left};
   renderClock(); simLoad(); simClaim();
@@ -6769,8 +6893,24 @@ $('navExam').onclick=()=>{ if(L) learnLeave(true);
 $('navShop').onclick=()=>{ if(L) toast('Subject paused — tap Home to leave it');
   renderShop(); go('shopScreen'); syncNav(); };
 $('navBadges').onclick=()=>{ renderBadges(); go('achScreen'); syncNav(); };
+$('brkAskGo').onclick=()=>{
+  const after=brkPending;
+  brkAskClose();
+  if(brkStart()&&after) after();
+};
+$('brkAskNo').onclick=()=>brkAskClose();
+$('brkAsk').onclick=e=>{ if(e.target&&e.target.id==='brkAsk') brkAskClose(); };
 const _go=go;
+// Screens that are still part of the paper — moving between them is not leaving it.
+const IN_PAPER={quizScreen:1,simRevScreen:1,simDoneScreen:1};
 go=function(id){
+  // Walking out of a running paper is either a break or refused. A break in progress lets you
+  // move freely, which is the whole point of it.
+  if(typeof sim!=='undefined'&&sim&&sim.running&&!IN_PAPER[id]&&!brkOn()
+     &&route==='quizScreen'&&typeof brkAsk==='function'){
+    if(brkAsk(()=>{ _go(id); syncNav(); })) return;
+    if(!brkLeft()) return;                   // no breaks left: the paper keeps you
+  }
   if(id!=='quizScreen') stopQTimer();        // leaving the quiz freezes the countdown
   _go(id);
   if(id==='quizScreen') resumeQTimer();      // coming back continues from where it stopped
@@ -8794,6 +8934,8 @@ if(TEST){
     startSim, simLoad, simPick, simGo, simJump, simFlagToggle, simSubmit, simReview,
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
+    BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
+    brkAskClose, renderBrk, get brkPending(){return brkPending;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,
     clockEnsure, get clockIv(){return clockIv;},
     get simQIv(){return simQIv;},
