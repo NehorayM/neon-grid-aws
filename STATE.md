@@ -282,6 +282,49 @@ fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel
 pot twice. Anything touching `supabase_*.sql` should run it first.
 
+## Two devices, one account
+
+The reported symptom was a desktop on Exam 1 and a phone on Exam 2. Three causes, all fixed:
+
+1. **It only ever pushed.** `pullCloud()` ran at boot, after sign-in and on the Sync now
+   button, and nowhere else. It now also pulls on `visibilitychange` and `focus`, throttled to
+   one round trip per 5s.
+2. **The merge always preferred this device.** `mergeProfiles(remote, local)` began
+   `Object.assign({}, a, b)` with `b` = local, so every field outside `MAX_KEYS` and the
+   hand-merged collections took the local value — including `simSave`, which is why the two
+   could never converge. `P.at` is now stamped on every save and the later side wins the plain
+   fields. `P.papers` merges too; a paper passed on the phone used to vanish on the desktop.
+3. **`updated_at` was written but never compared.** Still is not — `P.at` inside the blob is
+   what the merge uses, so it works without a schema change.
+
+**An exam is owned by one device at a time.** `DEVICE_ID` lives in its own localStorage key
+(`academy_device`) and deliberately **not** in `P`, because `P` is merged across devices and an
+id stored there would be overwritten by the other device's copy. Every `simSave` carries
+`dev`, `devKind` and `claimAt`.
+
+The subtle part: `simSaveNewer` compares **`claimAt` first, `at` second**. `at` moves on every
+ordinary save, so comparing it alone let a desktop that was merely still running win a paper
+straight back off a phone that had just taken it over, and the two ping-ponged. `claimAt` is
+stamped only by `simClaim()` — starting, resuming or taking over a paper — never by a routine
+save. A save with no `claimAt` falls back to `at`, so rows written before this still merge.
+
+`simOwnerCheck()` runs after every merge: if we are mid-exam and the save is no longer ours,
+it stops the clock, drops `sim` and says so. Taking over uses the app's arm-then-confirm idiom
+(`armed()`), as does starting a paper that would discard one open elsewhere.
+
+While an exam is actually running, `simWatchOwner()` re-checks every 30s. Focus is the right
+trigger in general but useless for the reported case — both devices awake, neither losing
+focus. It is inert under `TEST`.
+
+**Deliberately not built:** live mirroring of an exam between devices. `sim.qt` (the per-question
+90s) and `left` (the paper deadline) are wall-clock state measured on one device; two devices
+ticking and pushing them corrupt each other, and mirroring the question index drags a reader
+out of the question they are on.
+
+**Not verified end to end.** Everything above is tested against a simulated second device — the
+real Supabase round trip with two signed-in browsers has not been exercised, because signing in
+is the user's to do.
+
 ## Supabase
 
 Project `rlbgbxgtaqvxwvskpblg`. The publishable key is in the `SUPA` block in `index.html` —

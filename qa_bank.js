@@ -528,6 +528,113 @@ async function resumeChecks(){
   t.simAbandon(); await sleep(20);
 }
 
+// ---------- two devices, one account ----------
+async function deviceChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  t.simClearSave();
+  ok(!!t.DEVICE_ID,'this browser has a device id');
+  eq(localStorage.getItem('academy_device'),t.DEVICE_ID,'and it is kept outside the profile');
+  ok(['phone','tablet','desktop'].indexOf(t.DEVICE_KIND)>=0,'and a kind: '+t.DEVICE_KIND);
+
+  // ---- the merge stops preferring whatever this device happens to hold
+  const R={at:2000, xp:500, coins:10, diff:'hard', theme:'mono',
+           papers:{3:{best:88,tries:2,last:'88%'}}};
+  const L={at:1000, xp:300, coins:90, diff:'easy', theme:'neon',
+           papers:{3:{best:60,tries:1,last:'60%'},7:{best:71,tries:1,last:'71%'}}};
+  const m=t.mergeProfiles(R,L);
+  eq(m.diff,'hard','the newer device wins the plain fields');
+  eq(m.theme,'mono','all of them, not just some');
+  eq(m.xp,500,'counters still take the higher of the two');
+  eq(m.coins,90,'in whichever direction that falls');
+  eq(m.at,2000,'and the merge carries the later stamp');
+  eq(m.papers[3].best,88,'a paper scored on both keeps the better result');
+  ok(!!m.papers[7],'and a paper only one device has is not dropped');
+  const m2=t.mergeProfiles(Object.assign({},R,{at:1000}),Object.assign({},L,{at:2000}));
+  eq(m2.diff,'easy','with the stamps the other way round, we win');
+  const m3=t.mergeProfiles({xp:5},{xp:9});
+  eq(m3.xp,9,'a row saved before any of this still merges');
+
+  // ---- the exam belongs to whoever touched it last, not to us
+  const mine  ={paper:1,i:3,qs:[1,2],ans:{},flag:{},left:1,at:5000,dev:'me',devKind:'desktop'};
+  const theirs={paper:2,i:9,qs:[1,2],ans:{},flag:{},left:1,at:9000,dev:'them',devKind:'phone'};
+  eq(t.simSaveNewer(mine,theirs).paper,2,'the newer exam save wins');
+  eq(t.simSaveNewer(theirs,mine).paper,2,'whichever order they arrive in');
+  eq(t.simSaveNewer(null,mine).paper,1,'one side missing is not a conflict');
+  eq(t.mergeProfiles({at:1,simSave:theirs},{at:2,simSave:mine}).simSave.paper,2,
+     'the newer EXAM wins even when we are the newer profile — this was the bug');
+
+  // ---- a claim outranks an ordinary save, or the two devices ping-pong
+  const claimed={paper:2,i:9,qs:[1,2],ans:{},flag:{},left:1,at:1000,claimAt:1000,
+                 dev:'phone',devKind:'phone'};
+  const running={paper:1,i:3,qs:[1,2],ans:{},flag:{},left:1,at:9999,claimAt:500,
+                 dev:'desk',devKind:'desktop'};   // newer save, older claim
+  eq(t.simSaveNewer(claimed,running).dev,'phone',
+     'a device merely still saving cannot win a paper back off one that claimed it');
+  eq(t.simSaveNewer(running,claimed).dev,'phone','in either argument order');
+  eq(t.simSaveNewer(claimed,Object.assign({},running,{claimAt:2000})).dev,'desk',
+     'but a deliberate takeover does win');
+  eq(t.simSaveNewer({dev:'a',at:1},{dev:'b',at:2}).dev,'b',
+     'a save written before claims existed still falls back to its timestamp');
+
+  // ---- being mid-exam when the other device picks it up
+  t.startPaper(1); await sleep(30);
+  ok(!!t.sim,'an exam is running here');
+  eq(t.P.simSave.dev,t.DEVICE_ID,'the save is stamped with this device');
+  eq(t.P.simSave.devKind,t.DEVICE_KIND,'and its kind');
+  const claimedAt=t.P.simSave.claimAt;
+  ok(claimedAt>0,'starting a paper claims it');
+  t.simGo(1); await sleep(20); t.simGo(1); await sleep(20);
+  eq(t.P.simSave.claimAt,claimedAt,'moving between questions does not restamp the claim');
+  ok(t.P.simSave.at>claimedAt,'though the ordinary timestamp does move');
+  ok(t.simOwns(t.P.simSave),'which we own');
+  ok(!t.simOwnerCheck(),'so nothing interrupts us');
+
+  t.P.simSave=Object.assign({},t.P.simSave,{paper:2,i:9,dev:'phone-abc',devKind:'phone',at:Date.now()+5000});
+  ok(!t.simOwns(t.P.simSave),'a save from another device is not ours');
+  ok(t.simOwnerCheck(),'and it stops this device');
+  await sleep(30);
+  eq(t.sim,null,'the exam here is over');
+  eq(t.route,'paperScreen','and it lands on the papers screen');
+
+  // ---- taking it back needs two taps
+  t.renderPapers(); await sleep(20);
+  const rb=$('exResume');
+  ok(!rb.classList.contains('hidden'),'the resume row offers the other device\'s exam');
+  ok(/on your phone/.test(rb.textContent),'and names where it is');
+  ok(/Take over/.test(rb.textContent),'and offers to take it over');
+  rb.click(); await sleep(20);
+  ok(/Take it over from your phone/.test(rb.textContent),'one tap only arms it');
+  eq(t.sim,null,'nothing has been taken over yet');
+  rb.click(); await sleep(40);
+  eq(t.route,'quizScreen','the second tap takes it');
+  eq(t.sim.paper,2,'on the paper the other device was on');
+  eq(t.sim.i,9,'at the question it had reached');
+  eq(t.P.simSave.dev,t.DEVICE_ID,'and the claim is now ours');
+
+  // ---- and starting a different paper will not silently bin it
+  t.simAbandon(); await sleep(30);
+  t.P.simSave=Object.assign({},t.P.simSave,{paper:5,dev:'phone-abc',devKind:'phone',at:Date.now()});
+  t.renderPapers(); await sleep(20);
+  const st=[...document.querySelectorAll('#paperScreen .paperrow button')][2];
+  st.click(); await sleep(20);
+  ok(/Discard the exam on your phone/.test(st.textContent),'starting another paper warns first');
+  eq(t.P.simSave.paper,5,'and has not touched the save yet');
+  st.click(); await sleep(40);
+  eq(t.sim.paper,3,'the second tap starts the new paper');
+  eq(t.P.simSave.dev,t.DEVICE_ID,'which this device now owns');
+
+  // ---- an unarmed warning lapses instead of sticking
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // ---- the tab pulls when it comes forward
+  ok(typeof t.syncOnFocus==='function','there is a focus sync');
+  ok(typeof t.simWatchOwner==='function','and an exam watches for a takeover');
+  t.simWatchOwner();       // a no-op under TEST, but it must not throw
+  ok(true,'the watcher is inert in the harness');
+  await t.syncOnFocus();          // signed out: must be a no-op, not a throw
+  ok(true,'and signed out it does nothing rather than failing');
+}
+
 // ---------- ninety seconds a question ----------
 async function qClockChecks(){
   const t=T(), $=id=>document.getElementById(id);
@@ -1057,7 +1164,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -248,6 +248,10 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   background:var(--bg);box-shadow:0 30px 0 0 var(--bg)}
 .qbar::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:24px;pointer-events:none;
   background:linear-gradient(180deg,transparent,var(--bg))}
+.elsewhere{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.4px;
+  color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:1px 5px;
+  margin-left:6px;white-space:nowrap;vertical-align:1px}
+.buy.wide{display:block;width:100%;text-align:center;white-space:normal;line-height:1.35}
 .fsbtn{font-family:var(--mono);font-size:12px;font-weight:600;padding:9px 11px;border-radius:9px;
   background:var(--surface);border:1px solid var(--line);color:var(--dim)}
 /* the compact pair that rides in the question header instead of the foot bar */
@@ -2009,6 +2013,30 @@ const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 const reduced=typeof window.matchMedia==='function'&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// ---------- which device this is ----------
+// Kept in its own localStorage key, never in P: the profile is merged across
+// devices, so an id stored in it would be overwritten by the other device's copy
+// and both would think they were the same machine.
+let DEVICE_ID=(()=>{
+  try{
+    let v=localStorage.getItem('academy_device');
+    if(!v){
+      v=(window.crypto&&window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : 'd'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+      localStorage.setItem('academy_device',v);
+    }
+    return v;
+  }catch(e){ return 'd-nostore'; }
+})();
+let DEVICE_KIND=(()=>{
+  const ua=(navigator&&navigator.userAgent)||'';
+  if(/iPad|Tablet/i.test(ua)||(/Android/i.test(ua)&&!/Mobile/i.test(ua))) return 'tablet';
+  if(/Mobi|iPhone|iPod|Android/i.test(ua)) return 'phone';
+  return 'desktop';
+})();
+const otherDevice=sv=>(sv&&sv.devKind)?('your '+sv.devKind):'your other device';
+
 // ---------- index questions by section ----------
 const bySec={};
 QS.forEach((q,i)=>{ (bySec[q.s]=bySec[q.s]||[]).push(i); });
@@ -2115,6 +2143,7 @@ async function loadProfile(){
 }
 let saveTimer=null;
 function saveProfile(){
+  P.at=Date.now();                // which side of a two-device merge is the newer one
   if(saveTimer) clearTimeout(saveTimer);
   saveTimer=setTimeout(async()=>{
     try{ await window.storage.set('academy_profile',JSON.stringify(P),false); }catch(e){}
@@ -5179,6 +5208,7 @@ function startPaper(n){
   saveProfile();
   renderClock();
   simLoad();
+  simClaim();
 }
 function paperRec(n){ return (P.papers||{})[n]||null; }
 
@@ -5227,7 +5257,8 @@ function renderBankStats(){
 function simPersist(){
   if(!sim||!sim.running) return;
   P.simSave={paper:sim.paper||0, qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
-             qt:sim.qt||{},
+             qt:sim.qt||{}, dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
+             claimAt:sim.claimAt||0,
              left:Math.max(0,sim.endAt-Date.now()), mins:sim.mins||SIM_MIN, at:Date.now()};
   saveProfile();
 }
@@ -5244,10 +5275,36 @@ function simResume(){
   reviewMode=false; markMode=false; mock=null;
   sim={qs:sv.qs, i:Math.min(sv.i||0,sv.qs.length-1), ans:sv.ans||{}, flag:sv.flag||{},
        rev:sv.rev||{}, qt:sv.qt||{}, running:true, paper:sv.paper||0, mins:sv.mins,
+       dev:sv.dev||DEVICE_ID, devKind:sv.devKind||DEVICE_KIND, claimAt:sv.claimAt||0,
        startAt:Date.now()-((sv.mins*60000)-sv.left), endAt:Date.now()+sv.left};
-  renderClock(); simLoad();
+  renderClock(); simLoad(); simClaim();
 }
 function simAnsweredIn(sv){ return Object.keys(sv.ans||{}).filter(k=>(sv.ans[k]||[]).length).length; }
+
+// ---------- one device owns the exam ----------
+// The merge has already handed simSave to whichever device wrote it last. So if we are
+// mid-exam and the save is no longer ours, the other device picked it up: stop here rather
+// than running a second copy of the same paper against a clock nobody agrees on.
+function simOwns(sv){ return !sv||!sv.dev||sv.dev===DEVICE_ID; }
+function simOwnerCheck(){
+  if(!sim||!sim.running) return false;
+  const sv=P.simSave;
+  if(simOwns(sv)) return false;
+  simQStop(); ttsStop(); hideExplain();
+  sim=null; renderClock(); syncNav();
+  toast('⏸ This exam was picked up on '+otherDevice(sv));
+  if(route==='quizScreen'||route==='simRevScreen'){ renderPapers(); go('paperScreen'); }
+  return true;
+}
+// Claiming it: stamp this device on the save and get it to the cloud now rather than
+// after the four-second debounce, so the other device finds out on its next look.
+function simClaim(){
+  if(!sim) return;
+  sim.dev=DEVICE_ID; sim.devKind=DEVICE_KIND; sim.claimAt=Date.now();
+  simPersist();
+  if(typeof simWatchOwner==='function') simWatchOwner();
+  if(typeof pushCloud==='function'&&typeof sb!=='undefined'&&sb&&sbUser) pushCloud();
+}
 
 // ---------- read the question aloud ----------
 const ttsOk=()=>typeof window!=='undefined'&&'speechSynthesis' in window;
@@ -5432,13 +5489,16 @@ function renderPapers(){
     'and nothing shared between papers.';
   const sv=simSaved(), rbtn=$('exResume');
   if(sv&&rbtn){
+    const mine=simOwns(sv);
     rbtn.classList.remove('hidden');
+    rbtn.dataset.armed='';
     rbtn.innerHTML='<span class="rem">⏸</span><span style="flex:1;min-width:0">'+
-      '<div class="rnm">Resume '+(sv.paper?'Exam '+sv.paper:'the mock exam')+'</div>'+
+      '<div class="rnm">Resume '+(sv.paper?'Exam '+sv.paper:'the mock exam')+
+        (mine?'':' <span class="elsewhere">on '+esc(otherDevice(sv))+'</span>')+'</div>'+
       '<div class="rds">Question '+((sv.i||0)+1)+' of '+sv.qs.length+' · '+
       simAnsweredIn(sv)+' answered · '+fmtClock(sv.left)+' left</div></span>'+
-      '<span class="buy">Resume</span>';
-    rbtn.onclick=simResume;
+      '<span class="buy">'+(mine?'Resume':'Take over')+'</span>';
+    rbtn.onclick=()=>simResumeHere(sv);
   } else if(rbtn) rbtn.classList.add('hidden');
   renderBankStats();
   $('paperStats').innerHTML=
@@ -5463,9 +5523,32 @@ function renderPapers(){
       (rec?'<div class="pscore" style="color:'+col+'">'+rec.best+'%</div>':'');
     const b=document.createElement('button');
     b.className='buy'; b.textContent=rec?'Retake':'Start';
-    b.onclick=()=>startPaper(n);
+    // startPaper clears the saved run, which would delete an exam still open elsewhere
+    b.onclick=()=>{
+      const open=simSaved();
+      if(open&&!simOwns(open)){
+        armed(b,'Discard the exam on '+otherDevice(open)+'?',()=>startPaper(n));
+        return;
+      }
+      startPaper(n);
+    };
     row.appendChild(b); L.appendChild(row);
   }
+}
+// Taking an exam off another device is not something to do by accident, so it arms first —
+// the same two-tap the Submit button uses when there are blanks left.
+function armed(btn,label,then){
+  if(btn.dataset.armed){ btn.dataset.armed=''; then(); return; }
+  const was=btn.innerHTML;
+  btn.dataset.armed='1'; btn.innerHTML='<span class="buy wide">'+esc(label)+'</span>';
+  setTimeout(()=>{ if(btn.dataset.armed){ btn.dataset.armed=''; btn.innerHTML=was; } },4000);
+}
+function simResumeHere(sv){
+  const rbtn=$('exResume');
+  if(simOwns(sv)){ simResume(); return; }
+  armed(rbtn,'Take it over from '+otherDevice(sv)+'?',()=>{
+    simResume(); simClaim();
+  });
 }
 function recordPaper(n,pct){
   P.papers=P.papers||{};
@@ -6263,9 +6346,39 @@ function loadSupabase(){
 // rather than letting whichever wrote last erase the other.
 const MAX_KEYS=['xp','coins','answered','correct','bestStreak','gamesPlayed','mocks','mocksPassed',
                 'bestMock','reviewCleared','studyOpened','skill','sims','simsPassed','bestSim'];
+// a is the cloud's copy, b is this device's. They are two devices, not an old and a
+// new version of one, so the plain fields go to whichever saved later rather than
+// always to us. Everything below is merged so that neither device loses anything.
+// claimAt is stamped only when a device deliberately takes a paper on — starting it,
+// resuming it, taking it over. `at` moves on every ordinary save, so comparing that
+// alone let a device that was merely still running win a paper back off the device
+// that had just claimed it, and the two ping-ponged.
+function simSaveNewer(x,y){
+  if(!x) return y||undefined;
+  if(!y) return x;
+  const cx=Number(x.claimAt||0), cy=Number(y.claimAt||0);
+  if(cx!==cy) return cy>cx?y:x;
+  return Number(y.at||0)>=Number(x.at||0)?y:x;
+}
 function mergeProfiles(a,b){
   a=a||{}; b=b||{};
-  const out=Object.assign({},a,b);
+  const aNewer=Number(a.at||0)>Number(b.at||0);
+  const out=aNewer?Object.assign({},b,a):Object.assign({},a,b);
+  out.at=Math.max(Number(a.at||0),Number(b.at||0));
+  // the exam in progress belongs to whichever device touched it last, not to us
+  const sv=simSaveNewer(a.simSave,b.simSave);
+  if(sv) out.simSave=sv; else delete out.simSave;
+  // a paper passed on the phone used to disappear on the desktop
+  out.papers={};
+  const ps=new Set([...Object.keys(a.papers||{}),...Object.keys(b.papers||{})]);
+  ps.forEach(k=>{
+    const x=(a.papers||{})[k], y=(b.papers||{})[k];
+    if(!x||!y){ out.papers[k]=x||y; return; }
+    out.papers[k]={best:Math.max(x.best||0,y.best||0),
+                   tries:Math.max(x.tries||0,y.tries||0),
+                   last:(aNewer?x.last:y.last)||x.last||y.last,
+                   d:(aNewer?x.d:y.d)||x.d||y.d};
+  });
   MAX_KEYS.forEach(k=>{
     const x=Number(a[k]||0), y=Number(b[k]||0);
     if(!isNaN(x)||!isNaN(y)) out[k]=Math.max(x||0,y||0);
@@ -6357,12 +6470,46 @@ async function syncNow(silent){
       Object.assign(P,merged);
       try{ await window.storage.set('academy_profile',JSON.stringify(P),false); }catch(e){}
       refreshTop(); renderHome(); renderDaily&&renderDaily(); renderInv&&renderInv();
+      // did the merge just hand our exam to the other device?
+      if(simOwnerCheck()) { syncing=false; renderAuth(); return; }
+      if(route==='paperScreen') renderPapers();
     }
     const ok=await pushCloud();
     if(!silent) authMsg(ok?'Progress synced.':'Could not sync — kept locally.',ok?'ok':'bad');
   }catch(e){ if(!silent) authMsg(humanError(e),'bad'); }
   syncing=false; renderAuth();
 }
+// A tab left open all day used to never look at the cloud again. Now every time it comes
+// forward it pulls first, which is when the other device's work actually matters.
+let lastPull=0, pulling=false;
+async function syncOnFocus(){
+  if(!sb||!sbUser||pulling||syncing) return;
+  if(Date.now()-lastPull<5000) return;       // rapid tab flips are not five round trips
+  pulling=true;
+  try{ await syncNow(true); }
+  catch(e){}
+  finally{ pulling=false; lastPull=Date.now(); }
+}
+if(typeof document!=='undefined'){
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) syncOnFocus(); });
+}
+if(typeof window!=='undefined') window.addEventListener('focus',syncOnFocus);
+
+// Focus is the right trigger for the app in general, but not for the case this was
+// reported for: two devices awake at once, neither of which ever loses focus. While an
+// exam is genuinely running, check every 30 seconds whether it is still ours.
+let ownIv=null;
+function simWatchOwner(){
+  if(ownIv){ clearInterval(ownIv); ownIv=null; }
+  if(TEST) return;                     // the tests call simOwnerCheck() directly
+  ownIv=setInterval(()=>{
+    if(typeof sim==='undefined'||!sim||!sim.running){ clearInterval(ownIv); ownIv=null; return; }
+    if(!sb||!sbUser||syncing||pulling) return;
+    if(typeof document!=='undefined'&&document.hidden) return;
+    syncOnFocus();
+  },30000);
+}
+
 // every local save schedules a debounced push, so normal play keeps the cloud current
 function cloudTouch(){
   if(!sb||!sbUser) return;
@@ -7919,6 +8066,11 @@ if(TEST){
     duelFind, duelRefresh, duelLockIn, duelQuit, paintDuel, duelShow,
     get duelId(){return duelId;}, get duelPicked(){return duelPicked;},
     get casChips(){return casChips;}, get bjState(){return bjState;},
+    get DEVICE_ID(){return DEVICE_ID;}, set DEVICE_ID(v){DEVICE_ID=v;},
+    get DEVICE_KIND(){return DEVICE_KIND;}, set DEVICE_KIND(v){DEVICE_KIND=v;},
+    otherDevice, simOwns, simOwnerCheck, simClaim, simSaveNewer, simResumeHere,
+    syncOnFocus, armed,
+    simWatchOwner,
     SUPA, CLOUD_ON, mergeProfiles, renderAuth, authCreds, syncNow, cloudTouch, loadSupabase,
     humanError, nameError, saveUsername, get myName(){return myName;},
     get sbUser(){return sbUser;}, get syncing(){return syncing;},
