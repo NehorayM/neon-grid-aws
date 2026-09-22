@@ -269,6 +269,17 @@ practice controls come back afterwards. `QA_UI` reports nothing at 375px and at 
 subjects at the last full run, all passing. It includes a deliberate failure run to prove the
 gate holds, and a partial run to prove scoring is not always 100%.
 
+`QA_INTEG()` is the cross-feature pass. The blocks above each test one change on its own;
+this one walks where the last four meet — running out of time silences the voice, a takeover
+silences it too and clears the Hebrew panel behind it, taking a paper back restores the
+seconds that question had left rather than a fresh 90, and a paper that was flagged, timed
+out and taken over still exports. 37 assertions.
+
+**Syntax-check a harness file before loading it.** A duplicate `const` inside one function
+stopped the whole of `qa_bank.js` defining anything, and a `<script src>` fails silently — it
+looked exactly like the new suite not existing. Fetch the text and `new Function(txt)` first;
+it names the line.
+
 `QA_BANK` stubs `window.speechSynthesis` to prove the read-aloud wiring — that the reading is
 the position and the stem and nothing else, that the button toggles Read/Stop and resets on
 `onend`, that moving on cancels it and never starts one, that practice never speaks. It cannot

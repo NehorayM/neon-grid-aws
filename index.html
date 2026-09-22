@@ -251,7 +251,11 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
 .elsewhere{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.4px;
   color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:1px 5px;
   margin-left:6px;white-space:nowrap;vertical-align:1px}
-.buy.wide{display:block;width:100%;text-align:center;white-space:normal;line-height:1.35}
+.buy.wide{flex:1 1 100%;width:auto;min-width:0;text-align:center;white-space:normal;
+  line-height:1.35;padding:10px 12px}
+/* an armed warning takes a line of its own rather than being squeezed next to the title */
+.item:has(.buy.wide){flex-wrap:wrap}
+.paperrow:has(.buy.wide){overflow:visible}
 .fsbtn{font-family:var(--mono);font-size:12px;font-weight:600;padding:9px 11px;border-radius:9px;
   background:var(--surface);border:1px solid var(--line);color:var(--dim)}
 /* the compact pair that rides in the question header instead of the foot bar */

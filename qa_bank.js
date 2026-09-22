@@ -619,6 +619,12 @@ async function deviceChecks(){
   st.click(); await sleep(20);
   ok(/Discard the exam on your phone/.test(st.textContent),'starting another paper warns first');
   eq(t.P.simSave.paper,5,'and has not touched the save yet');
+  // the armed label is long: it used to run off the right edge of a 320px phone, and
+  // .paperrow's overflow:hidden swallowed the end of it instead of showing anything
+  const sr=st.getBoundingClientRect(), vw=document.documentElement.clientWidth;
+  ok(sr.right<=vw+1,'the warning stays inside the viewport ('+Math.round(sr.right)+' of '+vw+')');
+  ok(st.scrollWidth<=st.clientWidth+1,'and none of it is clipped');
+  ok(document.documentElement.scrollWidth<=vw+1,'and it does not push the page sideways');
   st.click(); await sleep(40);
   eq(t.sim.paper,3,'the second tap starts the new paper');
   eq(t.P.simSave.dev,t.DEVICE_ID,'which this device now owns');
@@ -1151,6 +1157,125 @@ function hebrewChecks(){
   ok(dup===0,dup+' sampled questions repeat a service across two distractors');
 }
 
+// ---------- the recent work, in combination ----------
+// Each of the last four changes has its own block above. They were built one after another
+// and they all touch the same exam, so these walk the places where they meet.
+async function integrationChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const HEB=/[\u0590-\u05FF]/;
+  t.simClearSave();
+
+  // --- speech + the question clock: running out has to silence the voice
+  const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis');
+  const spoken=[]; let cancels=0, last=null;
+  Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
+    speak(u){ spoken.push(u.text); last=u; }, cancel(){ cancels++; },
+    getVoices(){ return [{lang:'xx-XX',name:'T'}]; }, get speaking(){ return false; }
+  }});
+  const realU=window.SpeechSynthesisUtterance;
+  window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };
+
+  t.startPaper(11); await sleep(30);
+  $('simTts').click(); await sleep(10);
+  eq($('simTts').textContent,'\u23f9 Stop','reading aloud mid-exam');
+  eq(spoken.length,1,'it spoke once');
+  ok(spoken[0].indexOf('Option')<0,'and did not read the options');
+  const c0=cancels;
+  t.simQTick(90); await sleep(30);
+  eq(t.sim.i,1,'the 90 seconds ran out and moved on');
+  ok(cancels>c0,'which stopped the voice');
+  eq($('simTts').textContent,'\ud83d\udd0a Read','and put the button back');
+
+  // --- speech + a takeover: losing the exam must also silence it
+  $('simTts').click(); await sleep(10);
+  eq($('simTts').textContent,'\u23f9 Stop','reading again');
+  const c1=cancels;
+  t.P.simSave=Object.assign({},t.P.simSave,
+    {dev:'phone-x',devKind:'phone',claimAt:Date.now()+1000});
+  ok(t.simOwnerCheck(),'the other device took it');
+  await sleep(30);
+  ok(cancels>c1,'and that silenced the voice too');
+  eq(t.sim,null,'the exam here is over');
+
+  window.SpeechSynthesisUtterance=realU;
+  if(real) Object.defineProperty(window,'speechSynthesis',real);
+  else delete window.speechSynthesis;
+
+  // --- Hebrew feedback + the question clock, on a teaching paper
+  t.simClearSave();
+  t.startPaper(1); await sleep(30);
+  const q=t.QS[t.sim.qs[0]];
+  q.a.forEach(l=>t.simPick(l)); await sleep(30);
+  ok($('explain').classList.contains('show'),'paper 1 explains');
+  const rows=[...$('explain').querySelectorAll('.exwhy .exitem span')]
+    .filter(e=>!e.classList.contains('k'));
+  ok(rows.length>0,'the explanation has reasoning rows');
+  ok(rows.some(e=>HEB.test(e.textContent)),'which are in Hebrew');
+  rows.forEach((e,i)=>{ if(HEB.test(e.textContent))
+    eq(getComputedStyle(e).direction,'rtl','Hebrew row '+i+' reads right to left'); });
+  eq(t.simQLeft,90,'and the clock did not pause to let us read');
+  t.simQTick(90); await sleep(30);
+  eq(t.sim.i,1,'it moved on mid-read');
+  ok(!$('explain').classList.contains('show'),'clearing the Hebrew panel behind it');
+
+  // --- a takeover mid-explanation leaves nothing behind on screen
+  q0picks(t); await sleep(30);
+  ok($('explain').classList.contains('show'),'explaining again');
+  t.P.simSave=Object.assign({},t.P.simSave,
+    {dev:'phone-x',devKind:'phone',claimAt:Date.now()+2000});
+  ok(t.simOwnerCheck(),'taken over while the panel was up');
+  await sleep(30);
+  ok(!$('explain').classList.contains('show'),'the explanation is cleared');
+  eq(t.route,'paperScreen','and we are off the question screen');
+
+  // --- taking it back restores the per-question clock, not a fresh 90
+  t.P.simSave=Object.assign({},t.P.simSave,{i:4, qt:{4:37}});
+  t.renderPapers(); await sleep(20);
+  const rb=$('exResume');
+  ok(/on your phone/.test(rb.textContent),'the row says where it is');
+  rb.click(); await sleep(20); rb.click(); await sleep(40);
+  eq(t.sim.i,4,'taken over at the right question');
+  eq(t.simQLeft,37,'with the seconds it had left, not a fresh 90');
+  eq(t.P.simSave.dev,t.DEVICE_ID,'and the claim moved to us');
+  ok(t.P.simSave.claimAt>0,'stamped as a deliberate claim');
+
+  // --- and a paper taken over, timed out and flagged still exports
+  t.simAbandon(); await sleep(30); t.simClearSave();
+  t.startPaper(11); await sleep(30);
+  const wrong=t.QS[t.sim.qs[0]].o.find(o=>!t.QS[t.sim.qs[0]].a.includes(o[0]))[0];
+  t.simPick(wrong); await sleep(20);
+  t.simFlagToggle(); await sleep(10);
+  t.simGo(1); await sleep(20);
+  t.simQTick(90); await sleep(30);          // let one time out, so it exports as blank
+  t.simSubmit(true); await sleep(60);
+  const rec=t.lastExamCsv;
+  ok(!!rec&&rec.list.length>0,'submitting still leaves something to export');
+  ok(/exam-11/.test(rec.name),'named for the paper');
+  const csv=t.csvRows(rec.list);                       // one string, CRLF separated
+  const lines=csv.split('\r\n');
+  ok(lines.length>1,'the CSV has a header and at least one row');
+  ok(/^"#","Status"/.test(lines[0]),'with the expected header');
+  ok(/Flagged/.test(csv),'and the flagged question is in it');
+  t.simClearSave();
+}
+function q0picks(t){
+  const q=t.QS[t.sim.qs[t.sim.i]];
+  q.a.forEach(l=>t.simPick(l));
+  return sleep(20);
+}
+
+window.QA_INTEG=async function(){
+  pass=0; fails=[];
+  const t=T();
+  ok(!!t,'the test surface is exposed (load with ?test=1)');
+  if(!t) return {pass,failed:fails.length,fails};
+  await integrationChecks();
+  t.go('homeScreen');
+  console.log(fails.length?('QA_INTEG: '+pass+' passed, '+fails.length+' FAILED')
+                           :('QA_INTEG: '+pass+' assertions, all passing'));
+  return {pass, failed:fails.length, fails};
+};
+
 window.QA_BANK=async function(opts){
   opts=opts||{};
   pass=0; fails=[];
@@ -1178,5 +1303,5 @@ window.QA_BANK=async function(opts){
   console.log(fails.length?('QA_BANK: '+pass+' passed, '+fails.length+' FAILED'):('QA_BANK: '+pass+' assertions, all passing'));
   return {pass, failed:fails.length, fails};
 };
-console.log('QA_BANK ready — run  await QA_BANK()');
+console.log('QA_BANK ready — run  await QA_BANK()  ·  QA_UI()  ·  QA_INTEG()');
 })();
