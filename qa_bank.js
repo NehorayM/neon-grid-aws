@@ -980,6 +980,26 @@ async function qClockChecks(){
   eq(t.sim.i,4,'it resumed on the same question');
   eq(t.simQLeft,65,'with the same time left');
 
+  // ---- the clock is a deadline, not a count of ticks
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  t.startPaper(1); await sleep(30);
+  ok(t.sim.qEndAt>Date.now(),'a question carries a deadline, not just a counter');
+  const dl=t.sim.qEndAt;
+  t.simQTick(20); await sleep(10);
+  eq(t.simQLeft,70,'ticking by hand still works for the harness');
+  ok(t.sim.qEndAt<dl,'and the deadline moves with it, so the two cannot disagree');
+  ok(Math.abs((t.sim.qEndAt-Date.now())/1000-70)<2,'the deadline agrees with the counter');
+  // time away is not spent on the question
+  t.simAway();
+  const deadlineWhenAway=t.sim.qEndAt;
+  await sleep(120);
+  t.simBack();
+  ok(t.sim.qEndAt>deadlineWhenAway,'coming back pushes the deadline out by the time away');
+  ok(typeof t.clockEnsure==='function','there is a way to revive a dead clock');
+  t.clockEnsure();
+  ok(true,'and calling it under TEST does nothing rather than throwing');
+  t.simAbandon(); await sleep(20); t.simClearSave();
+
   // ---- what the whole paper has left, not just this question
   t.simAbandon(); await sleep(20); t.simClearSave();
   t.startPaper(1); await sleep(30);

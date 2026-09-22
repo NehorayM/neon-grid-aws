@@ -293,6 +293,27 @@ fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel
 pot twice. Anything touching `supabase_*.sql` should run it first.
 
+## The clock is a deadline, not a count of ticks
+
+Reported as frozen — neither the question countdown nor the paper total moving — while it
+ticked correctly here. Counting interval fires is the fragile part: a throttled or suspended
+timer means fewer fires, so the clock runs slow or stops while the page sits there looking
+alive, and if the interval is lost nothing brings it back.
+
+`sim.qEndAt` is now when the question runs out and `simQSync()` computes the remainder from it,
+so a missed fire shows up late rather than costing a second that never returns. Time in the
+background or on the review screen still must not count, so `simAway()`/`simBack()` push the
+deadline out by however long that lasted instead of skipping ticks.
+
+`clockEnsure()` replaces a dead interval. `startClock()` refuses to act while `clockIv` holds an
+id, which is right until that interval stops firing — then the id is a corpse and every clock on
+the page is frozen. `clockTick()` stamps `clockLast` on every fire, so a stamp older than four
+seconds is proof it is not running. It is checked on focus, on visibility, and on the first tap
+or key — the moments a frozen clock would be noticed anyway.
+
+Verified by clearing every interval on the page: the clock freezes, and one tap brings it back
+having caught up the time that really passed.
+
 ## What the whole paper has left
 
 The clock showed 1:30 for the question and nothing about the paper. `simTotalLeft()` adds up
