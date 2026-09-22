@@ -427,6 +427,33 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .unlockbtn{font-size:10.5px;font-weight:650;padding:6px 11px;border-radius:9px;white-space:nowrap;
   background:var(--gold);color:#1b1408}
 .unlockbtn:disabled{background:rgba(255,255,255,.09);color:var(--dim)}
+/* The paper's own budget, under the question's five-pixel bar. The track is ticked once per
+   question by a repeating gradient, so "65 x 90 seconds" is visible rather than arithmetic. */
+.simtotal{margin:6px 0 2px;padding:9px 11px;border-radius:11px;
+  background:color-mix(in srgb, var(--cyan) 5%, var(--surface));
+  border:1px solid color-mix(in srgb, var(--cyan) 22%, var(--line))}
+.simtotal.hidden{display:none}
+.simtotal.tight{background:color-mix(in srgb, var(--gold) 6%, var(--surface));
+  border-color:color-mix(in srgb, var(--gold) 34%, var(--line))}
+.stline{display:flex;align-items:baseline;gap:8px}
+.stlbl{font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--dim);flex:1;min-width:0}
+.stval{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--cyan);
+  font-variant-numeric:tabular-nums;letter-spacing:.5px}
+.simtotal.tight .stval{color:var(--gold)}
+.sttrack{position:relative;height:7px;border-radius:4px;margin:7px 0 5px;overflow:hidden;
+  background:rgba(255,255,255,.07)}
+.sttrack i{display:block;height:100%;border-radius:4px;transition:width .95s linear;
+  background:linear-gradient(90deg,
+    color-mix(in srgb, var(--cyan) 55%, transparent), var(--cyan))}
+.simtotal.tight .sttrack i{background:linear-gradient(90deg,
+    color-mix(in srgb, var(--gold) 55%, transparent), var(--gold))}
+/* one tick per question, laid over the fill */
+.sttrack::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(90deg,
+    transparent 0, transparent calc(var(--tick,4%) - 1px),
+    rgba(0,0,0,.45) calc(var(--tick,4%) - 1px), rgba(0,0,0,.45) var(--tick,4%))}
+.stsub{font-size:11px;color:var(--dim);line-height:1.4}
 #qTimerWrap{height:5px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:2px}
 #qTimerWrap.hidden{display:none}
 /* it ticks once a second, so the ease has to be about a second or it looks like a stutter */
@@ -1279,6 +1306,14 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       </div>
       <div class="qprog wide"><i id="qProg"></i></div>
       <div id="qTimerWrap" class="hidden"><i id="qTimerFill"></i></div>
+      <div id="simTotal" class="simtotal hidden">
+        <div class="stline">
+          <span class="stlbl">Paper remaining</span>
+          <span class="stval" id="simTotalVal">—</span>
+        </div>
+        <div class="sttrack"><i id="simTotalFill"></i></div>
+        <div class="stsub" id="simTotalSub"></div>
+      </div>
       <div class="charge" id="chargeBar">
         <span class="lbl" id="chargeLbl">CHARGE</span>
         <div class="cells" id="chargeCells"></div>
@@ -2330,6 +2365,7 @@ function leaveExam(){
     sim=null;
     if(typeof renderClock==='function') renderClock();
     const bar=$('simBar'); if(bar) bar.classList.remove('show');
+    const stb=$('simTotal'); if(stb) stb.classList.add('hidden');
     const cb=$('chargeBar'); if(cb) cb.style.display='';
     const qc=$('qConfirm'); if(qc) qc.style.display='';
     ['lifeFifty','lifeSkip','hintBtn'].forEach(id=>{ const e=$(id); if(e) e.style.display=''; });
@@ -2444,6 +2480,7 @@ function loadQuestionInto(qi){
   // an exam hides these with inline styles; a normal question puts them back,
   // otherwise practice stays stripped down after the exam is submitted
   $('simBar').classList.remove('show');
+  const stb=$('simTotal'); if(stb) stb.classList.add('hidden');
   $('chargeBar').style.display='';
   $('qConfirm').style.display='';
   $('lifeFifty').style.display=''; $('lifeSkip').style.display='';
@@ -5001,7 +5038,10 @@ function renderClock(){
     el.textContent='⏳ '+fmtClock(left);
     el.classList.toggle('warn',simQLeft<=30);
     el.classList.toggle('crit',simQLeft<=10);
-    const sub0=$('clockSub'); if(sub0) sub0.textContent='this question';
+    const sub0=$('clockSub');
+    if(sub0) sub0.textContent=(typeof simTotalLeft==='function')
+      ? (fmtClock(simTotalLeft()*1000)+' left')
+      : 'this question';
     return;
   }
   if(typeof timerRunning==='function'&&timerRunning()){
@@ -5321,6 +5361,52 @@ function simQTimeUp(){
   toast(last?'⏳ Time — on to the review':'⏳ 90 seconds — next question');
   simGo(1);
 }
+// What the whole paper has left: every question's own remaining seconds added up, with the
+// live counter standing in for the one being answered. A question left with thirty seconds on
+// it still has thirty, so this is a sum rather than questions-remaining times ninety.
+function simTotalLeft(){
+  if(!sim) return 0;
+  let t=0;
+  for(let i=0;i<simLen();i++){
+    if(i===sim.i){ t+=Math.max(0,simQLeft); continue; }
+    const v=sim.qt?sim.qt[i]:undefined;
+    t+=(typeof v==='number')?Math.max(0,v):SIM_QSEC;
+  }
+  return t;
+}
+const simTotalFull=()=>simLen()*SIM_QSEC;
+// how many questions have any time left on them at all
+function simQsLeft(){
+  if(!sim) return 0;
+  let n=0;
+  for(let i=0;i<simLen();i++){
+    if(i===sim.i){ if(simQLeft>0) n++; continue; }
+    const v=sim.qt?sim.qt[i]:undefined;
+    if((typeof v==='number'?v:SIM_QSEC)>0) n++;
+  }
+  return n;
+}
+function renderSimTotal(){
+  const box=$('simTotal'); if(!box) return;
+  if(!sim||!sim.running){ box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const left=simTotalLeft(), full=simTotalFull(), qs=simQsLeft();
+  $('simTotalVal').textContent=fmtClock(left*1000);
+  $('simTotalFill').style.width=pctW(left/Math.max(1,full)*100);
+  const wallMs=(typeof simTimeLeft==='function')?simTimeLeft():Infinity;
+  $('simTotalSub').textContent=(isFinite(wallMs)&&wallMs<left*1000)
+    ? ('the paper clock runs out first \u2014 '+fmtClock(wallMs)+' of wall time')
+    : (plural(qs,'question')+' still open \u00b7 '+SIM_QSEC+'s each \u00b7 '+
+       fmtClock(full*1000)+' for the paper');
+  // ticked once per question, capped so the ticks do not turn into a solid block
+  const tick=Math.max(1.6,100/Math.max(1,simLen()));
+  $('simTotal').style.setProperty('--tick',tick.toFixed(2)+'%');
+  // Amber when the PAPER's wall clock, not the per-question budget, becomes the binding
+  // constraint — that is the only way you can be cut off with question time still on the
+  // board. Comparing against qs*90 was useless: it goes amber the moment you spend a second.
+  const wall=(typeof simTimeLeft==='function')?Math.floor(simTimeLeft()/1000):Infinity;
+  box.classList.toggle('tight',wall<left);
+}
 function renderSimQ(){
   const wrap=$('qTimerWrap'), fill=$('qTimerFill');
   if(!wrap||!fill) return;
@@ -5329,6 +5415,7 @@ function renderSimQ(){
   const f=Math.max(0,Math.min(1,simQLeft/SIM_QSEC));
   fill.style.width=pctW(f*100);
   fill.classList.toggle('low',simQLeft<=20);
+  renderSimTotal();
   renderClock();
 }
 function simLoad(){
@@ -5563,6 +5650,7 @@ function simAbandon(){
   const paper=sim.paper||0;
   simPersist();                 // keep it: the Practice Exams screen offers it back
   simQStop(); ttsStop(); hideExplain();
+  { const stb=$('simTotal'); if(stb) stb.classList.add('hidden'); }
   sim=null; renderClock();
   $('simBar').classList.remove('show');
   $('chargeBar').style.display='';
@@ -8644,6 +8732,7 @@ if(TEST){
     startSim, simLoad, simPick, simGo, simJump, simFlagToggle, simSubmit, simReview,
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
+    simTotalLeft, simTotalFull, simQsLeft, renderSimTotal,
     get simQLeft(){return simQLeft;},
     SIM_LEN, SIM_MIN, SIM_PASS, get sim(){return sim;},
     PAPER_LEN, PAPER_MIN, PAPER_COUNT, paperQs, startPaper, renderPapers, paperRec,

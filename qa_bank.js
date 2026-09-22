@@ -108,7 +108,10 @@ async function runPaper(n,{answerAll=true,rightRatio=0.6,flagEvery=7}={}){
      'the paper budget starts at '+bud+' minutes, got '+Math.round(left/60000));
   eq(t.simQLeft,t.SIM_QSEC,'and the question starts on a full 90 seconds');
   eq($('playClock').textContent,'⏳ 1:30','the top bar counts this question down');
-  eq($('clockSub').textContent,'this question','and says what it is counting');
+  // the second line used to label the big number; it now carries the paper's own remaining,
+  // which is the more useful of the two and is on screen the whole time
+  ok(/left$/.test($('clockSub').textContent),'the second line shows what the paper has left');
+  eq($('clockSub').textContent,fmtMs(t.simTotalLeft()*1000)+' left','and it agrees with the sum');
   eq($('qSector').textContent,'EXAM '+n,'the exam is named in the header, not twice');
   ok(!$('qTimerWrap').classList.contains('hidden'),'the countdown bar is showing');
   eq($('qSector').textContent,'EXAM '+n,'the header names the exam');
@@ -530,6 +533,12 @@ async function resumeChecks(){
   eq(t.simSaved().paper,7,'starting another paper replaces it again');
   eq(t.simSaved().i,0,'and it starts at question one');
   t.simAbandon(); await sleep(20);
+}
+
+function fmtMs(ms){
+  const sec=Math.floor(ms/1000), h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), ss=sec%60;
+  return h>0 ? (h+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'))
+             : (m+':'+String(ss).padStart(2,'0'));
 }
 
 // ---------- resuming from the paper's own row ----------
@@ -970,6 +979,51 @@ async function qClockChecks(){
   t.simResume(); await sleep(20);
   eq(t.sim.i,4,'it resumed on the same question');
   eq(t.simQLeft,65,'with the same time left');
+
+  // ---- what the whole paper has left, not just this question
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  t.startPaper(1); await sleep(30);
+  eq(t.simTotalLeft(),65*90,'a fresh 65-question paper has 65 x 90 seconds');
+  eq(t.simTotalFull(),65*90,'which is also its full budget');
+  eq(t.simQsLeft(),65,'and 65 questions with time on them');
+  eq($('simTotalVal').textContent,'1:37:30','shown as 1:37:30');
+  eq($('simTotalFill').style.width,'100%','with a full bar');
+  ok(/65 questions still open/.test($('simTotalSub').textContent),'and the count beneath it');
+  ok(/1:37:30 left/.test($('clockSub').textContent),'the top clock carries it too');
+
+  t.simQTick(90); await sleep(20);
+  eq(t.simTotalLeft(),64*90,'one question spent leaves 64 x 90');
+  eq($('simTotalVal').textContent,'1:36:00','which reads 1:36:00');
+  eq(t.simQsLeft(),64,'and 64 questions still open');
+
+  t.simQTick(30); await sleep(10);
+  eq(t.simTotalLeft(),63*90+60,'it is a real sum, not questions-left times ninety');
+  t.simJump(5); await sleep(20); t.simQTick(40); await sleep(10);
+  const totBefore=t.simTotalLeft();
+  t.simJump(9); await sleep(20);
+  eq(t.simTotalLeft(),totBefore,'moving between questions does not change the total');
+  t.simJump(5); await sleep(20);
+  eq(t.simQLeft,50,'and a half-used question still holds its remainder');
+
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  t.startPaper(t.PAPER_COUNT); await sleep(30);
+  ok(t.simLen()<65,'the last paper is shorter ('+t.simLen()+')');
+  eq(t.simTotalLeft(),t.simLen()*90,'and totals its own question count');
+
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  t.startPaper(1); await sleep(30);
+  const totBox=$('simTotal');
+  t.simQTick(30); t.renderSimTotal();
+  ok(!totBox.classList.contains('tight'),'ordinary play does not cry wolf');
+  t.sim.endAt=Date.now()+60*1000; t.renderSimTotal();
+  ok(totBox.classList.contains('tight'),'it warns when the paper clock becomes the binding one');
+  ok(/paper clock runs out first/.test($('simTotalSub').textContent),'and says why');
+  t.sim.endAt=Date.now()+99*60*1000; t.renderSimTotal();
+  ok(!totBox.classList.contains('tight'),'and calms down again');
+
+  t.simAbandon(); await sleep(30);
+  ok(totBox.classList.contains('hidden'),'abandoning hides the strip');
+  t.simClearSave();
 
   // the teaching papers spend the same 90 on reading the feedback
   t.simAbandon(); await sleep(20); t.simClearSave();

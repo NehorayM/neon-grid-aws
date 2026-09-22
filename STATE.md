@@ -293,6 +293,23 @@ fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel
 pot twice. Anything touching `supabase_*.sql` should run it first.
 
+## What the whole paper has left
+
+The clock showed 1:30 for the question and nothing about the paper. `simTotalLeft()` adds up
+every question's own remaining seconds — 65 × 90s = **1:37:30** at the start, 64 × 90s =
+**1:36:00** once the first is spent. It is a real sum, not questions-left × 90: a question you
+left with thirty seconds on it still has thirty, and going back to it gives them back.
+
+Two places show it: the top clock's second line, and a strip under the question with the time,
+how many questions it covers, and a track ticked once per question (`--tick` set from
+`100/simLen()`, floored at 1.6% so the ticks never collapse into a solid block) so "65 × 90
+seconds" is something you can see rather than work out.
+
+**The amber state means the paper's wall clock will bite first** — `simTimeLeft() < simTotalLeft()`
+— which is the only way you get cut off with question time still on the board. The first version
+compared against `questionsLeft × 90`, which goes amber the moment you spend a single second and
+therefore said nothing.
+
 ## Resuming a paper
 
 A saved run used to be offered only by one bar at the top of Practice Exams. Its own row in the
