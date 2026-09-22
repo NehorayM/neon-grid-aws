@@ -91,6 +91,10 @@ h2.head{font-size:18px;font-weight:650;letter-spacing:.2px;margin-bottom:4px}
   background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;gap:11px}
 .motiv .mem{font-size:17px;flex:none;opacity:.9}
 .paperrow{position:relative;overflow:hidden}
+.paperrow.resuming{border-color:color-mix(in srgb, var(--cyan) 45%, var(--line));
+  background:color-mix(in srgb, var(--cyan) 7%, var(--surface));flex-wrap:wrap;gap:8px 10px}
+.paperrow.resuming .ds{color:var(--cyan);opacity:.85}
+.buy.pstart{flex:none;padding:9px 11px;font-size:13px;line-height:1;margin-right:-4px}
 .paperrow::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dcol,var(--line))}
 .pbar{height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:7px;max-width:210px}
 .pbar i{display:block;height:100%;border-radius:3px;transition:width .5s}
@@ -6005,26 +6009,55 @@ function renderPapers(){
   for(let n=1;n<=PAPER_COUNT;n++){
     const qs=paperQs(n), rec=paperRec(n);
     const row=document.createElement('div'); row.className='item paperrow';
-    const em=rec?(rec.best>=SIM_PASS?'🎓':'📝'):'📄';
+    const em=(sv&&(sv.paper||0)===n)?'⏸':rec?(rec.best>=SIM_PASS?'🎓':'📝'):'📄';
     const len=qs.length;
-    const meta=rec
-      ? rec.tries+' attempt'+(rec.tries>1?'s':'')+' · last '+rec.last
-      : len+' questions · '+SIM_QSEC+'s each · '+simBudget(len)+' min';
-    const col=rec?(rec.best>=SIM_PASS?'var(--lime)':'var(--gold)'):'var(--line2)';
+    const here=sv&&(sv.paper||0)===n;
+    const meta=here
+      ? ('question '+((sv.i||0)+1)+' of '+sv.qs.length+' \u00b7 '+
+         plural(simAnsweredIn(sv),'answer')+' \u00b7 '+fmtClock(sv.left)+' left')
+      : rec
+      ? rec.tries+' attempt'+(rec.tries>1?'s':'')+' \u00b7 last '+rec.last
+      : len+' questions \u00b7 '+SIM_QSEC+'s each \u00b7 '+simBudget(len)+' min';
+    const col=(sv&&(sv.paper||0)===n)?'var(--cyan)'
+      :rec?(rec.best>=SIM_PASS?'var(--lime)':'var(--gold)'):'var(--line2)';
     row.style.setProperty('--dcol',col);
+    if(sv&&(sv.paper||0)===n) row.classList.add('resuming');
     row.innerHTML='<div class="em">'+em+'</div><div style="flex:1;min-width:0">'+
       '<div class="nm">Exam '+n+(len<PAPER_LEN?' · short paper ('+plural(len,'question')+')':'')+'</div>'+
       '<div class="ds">'+esc(meta)+'</div>'+
       (rec?'<div class="pbar"><i style="width:'+pctW(rec.best)+';background:'+col+'"></i></div>':'')+
       '</div>'+
-      (rec?'<div class="pscore" style="color:'+col+'">'+rec.best+'%</div>':'');
+      ((rec&&!here)?'<div class="pscore" style="color:'+col+'">'+rec.best+'%</div>':'');
+    // The row for the paper you are part way through offers to continue it, rather than
+    // making you find the bar at the top — and rather than saying "Retake" over a run you
+    // have not finished, which is what used to quietly delete it.
+    const savedHere=sv&&(sv.paper||0)===n;
+    if(savedHere){
+      const again=document.createElement('button');
+      again.className='buy pstart';
+      again.textContent='\u21bb';
+      again.title='Start Exam '+n+' again from the beginning';
+      again.setAttribute('aria-label','Start Exam '+n+' again from the beginning, '+
+        'discarding question '+((sv.i||0)+1)+' of '+sv.qs.length);
+      again.onclick=()=>armed(again,
+        'Delete your progress on Exam '+n+' and start again?',
+        ()=>{ simClearSave(); startPaper(n); });
+      row.appendChild(again);
+    }
     const b=document.createElement('button');
-    b.className='buy'; b.textContent=rec?'Retake':'Start';
-    // startPaper clears the saved run, which would delete an exam still open elsewhere
+    b.className='buy';
+    b.textContent=savedHere?'Resume':(rec?'Retake':'Start');
+    if(savedHere) b.setAttribute('aria-label',
+      'Resume Exam '+n+' at question '+((sv.i||0)+1)+' of '+sv.qs.length);
     b.onclick=()=>{
       const open=simSaved();
-      if(open&&!simOwns(open)){
-        armed(b,'Discard the exam on '+otherDevice(open)+'?',()=>startPaper(n));
+      if(savedHere){ simResumeHere(open||sv); return; }
+      // Starting anything else throws the saved run away. Say so, and say what is being lost.
+      if(open){
+        const where=simOwns(open)?'':(' on '+otherDevice(open));
+        const what=(open.paper?'Exam '+open.paper:'the mock exam')+where+
+          ' \u2014 question '+((open.i||0)+1)+' of '+open.qs.length;
+        armed(b,'Delete your progress on '+what+'?',()=>startPaper(n));
         return;
       }
       startPaper(n);
@@ -6035,10 +6068,16 @@ function renderPapers(){
 // Taking an exam off another device is not something to do by accident, so it arms first —
 // the same two-tap the Submit button uses when there are blanks left.
 function armed(btn,label,then){
-  if(btn.dataset.armed){ btn.dataset.armed=''; then(); return; }
+  if(btn.dataset.armed){ btn.dataset.armed=''; btn.classList.remove('wide'); then(); return; }
   const was=btn.innerHTML;
-  btn.dataset.armed='1'; btn.innerHTML='<span class="buy wide">'+esc(label)+'</span>';
-  setTimeout(()=>{ if(btn.dataset.armed){ btn.dataset.armed=''; btn.innerHTML=was; } },4000);
+  btn.dataset.armed='1';
+  // .wide has to go on the button itself: it is the flex child of the row, and putting it on
+  // a span inside meant the button just grew to fit the sentence and ran off a 320px screen
+  btn.classList.add('wide');
+  btn.textContent=label;
+  setTimeout(()=>{
+    if(btn.dataset.armed){ btn.dataset.armed=''; btn.classList.remove('wide'); btn.innerHTML=was; }
+  },4000);
 }
 function simResumeHere(sv){
   const rbtn=$('exResume');

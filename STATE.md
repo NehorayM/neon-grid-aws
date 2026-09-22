@@ -293,6 +293,24 @@ fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel
 pot twice. Anything touching `supabase_*.sql` should run it first.
 
+## Resuming a paper
+
+A saved run used to be offered only by one bar at the top of Practice Exams. Its own row in the
+list said "Retake" like every other, and pressing it deleted the run without a word.
+
+The row for the paper you are part way through now carries it: a ⏸ icon, a cyan edge, where you
+got to, and two buttons — **↻** to start over and **Resume** to continue. It drops the stale
+best-score chip while a run is open, and the words "in progress" were cut because the icon and
+the colour already say it and those two words cost the text a whole line at 320px.
+
+**Starting anything else warns first**, naming the exam and the question you were on. Nothing is
+deleted on the first tap; the button reverts after four seconds if it is not answered. This used
+to warn only when the run belonged to another device, which was the narrow case.
+
+`armed()` puts `.wide` on the **button**, not on a span inside it. It was on the span, which
+meant the button simply grew to fit the sentence and ran off a 320px screen — the button is the
+flex child of the row, so it is the thing that has to wrap.
+
 ## The reading voice
 
 `🗣️ Voice` on the home screen's chip row opens `voiceScreen`.

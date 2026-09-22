@@ -532,6 +532,71 @@ async function resumeChecks(){
   t.simAbandon(); await sleep(20);
 }
 
+// ---------- resuming from the paper's own row ----------
+async function paperRowChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const rows=()=>[...document.querySelectorAll('#paperScreen .paperrow')];
+  const btns=i=>[...rows()[i].querySelectorAll('button')].map(b=>b.textContent.trim());
+
+  t.simClearSave(); t.renderPapers(); await sleep(20);
+  eq(btns(3).length,1,'with nothing saved a row has one button');
+  eq(btns(3)[0]==='Resume',false,'and it is not Resume');
+
+  // be part way through paper 4
+  t.startPaper(4); await sleep(30);
+  t.simGo(1); await sleep(10);
+  t.simPick(t.QS[t.sim.qs[1]].o[0][0]); await sleep(10);
+  t.simGo(1); await sleep(10);
+  t.simAbandon(); await sleep(40);
+
+  const r4=rows()[3];
+  ok(r4.classList.contains('resuming'),'the paper in progress is marked on its own row');
+  eq(r4.querySelector('.em').textContent,'\u23f8','with a paused icon rather than a score one');
+  // the words "in progress" were dropped: the paused icon, the cyan edge and the missing
+  // score chip already say it, and at 320px those two words cost the text a whole line
+  ok(!r4.querySelector('.pscore'),'an unfinished run does not show a stale best score');
+  ok(/question 3 of 65/.test(r4.querySelector('.ds').textContent),'the row says how far in');
+  ok(/1 answer\b/.test(r4.querySelector('.ds').textContent),'and how much is answered');
+  ok(/left/.test(r4.querySelector('.ds').textContent),'and how much time is left');
+  eq(btns(3).join('|'),'\u21bb|Resume','it carries a restart and a resume');
+  ok(!rows()[4].classList.contains('resuming'),'no other row claims to be in progress');
+
+  // Start on a different paper warns, and touches nothing on the first tap
+  const other=rows()[5].querySelector('button');
+  const wasLabel=other.textContent.trim();
+  other.click(); await sleep(20);
+  ok(/Delete your progress on Exam 4/.test(other.textContent),'starting elsewhere warns first');
+  ok(/question 3 of 65/.test(other.textContent),'and names what would be lost');
+  eq(t.simSaved().paper,4,'and the save is untouched');
+  await sleep(4200);
+  eq(other.textContent.trim(),wasLabel,'an unanswered warning lapses');
+  eq(t.simSaved().paper,4,'still untouched');
+  other.click(); await sleep(20); other.click(); await sleep(40);
+  eq(t.sim.paper,6,'the second tap starts the other paper');
+  t.simAbandon(); await sleep(40);
+
+  // the restart button warns too
+  t.simClearSave(); t.startPaper(4); await sleep(30);
+  t.simGo(1); await sleep(10); t.simAbandon(); await sleep(40);
+  const again=rows()[3].querySelectorAll('button')[0];
+  again.click(); await sleep(20);
+  ok(/start again/.test(again.textContent),'restarting warns first');
+  eq(t.simSaved().i,1,'and has not reset anything yet');
+  again.click(); await sleep(40);
+  eq(t.sim.i,0,'the second tap starts it from question one');
+  t.simAbandon(); await sleep(40);
+
+  // resuming from the row lands where it left off
+  t.simClearSave(); t.startPaper(4); await sleep(30);
+  t.simGo(1); await sleep(10); t.simGo(1); await sleep(10);
+  t.simAbandon(); await sleep(40);
+  rows()[3].querySelectorAll('button')[1].click(); await sleep(60);
+  eq(t.route,'quizScreen','the row resumes into the paper');
+  eq(t.sim.paper,4,'the right paper');
+  eq(t.sim.i,2,'at the question it was left on');
+  t.simAbandon(); await sleep(40); t.simClearSave();
+}
+
 // ---------- the reading voice ----------
 async function voiceChecks(){
   const t=T(), $=id=>document.getElementById(id);
@@ -814,7 +879,8 @@ async function deviceChecks(){
   t.renderPapers(); await sleep(20);
   const st=[...document.querySelectorAll('#paperScreen .paperrow button')][2];
   st.click(); await sleep(20);
-  ok(/Discard the exam on your phone/.test(st.textContent),'starting another paper warns first');
+  ok(/Delete your progress/.test(st.textContent),'starting another paper warns first');
+  ok(/your phone/.test(st.textContent),'and says the run is on the other device');
   eq(t.P.simSave.paper,5,'and has not touched the save yet');
   // the armed label is long: it used to run off the right edge of a 320px phone, and
   // .paperrow's overflow:hidden swallowed the end of it instead of showing anything
@@ -1536,7 +1602,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
