@@ -543,6 +543,73 @@ function fmtMs(ms){
 
 function renderClockSafe(t){ try{ t.renderClock(); }catch(e){} }
 
+// ---------- closing the page does not stop the clock ----------
+// The save stores time remaining, so shutting the tab used to freeze the paper indefinitely:
+// leave for ten minutes, look everything up, come back, and the clock was where you left it.
+async function refreshChecks(){
+  const t=T();
+  const setup=async()=>{ t.simClearSave(); t.startPaper(2); await sleep(30);
+                         t.simQTick(20); await sleep(10); };
+
+  // a closed tab is charged for
+  await setup();
+  const q0=t.simQLeft, w0=Math.round(t.simTimeLeft()/1000);
+  t.P.simSave.at-=10*60*1000;
+  eq(t.simAwayCost(t.P.simSave),600,'ten minutes away is measured in seconds, not milliseconds');
+  t.simResume(); await sleep(40);
+  eq(t.simQLeft,0,'the question it was on is spent — it only had '+q0+' seconds');
+  const charged=w0-Math.round(t.simTimeLeft()/1000);
+  ok(Math.abs(charged-600)<5,'and the paper is charged the ten minutes ('+charged+'s)');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // quitting is a decision and still pauses
+  await setup();
+  const q1=t.simQLeft, w1=Math.round(t.simTimeLeft()/1000);
+  t.simAbandon(); await sleep(40);
+  eq(t.P.simSave.paused,1,'Quit marks the save as paused');
+  t.P.simSave.at-=10*60*1000;
+  eq(t.simAwayCost(t.P.simSave),0,'so nothing is charged for the time away');
+  t.simResume(); await sleep(40);
+  eq(t.simQLeft,q1,'the question keeps its seconds');
+  eq(Math.round(t.simTimeLeft()/1000),w1,'and the paper its budget');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // a break that was running covers its own time
+  await setup();
+  const w2=Math.round(t.simTimeLeft()/1000);
+  const sv=t.P.simSave;
+  sv.paused=0; sv.at-=10*60*1000; sv.brkUntil=sv.at+4*60*1000;
+  eq(t.simAwayCost(sv),360,'four of the ten minutes were a break, so six are charged');
+  t.simResume(); await sleep(40);
+  const c2=w2-Math.round(t.simTimeLeft()/1000);
+  ok(Math.abs(c2-360)<5,'and that is what the paper loses ('+c2+'s)');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // away long enough and the paper is simply over
+  await setup();
+  t.P.simSave.paused=0; t.P.simSave.at-=3*60*60*1000;
+  ok(!t.simSaved(),'a paper whose budget ran out while away is not offered back');
+  t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // the row must advertise what a resume would really hand back, not the saved figure
+  await setup();
+  t.P.simSave.paused=0; t.P.simSave.at-=5*60*1000;
+  t.renderPapers(); await sleep(20);
+  const rrow=[...document.querySelectorAll('#paperScreen .paperrow')].find(r=>r.classList.contains('resuming'));
+  ok(!!rrow,'the in-progress row is there');
+  if(rrow){
+    const said=rrow.querySelector('.ds').textContent;
+    ok(!/1:37:5\d left/.test(said),'and does not quote the stale saved time: '+said);
+  }
+  t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // the shape the whole thing rests on
+  eq(t.simAwayCost(null),0,'no save, no charge');
+  eq(t.simAwayCost({paused:1,at:1}),0,'a paused save is never charged');
+  eq(t.simAwayCost({at:0}),0,'nor one with no timestamp');
+  eq(t.simAwayCost({at:Date.now()+9999}),0,'nor one stamped in the future');
+}
+
 // ---------- two six-minute breaks per paper ----------
 async function breakChecks(){
   const t=T(), $=id=>document.getElementById(id);
@@ -1835,7 +1902,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

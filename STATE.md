@@ -312,6 +312,33 @@ inside a paused paper, the strip agrees with the sum, an interval exists exactly
 AUDIT5 drives the new surfaces sideways (sheets outliving their context, rapid taps, the short
 paper, every question spent, the voice screen opened mid-paper).
 
+## Closing the page does not stop the clock
+
+Reported as an exploit, and it was one. The save stores time **remaining** rather than a
+deadline, so shutting the tab froze the paper indefinitely: leave for ten minutes, look
+everything up, come back, resume, and the clock was exactly where you left it. Measured before
+the fix: ten minutes away cost **0 seconds**.
+
+The remaining-time design stays — it is right for the Quit button. What was missing is the
+difference between the two ways of leaving:
+
+- **Quit** is a decision. `simPauseSave()` stamps `paused:1` and the paper pauses, as always.
+- **Closing, refreshing or crashing** is not. `simAwayCost(sv)` charges everything since
+  `sv.at` against both the paper's budget and the question that was open.
+
+`sv.at` was already in the save and had never been read. Time covered by a break in progress is
+not charged — `brkUntil` is an absolute moment, so the overlap is exact.
+
+**`simAwayCost` returns seconds.** The first version returned milliseconds and the callers
+treated it as seconds, which made the charge a thousand times too big — and that read as the
+save being unresumable rather than as a wrong number, which is a much harder symptom to trace.
+
+If the charge empties the paper it is not silently lost: the run resumes with no time left and
+`simCheckTime()` submits it within the second, so the score for what was answered still lands.
+`simSaved()` subtracts the same cost, so a paper whose budget ran out while away is not offered
+back, and the resume rows quote what a resume would really hand you rather than the saved
+figure.
+
 ## Two six-minute breaks per paper
 
 Leaving the question screen mid-paper used to keep both clocks running, so a glance at Study
