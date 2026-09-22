@@ -700,6 +700,33 @@ async function refreshChecks(){
   eq(t.route,'simDoneScreen','it scores what was answered instead');
   t.simClearSave();
 
+  // A refresh has to put you back where you were. Everything was already saved — the question,
+  // the answers, the flags, the breaks, both clocks — but nothing restored it, so a reload
+  // dropped you on the home screen and the paper only came back if you went looking.
+  ok(typeof t.resumeOnBoot==='function','there is a boot-time resume');
+  await setup();
+  t.simPersist();
+  const savedPaper=t.P.simSave.paper, savedI=t.P.simSave.i;
+  t.simAbandon(); await sleep(30);
+  eq(t.P.simSave.paused,1,'Quit marks the save so the boot resume leaves it alone');
+
+  // simulate what boot does with a save that was NOT quit
+  t.P.simSave.paused=0;
+  ok(!!t.simSaved(),'a live save is still offered');
+  ok(t.simOwns(t.P.simSave),'and belongs to this device');
+  t.simResume(); await sleep(50);
+  eq(t.sim.paper,savedPaper,'resuming puts you back on the same paper');
+  ok(t.sim.i>=savedI,'at the question you were on or past a spent one');
+  eq(t.route,'quizScreen','and inside it, not on the home screen');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // a paper belonging to another device is that device's to take back, not ours to grab
+  await setup();
+  t.simPersist();
+  t.P.simSave.paused=0; t.P.simSave.dev='someone-else'; t.P.simSave.devKind='phone';
+  ok(!t.simOwns(t.P.simSave),'a save from elsewhere is not ours');
+  t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave();
+
   // the shape the whole thing rests on
   eq(t.simAwayCost(null),0,'no save, no charge');
   eq(t.simAwayCost({paused:1,at:1}),0,'a paused save is never charged');

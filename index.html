@@ -2160,7 +2160,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 12:46 UTC';
+const BUILD='2026-09-22 12:51 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -9027,7 +9027,26 @@ renderGoals(); renderWeek(); renderTomorrow(); renderReadiness(); renderSkill();
 startClock(); renderClock(); renderTimer();
 loadProfile().then(()=>{ syncLifeCosts(); applyTheme(P.theme||'neon'); renderDaily(); renderInv();
   applyFS(); syncNav(); renderDiff(); renderCharge(); renderQuests(); renderChest(); renderResume();
-renderGoals(); renderWeek(); renderTomorrow(); });
+renderGoals(); renderWeek(); renderTomorrow();
+  // A refresh should put you back where you were. Everything was already being saved — the
+  // question, the answers, the flags, the breaks, both clocks — but nothing ever restored it,
+  // so a reload dropped you on the home screen and the paper only came back if you went
+  // looking for it. A paper you did not deliberately quit is still running, and its clock has
+  // already been charged for the time away, so walk straight back into it.
+  resumeOnBoot();
+});
+function resumeOnBoot(){
+  if(TEST) return;                       // the harness drives resumes itself
+  try{
+    const sv=simSaved();
+    if(!sv||sv.paused) return;           // Quit is a decision; do not undo it
+    if(!simOwns(sv)) return;             // another device's paper is that device's to take back
+    simResume();
+    if(sim&&sim.running)
+      toast('\u21a9 Back in '+(sim.paper?'Exam '+sim.paper:'the mock exam')+
+            ' \u00b7 question '+(sim.i+1));
+  }catch(e){}
+}
 go('homeScreen');
 initAuth();
 
@@ -9064,7 +9083,7 @@ if(TEST){
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
-    simAwayCost, simPauseSave, get simSaveTick(){return simSaveTick;},
+    simAwayCost, simPauseSave, resumeOnBoot, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,
     clockEnsure, get clockIv(){return clockIv;},
     get simQIv(){return simQIv;},

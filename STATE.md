@@ -401,6 +401,23 @@ does not hand the breaks back. `body.asking` hides the nav while the sheet is op
 is taller than a padding-bottom can allow for, and nothing under a modal should be competing
 for the same taps.
 
+## A refresh puts you back in the paper
+
+Everything was already being saved — the question, the answers, the flags, the breaks, both
+clocks — and nothing ever restored it. A reload landed on the home screen and the paper only
+came back if you went looking for it on the Exam tab, which reads as "the refresh reset
+everything".
+
+`resumeOnBoot()` runs after `loadProfile()` resolves and walks straight back in, but only when
+all three hold:
+
+- the save exists and its budget has not run out (`simSaved()` already subtracts the away cost)
+- it is **not** `paused` — Quit is a decision and is not undone by a reload
+- it belongs to **this** device — another device's paper is that device's to take back, through
+  the takeover flow, not something to grab silently
+
+It is skipped under `TEST`, where the harness drives resumes itself.
+
 ## A resume has to land somewhere you can work
 
 Away long enough for the away-charge to drain the question you were on, you used to resume
