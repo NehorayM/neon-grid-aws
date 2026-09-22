@@ -293,6 +293,22 @@ fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel
 pot twice. Anything touching `supabase_*.sql` should run it first.
 
+## The build stamp, and cached pages
+
+A screenshot arrived showing a bug that was already fixed **and deployed** — byte-for-byte
+identical on GitHub Pages and locally. The page in the screenshot was a cached copy, and
+nothing on it said so, which cost a round of hunting for a bug that no longer existed.
+
+`BUILD` carries the commit and build time, and the Records screen shows it. **When a fixed bug
+reappears, check that first.** A hard reload is the fix; the app is one file on GitHub Pages,
+so there is no cache-busting to reach for.
+
+`audit4.js` and `audit5.js` join the other audits: AUDIT4 walks a paper through every
+transition checking clock invariants (the clock never shows a frozen number, you cannot stand
+inside a paused paper, the strip agrees with the sum, an interval exists exactly when wanted);
+AUDIT5 drives the new surfaces sideways (sheets outliving their context, rapid taps, the short
+paper, every question spent, the voice screen opened mid-paper).
+
 ## Two six-minute breaks per paper
 
 Leaving the question screen mid-paper used to keep both clocks running, so a glance at Study

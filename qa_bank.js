@@ -654,6 +654,48 @@ async function breakChecks(){
   t.startPaper(2); await sleep(30);
   eq(t.brkLeft(),2,'a new paper starts with two again');
   t.simAbandon(); await sleep(30); t.simClearSave();
+
+  // leaving from the REVIEW screen used to skip the break check entirely, because the guard
+  // asked for route==='quizScreen' — you walked out of a running paper with the clock going
+  t.simClearSave(); t.startPaper(3); await sleep(30);
+  t.simReview(); await sleep(20);
+  eq(t.route,'simRevScreen','on the review grid');
+  $('navHome').click(); await sleep(30);
+  ok(t.route!=='homeScreen','leaving from the review screen does not just walk out');
+  ok(!$('brkAsk').classList.contains('hidden'),'it asks for a break like anywhere else');
+  t.brkAskClose();
+
+  // the sheet cannot outlive the paper it is offering a break on
+  $('navHome').click(); await sleep(20);
+  ok(!$('brkAsk').classList.contains('hidden'),'sheet up');
+  t.simSubmit(true); await sleep(60);
+  ok($('brkAsk').classList.contains('hidden'),'submitting closes the break sheet');
+  ok(!document.body.classList.contains('asking'),'and gives the nav back');
+  t.simClearSave();
+
+  t.startPaper(3); await sleep(30);
+  $('navHome').click(); await sleep(20);
+  t.simAbandon(); await sleep(40);
+  ok($('brkAsk').classList.contains('hidden'),'abandoning closes it too');
+  ok(!document.body.classList.contains('asking'),'and the nav comes back');
+  ok($('simTotal').classList.contains('hidden'),'the paper strip goes with the paper');
+  t.simClearSave();
+
+  // a paused paper does not take answers
+  t.startPaper(3); await sleep(30);
+  $('navHome').click(); await sleep(20); $('brkAskGo').click(); await sleep(40);
+  const ansBefore=JSON.stringify(t.sim.ans||{});
+  t.simPick(t.QS[t.sim.qs[t.sim.i]].o[0][0]); await sleep(20);
+  eq(JSON.stringify(t.sim.ans||{}),ansBefore,'a paused paper does not take answers either');
+  t.brkEnd(true); await sleep(40);
+  t.simAbandon(); await sleep(30); t.simClearSave();
+  t.startPaper(1); await sleep(30);
+
+  // the build stamp: a screenshot of an already-fixed bug turned out to be a cached page
+  ok(typeof t.BUILD==='string'&&t.BUILD.length>6,'the page says which build it is');
+  ok(/^[0-9a-f]{7}/.test(t.BUILD),'stamped with the commit it was built from');
+
+  t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave();
 }
 
 // ---------- resuming from the paper's own row ----------

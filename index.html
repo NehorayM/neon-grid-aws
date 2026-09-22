@@ -2044,6 +2044,8 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     <div style="text-align:center;margin-bottom:14px">
       <h2 class="head">📊 Personal Records</h2>
       <p class="sub">Everything you have built up so far.</p>
+      <p class="sub" id="recBuild" style="font-family:var(--mono);font-size:10.5px;opacity:.6;
+        margin-top:6px"></p>
     </div>
     <div class="list" id="recList"></div>
     <div class="list" style="margin-top:16px">
@@ -2151,6 +2153,10 @@ window.storage = {
 const $=id=>document.getElementById(id);
 const DATA=JSON.parse($('data').textContent);
 const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
+// A screenshot arrived showing a bug that was already fixed and deployed: the page was a
+// cached copy and nothing on it said so. This is the first thing to check when a fixed bug
+// comes back. It is also on the Records screen.
+const BUILD='3c6bd0c · 2026-09-22 12:10';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -5658,6 +5664,7 @@ function simLoad(){
 }
 function simPick(ltr){
   if(!sim) return;
+  if(brkOn()) return;                        // a paused paper is paused for answering too
   if(sim.rev&&sim.rev[sim.i]) return;        // a revealed question is settled
   const need=QS[sim.qs[sim.i]].a.length;
   const cur=new Set(sim.ans[sim.i]||[]);
@@ -5777,6 +5784,12 @@ function simSubmit(auto){
     return;
   }
   sim.running=false;
+  simQStop();
+  { const stb=$('simTotal'); if(stb) stb.classList.add('hidden'); }
+  { const bb=$('brkBar'); if(bb) bb.classList.add('hidden'); }
+  // the sheet offers a break on this paper, so it cannot outlive it — and it is what hides
+  // the nav, so leaving it open took the tabs with it
+  brkAskClose();
   ttsStop(); hideExplain(); simClearSave();
   const paper=sim.paper||0;
   let correct=0; const byDom={0:[0,0],1:[0,0],2:[0,0],3:[0,0]}; const missed=[];
@@ -6929,8 +6942,11 @@ go=function(id){
   }
   // Walking out of a running paper is either a break or refused. A break in progress lets you
   // move freely, which is the whole point of it.
+  // This used to ask for route==='quizScreen', which meant pressing Home from the review
+  // grid walked straight out of a running paper with no break and both clocks running.
+  // Leaving means leaving from anywhere the paper owns.
   if(typeof sim!=='undefined'&&sim&&sim.running&&!IN_PAPER[id]&&!brkOn()
-     &&route==='quizScreen'&&typeof brkAsk==='function'){
+     &&IN_PAPER[route]&&typeof brkAsk==='function'){
     if(brkAsk(()=>{ _go(id); syncNav(); })) return;
     if(!brkLeft()) return;                   // no breaks left: the paper keeps you
   }
@@ -8904,6 +8920,7 @@ const LEARN_T={
 };
 // LEARN:JS:END 
 // ================= BOOT =================
+(()=>{ const rb=$('recBuild'); if(rb) rb.textContent='build '+BUILD; })();
 (()=>{ const fc=$('flashCount');                  // stated 88 for a deck that has been 90
   if(fc) fc.textContent=Object.keys(CODEX).length+' AWS terms'; })();
 // ensureAudio() only runs when a paper or a session starts, which is the same moment the
@@ -8968,7 +8985,7 @@ if(TEST){
     EXAM_CHEER, examCheer, BANK_STATS, renderBankStats,
     EXPLAIN_PAPERS, simTeaches, simReveal, simRevealed, simScore, simPaintRevealed,
     buildExplain, renderExplain, hideExplain,
-    syncQBar, leaveExam, pctW, plural, accPct, chestProgress, normaliseProfile, timerClamp,
+    syncQBar, leaveExam, pctW, plural, accPct, BUILD, chestProgress, normaliseProfile, timerClamp,
     examDaysLeft, dailyPace, startTimer, renderBank, renderRecords, startMock, startPaper, TIMER_MAX, examDaysLabel, EXAM_MAX_DAYS,
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
