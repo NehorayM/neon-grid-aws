@@ -264,8 +264,12 @@ async function appChecks(){
   ok(!!t.QS[t.curQ],'review served a live question');
 
   // bookmarks
+  const wasMarked=t.isBookmarked(t.curQ);   // P.marks survives in localStorage between runs
   t.toggleBookmark();
-  ok(t.isBookmarked(t.curQ),'the bookmark went on');
+  ok(t.isBookmarked(t.curQ)!==wasMarked,'the bookmark toggled');
+  t.toggleBookmark();
+  ok(t.isBookmarked(t.curQ)===wasMarked,'and toggled back');
+  if(!wasMarked) t.toggleBookmark();
   t.startBookmarks(); await sleep(0);
   eq(t.route,'quizScreen','bookmark practice opened');
 
@@ -528,6 +532,109 @@ async function resumeChecks(){
   t.simAbandon(); await sleep(20);
 }
 
+// ---------- the fixes from the bug hunt ----------
+async function hardeningChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+
+  // an exam does not outlive the screen you left it on
+  t.simClearSave(); t.startPaper(3); await sleep(30);
+  ok(!!t.sim,'a paper is running');
+  $('quizBack').click(); await sleep(40);
+  eq(t.sim,null,'the back arrow ends it instead of leaving it running');
+  eq(t.route,'paperScreen','and lands where the saved run is offered back');
+  ok(!!t.simSaved(),'the run itself is kept');
+  // simQLeft keeps that question's remaining seconds on purpose — what has to stop is the
+  // interval, and with sim gone a tick must do nothing rather than count down in the background
+  const held=t.simQLeft;
+  t.simQTick(5); await sleep(5);
+  eq(t.simQLeft,held,'and its clock is no longer counting');
+
+  // and two engines never share the question screen
+  t.startPaper(3); await sleep(30);
+  $('quizBack').click(); await sleep(30);
+  t.startMock(); await sleep(30);
+  eq(t.sim,null,'starting a mock leaves no paper running underneath it');
+  t.startPaper(3); await sleep(30);
+  t.startSession(2); await sleep(30);
+  eq(t.sim,null,'nor does starting practice');
+  ok(getComputedStyle($('qConfirm')).display!=='none','and practice gets its Lock in back');
+  ok(getComputedStyle($('lifeFifty')).display!=='none','and its lifelines');
+  t.simClearSave();
+
+  // overlays do not survive navigation
+  $('verdict').classList.remove('hidden');
+  $('studyModal').classList.remove('hidden');
+  t.go('homeScreen'); await sleep(10);
+  ok($('verdict').classList.contains('hidden'),'the verdict card is dismissed on a route change');
+  ok($('studyModal').classList.contains('hidden'),'and so is the Study Card');
+
+  // numbers nobody sanity-checked
+  eq(t.startTimer({mode:'count',work:0,rest:0,rounds:0}),false,'a timer of no length is refused');
+  eq(t.timerClamp({work:999999,rest:999999,rounds:999999}).rounds,t.TIMER_MAX.rounds,'rounds are capped');
+  eq(t.timerClamp({work:999999,rest:0,rounds:1}).work,t.TIMER_MAX.work,'so are the minutes');
+  eq(t.timerClamp({work:-5,rest:-5,rounds:-5}).work,0,'negatives are floored');
+  eq(t.timerClamp({work:'abc',rest:null,rounds:undefined}).rounds,1,'and nonsense falls back');
+  eq(t.paperQs(0).length,0,'paperQs(0) is empty, not indices from -65');
+  eq(t.paperQs(-1).length,0,'paperQs(-1) too');
+  eq(t.paperQs(9999).length,0,'and past the last paper');
+  eq(t.paperQs(1).length,65,'while a real paper still works');
+
+  // the exam date
+  const keepDate=t.P.examDate;
+  t.P.examDate='2020-01-01';
+  eq(t.examDaysLeft(),-1,'a date in the past reports as past');
+  ok(/passed/.test(t.examDaysLabel(t.examDaysLeft(),t.dailyPace())),'and says so instead of "0 days to go"');
+  t.P.examDate='2999-01-01';
+  eq(t.examDaysLeft(),t.EXAM_MAX_DAYS,'a date centuries out is capped');
+  t.P.examDate='not-a-date';
+  eq(t.examDaysLeft(),null,'and garbage is treated as unset');
+  t.P.examDate=keepDate;
+
+  // bars cannot exceed their track
+  eq(t.pctW(1104),'100%','a width over 100% is clamped');
+  eq(t.pctW(-5),'0%','and under 0');
+  eq(t.pctW(NaN),'0%','NaN becomes nothing rather than an invalid style');
+  eq(t.pctW(Infinity),'0%','so does Infinity');
+  t.P.answered=1e9; t.P.nextChest=25;
+  eq(t.chestProgress().into,25,'the chest bar cannot fill past its own span');
+  t.P.answered=7; t.P.nextChest=25;
+
+  // a profile missing or mistyped everywhere still renders
+  const keepP=JSON.parse(JSON.stringify(t.P));
+  Object.keys(t.P).forEach(k=>delete t.P[k]);
+  t.normaliseProfile(t.P);
+  ['renderBank','renderBadges','renderShop','renderReadiness','renderPapers',
+   'renderThemes','renderPath','renderRecords'].forEach(fn=>{
+    let threw=null;
+    try{ if(t[fn]) t[fn](); }catch(e){ threw=String(e.message); }
+    ok(!threw,fn+'() survives an empty profile'+(threw?' — '+threw:''));
+  });
+  Object.keys(t.P).forEach(k=>delete t.P[k]);
+  Object.assign(t.P,{seen:[],wrong:{},badges:'nope',highs:null,secStats:7,rHist:{},
+                     login:[],inv:'x',upgrades:0,papers:[],xp:'abc',coins:NaN});
+  t.normaliseProfile(t.P);
+  ok(!Array.isArray(t.P.seen)&&typeof t.P.seen==='object','a map handed an array is replaced');
+  ok(Array.isArray(t.P.wrong),'a list handed an object is replaced');
+  ok(Array.isArray(t.P.rHist),'rHist is a list — it gets .push()ed');
+  ok(Array.isArray(t.P.known),'and so is known');
+  eq(t.P.xp,0,'a counter that is not a number becomes 0');
+  eq(t.P.coins,0,'NaN too');
+  ['renderBank','renderBadges','renderShop','renderReadiness'].forEach(fn=>{
+    let threw=null;
+    try{ if(t[fn]) t[fn](); }catch(e){ threw=String(e.message); }
+    ok(!threw,fn+'() survives a profile with the wrong type in every slot'+(threw?' — '+threw:''));
+  });
+  Object.keys(t.P).forEach(k=>delete t.P[k]); Object.assign(t.P,keepP);
+
+  // counts that reach 1
+  eq(t.plural(1,'question'),'1 question','one question, not "1 questions"');
+  eq(t.plural(2,'question'),'2 questions','two questions');
+  eq(t.plural(0,'coin'),'0 coins','and none');
+  eq(t.plural(1,'chip'),'1 chip','a single chip');
+
+  t.go('homeScreen');
+}
+
 // ---------- two devices, one account ----------
 async function deviceChecks(){
   const t=T(), $=id=>document.getElementById(id);
@@ -735,8 +842,9 @@ async function ttsChecks(){
   Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
     speak(u){ spoken.push(u.text); speaking=true; last=u; },
     cancel(){ cancels++; speaking=false; },
-    getVoices(){ return [{lang:'en-US',name:'Test'}]; },
-    get speaking(){ return speaking; }
+    getVoices(){ return [{lang:'en-US',name:'Test',localService:true}]; },
+    addEventListener(){}, removeEventListener(){},
+    get speaking(){ return speaking; }, get pending(){ return false; }
   }});
   const realU=window.SpeechSynthesisUtterance;
   window.SpeechSynthesisUtterance=function(text){ this.text=text; };
@@ -751,20 +859,47 @@ async function ttsChecks(){
   q.o.forEach(o=>ok(txt.indexOf(o[1].slice(0,30))<0,'it does not read option '+o[0]+" text"));
   eq(txt,'Question 1 of 65. '+q.q,'the reading is the position and the stem, nothing else');
 
+  // ---- the reading is cut into pieces so it starts speaking at once
+  const long='Question 1 of 65. '+('A company needs a highly available store. '.repeat(12));
+  const cs=t.ttsChunks(long);
+  ok(cs.length>1,'a long stem is cut into pieces ('+cs.length+')');
+  ok(cs[0].length<=160,'the first piece is short, so sound starts straight away');
+  cs.forEach((c,i)=>ok(c.length<=160,'piece '+i+' is within the limit'));
+  eq(cs.join(' ').replace(/\s+/g,' ').trim(),long.replace(/\s+/g,' ').trim(),
+     'and nothing is lost or duplicated between them');
+  eq(t.ttsChunks('Short one.').length,1,'a short stem stays whole');
+  eq(t.ttsChunks('').length,0,'empty text asks for nothing');
+  const noSpace=t.ttsChunks('x'.repeat(400));
+  ok(noSpace.length>1,'even a single unbroken word is cut rather than sent whole');
+  ok(noSpace.every(c=>c.length<=160),'within the limit');
+  // the first draft of the chunker flushed long clauses straight to the output while an
+  // earlier piece was still buffered, so the reading came out reordered with words missing
+  const norm=x=>x.replace(/\s+/g,' ').trim();
+  let lossy=0, over=0;
+  for(let i=0;i<t.QS.length;i++){
+    const txt=t.ttsText(t.QS[i],i,65), cs=t.ttsChunks(txt);
+    if(norm(cs.join(' '))!==norm(txt)) lossy++;
+    if(cs.some(c=>c.length>160)) over++;
+  }
+  eq(lossy,0,'every question in the bank chunks without losing or reordering a word');
+  eq(over,0,'and no piece exceeds the limit');
+
   t.startPaper(8); await sleep(20);
   eq($('simTts').textContent,'🔊 Read','the button offers a read');
   const n0=spoken.length;
   $('simTts').click(); await sleep(10);
-  eq(spoken.length,n0+1,'tapping it speaks');
-  ok(spoken[spoken.length-1].indexOf('Question 1 of 65')===0,'it spoke this question');
+  ok(spoken.length>n0,'tapping it speaks');
+  ok(spoken[n0].indexOf('Question 1 of 65')===0,'starting with this question');
+  ok(spoken[n0].length<=160,'and the first thing sent is short');
   eq($('simTts').textContent,'⏹ Stop','and the button becomes a stop');
   ok($('simTts').classList.contains('on'),'and shows that it is reading');
 
   // a second tap stops it. There is no third state.
   const c0=cancels;
+  const spokeN=spoken.length;
   $('simTts').click(); await sleep(10);
   ok(cancels>c0,'the second tap stops the voice');
-  eq(spoken.length,n0+1,'and does not start another reading');
+  eq(spoken.length,spokeN,'and does not start another reading');
   eq($('simTts').textContent,'🔊 Read','the button offers a read again');
   ok(!$('simTts').classList.contains('on'),'and drops the reading state');
 
@@ -774,8 +909,8 @@ async function ttsChecks(){
   eq(spoken.length,n1,'moving to the next question does not read it');
   eq($('simTts').textContent,'🔊 Read','and the button stays a read');
   $('simTts').click(); await sleep(10);
-  eq(spoken.length,n1+1,'but asking for it still works');
-  ok(spoken[spoken.length-1].indexOf('Question 2 of 65')===0,'and reads the right one');
+  ok(spoken.length>n1,'but asking for it still works');
+  ok(spoken[n1].indexOf('Question 2 of 65')===0,'and reads the right one');
 
   // when the voice finishes on its own, the button comes back by itself
   finish(); await sleep(10);
@@ -1178,8 +1313,9 @@ async function integrationChecks(){
   t.startPaper(11); await sleep(30);
   $('simTts').click(); await sleep(10);
   eq($('simTts').textContent,'\u23f9 Stop','reading aloud mid-exam');
-  eq(spoken.length,1,'it spoke once');
-  ok(spoken[0].indexOf('Option')<0,'and did not read the options');
+  ok(spoken.length>=1,'it spoke');
+  ok(spoken[0].length<=160,'starting with a short piece, so sound is immediate');
+  ok(spoken.join(' ').indexOf('Option')<0,'and did not read the options');
   const c0=cancels;
   t.simQTick(90); await sleep(30);
   eq(t.sim.i,1,'the 90 seconds ran out and moved on');
@@ -1289,7 +1425,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

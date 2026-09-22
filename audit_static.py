@@ -149,10 +149,16 @@ for i, q in enumerate(qs):
             report("MED", "bank", f"question {i} option {l} is suspiciously short: {t!r}")
         if re.match(r"^[A-F][\).\s]", t.strip()):
             report("MED", "bank", f"question {i} option {l} starts with a stray letter marker: {t[:40]!r}")
-    if q["q"].strip().endswith(("(Select TWO.)", "(Select THREE.)")) and len(q["a"]) < 2:
-        report("HIGH", "bank", f"question {i} says Select TWO/THREE but has {len(q['a'])} answer(s)")
-    if len(q["a"]) >= 2 and "Select" not in q["q"]:
+    # the stems say this three ways: "(Select TWO.)", "(Choose two.)", "(Select THREE.)".
+    # Matching only "Select" reported three perfectly healthy questions as damaged.
+    multi = re.search(r"\((?:Select|Choose)\s+(?:TWO|THREE|two|three)\.?\)", q["q"], re.I)
+    if multi and len(q["a"]) < 2:
+        report("HIGH", "bank", f"question {i} says Select/Choose TWO but has {len(q['a'])} answer(s)")
+    if len(q["a"]) >= 2 and not multi:
         report("MED", "bank", f"question {i} needs {len(q['a'])} answers but the stem never says so")
+    letters = [l for l, _ in q["o"]]
+    if letters != list("ABCDEF")[:len(letters)]:
+        report("HIGH", "bank", f"question {i} has gappy option letters {letters} — an option was lost")
     if "©" in q["q"] or "£" in q["q"]:
         report("MED", "bank", f"question {i} still has OCR glyph damage")
 

@@ -395,45 +395,43 @@ Hebrew and Latin on one line need `direction:rtl; unicode-bidi:isolate` on the H
 `` `maxReceiveCount` `` loses its backticks to the far end of the line. The English fallback
 ("Decision rules for this sector", pulled from the course recap) opts out with `.exitem.ltr`.
 
-## Known bugs — found by the audit, not yet fixed
+## The bug hunt — what was found and fixed
 
-`python3 audit_static.py` and, in the browser, `eval(await (await fetch('/audit_runtime.js')).text()); await AUDIT()`.
-Twenty-six verified defects; ~118 instances once each unnamed button and damaged question is
-counted separately. Nine are high severity:
+`python3 audit_static.py`, and in the browser `AUDIT2()` and `AUDIT3()` (load `audit2.js`
+and `audit3.js` with `?test=1`). All three, plus every QA suite, are clean as of this pass.
 
-1. **Leaving an exam by the back arrow does not end it.** `quizBack` only calls `go('homeScreen')`,
-   so `sim` stays live.
-2. …its countdown keeps running in the top bar on every other screen.
-3. …and when it expires `simCheckTime()` submits and drags you to the result screen from wherever
-   you were.
-4. …and read-aloud keeps speaking the question after you have left.
-5. **Two exam engines can run at once** — `startMock()` never clears `sim`. Reachable: start a
-   paper, back arrow, Readiness, Start mock.
-6. **The verdict overlay survives navigation.** `go()` dismisses no overlays.
-7. **The Study Card modal survives navigation.** Same cause.
-8. **Question 715 is broken** (paper 12, q1): OCR merged option A into the stem, and option A now
-   renders as just "OpsCenter."
-9. **The custom timer has no validation.** 0/0/0 starts a ~1.9-year countdown; 999999 shows
-   "16666:39:00 · round 1/999999".
+**All twenty-six findings from the first audit are fixed**, including the nine high severity
+ones. The three audits between them now report zero.
 
-Medium: a past exam date reads "0 days to go · 900 questions/day" and a far one 355,118 days;
-`renderBadges()` and `renderShop()` throw on a profile missing `badges`/`upgrades` where every
-other reader guards with `||[]`; `paperQs(0)` and `paperQs(-1)` return out-of-range indices;
-the Flashcards tile says 88 terms and the deck has 90; q549 option C carries option D's text
-behind a stray "D."; a stray © survives in q242, q282, q715; four multi-answer questions lost
-their "(Select TWO.)" (q90, q285, q334, q826); 34 icon-only buttons have no accessible name;
-the shop still says "50/50 costs 10 coins instead of 30" though nothing costs coins; a comment
-still says "the 2,502 questions".
+What the first audit got wrong, and is fixed in the auditor itself:
 
-Low: `.stujump button.on` is dead CSS so the topic jump bar never marks where you are;
-`readiness()` does not clamp accuracy; `comboBreak()` is dead and `openStudy2()` is reachable
-only from the test surface; `P.lastLearn` and `P.lastTimer` are write-only; 55 CSS selectors are
-declared more than once.
+- It reported four questions as missing "(Select TWO.)". Three of them say "(Choose two.)"
+  and were perfectly healthy — the check only looked for the word "Select".
+- It never checked that option letters run A, B, C… with no gap, which is how three questions
+  sat in the bank missing an option outright.
 
-Checked and clean: no duplicate stems or options in the bank, papers disjoint and complete, all
-nine mini-games, profile round-trip, player names rendered with `textContent` (a duel opponent
-cannot inject HTML), layout at 320/375/1024, and the explanation engine never explains a wrong
-option with a service the right answer also uses.
+Bug classes worth knowing about, because each was more than one instance:
+
+| class | what it was |
+| --- | --- |
+| **Lifecycle** | Leaving a screen did not end what was running on it. An exam survived the back arrow — clock, voice, auto-submit and all — and two engines could drive the question screen at once. `leaveExam()` is now the single door, and `go()` dismisses overlays. |
+| **Unclamped percentages** | 26 progress bars set `width` from a raw ratio. The chest bar was rendering `width: 1104%` in ordinary use, hidden only by its parent's `overflow:hidden`. All of them go through `pctW()`. |
+| **Profile shape** | Nineteen profile fields were dereferenced somewhere without a guard. Rather than patch a hundred read sites, `normaliseProfile()` fixes the shape at the three doors a profile comes in by: load, cloud merge, import. |
+| **Unclamped accuracy** | `correct` and `answered` merge across devices independently, so `correct > answered` is reachable. The home screen read "577% accuracy". `accPct()` and a clamp in `domainStats()`. |
+| **Accessible names** | 56 controls announced nothing or announced a bare digit — every back arrow, every bet chip, the theme locks, three "Go" buttons, the review grid, the Learn exam dots. |
+| **Pluralisation** | 33 counts interpolated into a hard plural. Each reaches 1 in normal use. `plural(n, word)`. |
+| **Input validation** | The custom timer took 0/0/0 and 999999; `paperQs(0)` returned indices from −65; a past exam date read "0 days to go · 900 questions/day". |
+
+**Read-aloud latency.** Three things stacked between the tap and the first sound: the voice was
+picked as the first `en` voice in the list, which on Chrome is usually a *network* voice that
+fetches its audio before speaking; the whole stem went as one utterance and the median question
+is 411 characters; and `cancel()` was called straight into `speak()`, a Chrome race that delays
+or drops the utterance. Now: a local voice is preferred, the text is cut into sentence-sized
+pieces so the first one is short, the cancel only happens when something is speaking, and the
+voice list is warmed at boot instead of asked for at the tap.
+Watch `ttsChunks()` — its first version flushed a long clause straight to the output while an
+earlier piece was still buffered, so the reading came out reordered with words missing. There is
+an assertion that every question in the bank chunks losslessly.
 
 ## Known gaps / next up
 
