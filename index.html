@@ -5102,6 +5102,14 @@ function renderClock(){
   const el=$('playClock'); if(!el) return;
   // an exam in progress owns the clock
   if(sim&&sim.running){
+    // A frozen countdown reads as a broken one, so during a break the clock says so and
+    // counts the break down instead of sitting on a number that is not moving.
+    if(typeof brkOn==='function'&&brkOn()){
+      el.textContent='☕ '+fmtClock(brkRemain()*1000);
+      el.classList.remove('warn','crit');
+      const sb=$('clockSub'); if(sb) sb.textContent='break · paper paused';
+      return;
+    }
     // the question's own 90 seconds is what governs now, so that is what the clock shows;
     // the paper's remaining budget is on the review screen, where it is actually useful
     const left=simQLeft*1000;
@@ -5147,7 +5155,7 @@ function brkStart(){
   simQStop();                       // the question's own countdown stops dead
   ttsStop();
   simPersist();
-  renderBrk();
+  renderBrk(); renderClock();
   toast('\u2615 Break started \u2014 6 minutes, the paper is paused');
   return true;
 }
@@ -5161,19 +5169,21 @@ function brkEnd(quiet){
     if(sim.qEndAt) sim.qEndAt+=over;               // and this question's
   }
   simPersist();
-  renderBrk();
+  renderBrk(); renderClock();
   if(!quiet) toast('\u23f0 Break over \u2014 back to the paper');
-  if(sim&&sim.running){ simLoad(); }
+  if(sim&&sim.running){ simLoad(); }        // brkUntil is already 0, so go() lets this through
 }
 function brkTick(){
   if(!sim||!sim.brkUntil) return;
   if(brkRemain()<=0){ brkEnd(false); return; }
-  renderBrk();
+  renderBrk(); renderClock();
 }
 function renderBrk(){
   const bar=$('brkBar'); if(!bar) return;
   if(!brkOn()){ bar.classList.add('hidden'); return; }
   bar.classList.remove('hidden');
+  const txt=bar.querySelector('.btxt');
+  if(txt) txt.textContent='Paper paused — it comes back on its own';
   $('brkClock').textContent=fmtClock(brkRemain()*1000);
 }
 
@@ -6265,6 +6275,7 @@ function renderPapers(){
   const sv=simSaved(), rbtn=$('exResume');
   if(sv&&rbtn){
     const mine=simOwns(sv);
+    const paused=(typeof brkOn==='function')&&brkOn();
     rbtn.classList.remove('hidden');
     rbtn.dataset.armed='';
     rbtn.innerHTML='<span class="rem">⏸</span><span style="flex:1;min-width:0">'+
@@ -6272,8 +6283,11 @@ function renderPapers(){
         (mine?'':' <span class="elsewhere">on '+esc(otherDevice(sv))+'</span>')+'</div>'+
       '<div class="rds">Question '+((sv.i||0)+1)+' of '+sv.qs.length+' · '+
       simAnsweredIn(sv)+' answered · '+fmtClock(sv.left)+' left</div></span>'+
-      '<span class="buy">'+(mine?'Resume':'Take over')+'</span>';
-    rbtn.onclick=()=>simResumeHere(sv);
+      '<span class="buy">'+(paused?fmtClock(brkRemain()*1000):mine?'Resume':'Take over')+'</span>';
+    rbtn.onclick=()=>{
+      if(paused){ toast('☕ Break — the paper comes back in '+fmtClock(brkRemain()*1000)); return; }
+      simResumeHere(sv);
+    };
   } else if(rbtn) rbtn.classList.add('hidden');
   renderBankStats();
   $('paperStats').innerHTML=
@@ -6305,6 +6319,7 @@ function renderPapers(){
     // The row for the paper you are part way through offers to continue it, rather than
     // making you find the bar at the top — and rather than saying "Retake" over a run you
     // have not finished, which is what used to quietly delete it.
+    const onBreak=(typeof brkOn==='function')&&brkOn();
     const savedHere=sv&&(sv.paper||0)===n;
     if(savedHere){
       const again=document.createElement('button');
@@ -6325,6 +6340,7 @@ function renderPapers(){
       'Resume Exam '+n+' at question '+((sv.i||0)+1)+' of '+sv.qs.length);
     b.onclick=()=>{
       const open=simSaved();
+      if(onBreak){ toast('☕ Break — the paper comes back in '+fmtClock(brkRemain()*1000)); return; }
       if(savedHere){ simResumeHere(open||sv); return; }
       // Starting anything else throws the saved run away. Say so, and say what is being lost.
       if(open){
@@ -6904,6 +6920,13 @@ const _go=go;
 // Screens that are still part of the paper — moving between them is not leaving it.
 const IN_PAPER={quizScreen:1,simRevScreen:1,simDoneScreen:1};
 go=function(id){
+  // A break freezes both clocks, so being inside the paper during one means looking at a dead
+  // countdown — which is exactly what "the timer isn't working" turned out to be. For those six
+  // minutes the paper is not somewhere you can be, and it takes you back itself when they end.
+  if(typeof brkOn==='function'&&brkOn()&&IN_PAPER[id]){
+    toast('☕ Break — the paper comes back in '+fmtClock(brkRemain()*1000));
+    return;
+  }
   // Walking out of a running paper is either a break or refused. A break in progress lets you
   // move freely, which is the whole point of it.
   if(typeof sim!=='undefined'&&sim&&sim.running&&!IN_PAPER[id]&&!brkOn()

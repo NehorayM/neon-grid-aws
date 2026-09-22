@@ -541,6 +541,8 @@ function fmtMs(ms){
              : (m+':'+String(ss).padStart(2,'0'));
 }
 
+function renderClockSafe(t){ try{ t.renderClock(); }catch(e){} }
+
 // ---------- two six-minute breaks per paper ----------
 async function breakChecks(){
   const t=T(), $=id=>document.getElementById(id);
@@ -585,6 +587,28 @@ async function breakChecks(){
   $('navPlay').click(); await sleep(30);
   eq(t.route,'stuPickScreen','a break lets you go wherever');
   ok(t.brkOn(),'without ending it');
+
+  // ...except back into the paper. Both clocks are frozen during a break, so standing on the
+  // question screen means staring at a dead countdown — which is what got reported as a
+  // broken timer. For those six minutes the paper is not somewhere you can be.
+  t.go('quizScreen'); await sleep(20);
+  eq(t.route,'stuPickScreen','a break will not let you back onto the question');
+  t.go('simRevScreen'); await sleep(20);
+  eq(t.route,'stuPickScreen','nor onto the review screen');
+  ok(/comes back in/.test(([...document.querySelectorAll('.toast')].pop()||{}).textContent||''),
+     'and it says when the paper returns');
+  // the clock counts the break down rather than sitting on a number that is not moving
+  ok(/\u2615/.test($('playClock').textContent),'the top clock shows the break, not a frozen exam');
+  eq($('clockSub').textContent,'break \u00b7 paper paused','and says the paper is paused');
+  const brkShown=$('playClock').textContent;
+  t.sim.brkUntil-=3000; t.renderBrk(); renderClockSafe(t);
+  ok($('playClock').textContent!==brkShown,'and it is counting down');
+  // the resume row offers the remaining break instead of a way in
+  t.renderPapers(); await sleep(20);
+  const rrow=$('exResume');
+  ok(!/Resume<\/span>$/.test(rrow.innerHTML),'the resume row does not offer a way in');
+  rrow.click(); await sleep(20);
+  eq(t.route,'stuPickScreen','and pressing it does not get you there');
 
   // and the clocks are paid back in full when it ends
   t.brkEnd(true); await sleep(40);

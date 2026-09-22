@@ -314,6 +314,14 @@ running paper except through a break. `IN_PAPER` lists the screens that are stil
 - **With both spent:** leaving is refused and the clock keeps running. That is the point of
   having exactly two.
 
+**A break keeps you out of the paper.** This is the fix for "the timer isn't working": both
+clocks are frozen during a break, so standing on the question screen meant looking at a dead
+1:30 for up to six minutes, which is indistinguishable from a broken clock. `go()` refuses any
+`IN_PAPER` screen while `brkOn()`, the resume row offers the remaining break instead of a way
+in, and `renderClock()` shows `☕ 5:57 · break · paper paused` rather than the exam's frozen
+number. `brkStart()`, `brkEnd()` and `brkTick()` all repaint the clock, so it never sits on a
+stale value waiting for the next tick.
+
 `brkUsed` and `brkUntil` live on the run and go into `P.simSave`, so walking away and resuming
 does not hand the breaks back. `body.asking` hides the nav while the sheet is open — the sheet
 is taller than a padding-bottom can allow for, and nothing under a modal should be competing
