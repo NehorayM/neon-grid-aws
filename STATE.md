@@ -204,6 +204,57 @@ readiness history.
 **Deploy the page and the SQL together.** The duel picks question ids server-side, so pushing a
 new bank without re-running `supabase_duel.sql` leaves duels handing out ids that no longer exist.
 
+## Why each answer, and the splitter that builds it
+
+`q.w` is the written explanation the CSV carries for 1,177 of the questions. It is one
+paragraph covering every option, so `whyByOption()` pulls it apart and files each clause
+against the option it is about; `optionLine()` then decides what an option is actually shown,
+and both the panel and `audit9.js` call it, so the audit measures what is read rather than an
+intermediate.
+
+`audit9.js` measured the first version and the paragraph-splitting showed up as three numbers:
+**1,922 option lines (40%) opened by discussing a different option**, 1,241 (26%) were a copy of
+another option's line, and **451 of 1,177 correct answers were shown less than a sentence**. All
+three were the same mistake — attributing whole sentences to options when these write-ups pack
+two or three options into one.
+
+Four bugs underneath that were each producing wrong attributions across the whole bank:
+
+- **The letter match was case-insensitive**, so the article in "C and D use a single AZ" matched
+  option A. Every sentence in the bank containing the word "a" was filed under A.
+- **A capitalised article at the start of a sentence.** "A gp3 volume tops out at 16,000 IOPS" is
+  not option A, but "A adds a queue for no benefit" is. The word after the letter decides: a
+  third-person verb or a modal means the option, a modifier means the article.
+- **"the R&D account" matched option D.** The lead-in is now restricted to whitespace or an
+  opening bracket, which also rules out "A/B" and "gp3-D".
+- **The keyword pass stole the answer's own evidence.** "io2 supports up to 64,000 IOPS" was
+  diverted to a distractor sharing a keyword, leaving the correct option with a fragment.
+
+Separators are tried **strongest first** — dash, then semicolon, then comma — and each accepted
+piece is offered the weaker ones. Offering them all at once meant one bad comma candidate vetoed
+a good dash split, which is how q226 (the one in the complaint) had the case for its answer filed
+under D. A split is refused if a piece is too short to be a clause ("B, C, and D all still involve
+keys" is one clause with three subjects), if it strands a continuation ("so the R&D account must
+leave it first", "which is why A and B are wrong"), or if it would leave unbalanced brackets
+("ALB and NLB (C, D)" must not be cut at that comma).
+
+Where a verdict genuinely covers two options, `leadFirst()` puts the option being read at the
+front of the letter list — D is shown "D and B require Lambda to poll the logs" — so the line
+reads as being about the option it sits under. It keeps the list's own punctuation, so "(A, D)"
+becomes "(D, A)" and not "(D and A)".
+
+`whyQualityChecks()` in `qa_bank.js` holds all of this as standing assertions, including
+bank-wide thresholds. **Verify the thresholds can fail before trusting a zero** — replacing
+`whyByOption` with one that hands every option the whole write-up takes misled from 14 to 555 and
+duplicates from 371 to 1,399, which is what makes the passing numbers mean anything.
+
+The OCR repair is in `fix_ocr.py` and `fix_ocr2.py`. In these option texts a sentence never begins
+with a lowercase word, so a period followed by one is always damage ("the put. item method",
+"prevent tag. modification"). The exception that the general rule would wreck is a domain:
+"events. amazonaws. com" was split at every dot, and there the period is real and the space is the
+damage — domains are reassembled first. `BANKV` is a written constant and not a hash of the bank,
+so repairing the text does not reset anyone's progress.
+
 ## How the Learn mode works
 
 For each subject: read a part → answer 4 questions written for that part → below 75% the part is
