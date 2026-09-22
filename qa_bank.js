@@ -652,6 +652,24 @@ async function refreshChecks(){
   }
   t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave();
 
+  // The save used to share sim.qt by reference, so every tick quietly rewrote the saved
+  // per-question times while `at` stayed put — any unrelated saveProfile() then wrote a pair
+  // describing two different moments, and the resume charged the gap twice.
+  await setup();
+  ok(t.P.simSave.qt!==t.sim.qt,'the save holds its own copy of the question clocks');
+  const savedSnapshot=JSON.stringify(t.P.simSave.qt);
+  t.sim.qt[40]=7;                      // mutate the live object behind the save's back
+  eq(JSON.stringify(t.P.simSave.qt),savedSnapshot,'and the live object cannot rewrite it');
+  delete t.sim.qt[40];
+
+  // and the question being answered is written down, not left to be inferred
+  t.simQTick(15); await sleep(10);
+  t.simPersist();
+  eq(t.P.simSave.qt[t.sim.i],t.simQLeft,
+     'the current question is saved with the seconds it actually has');
+  ok(typeof t.simSaveTick==='number','a running paper writes itself down on a timer');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+
   // the shape the whole thing rests on
   eq(t.simAwayCost(null),0,'no save, no charge');
   eq(t.simAwayCost({paused:1,at:1}),0,'a paused save is never charged');

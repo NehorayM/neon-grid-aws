@@ -2160,7 +2160,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 12:32 UTC';
+const BUILD='2026-09-22 12:39 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -5527,6 +5527,7 @@ function simQStart(){
 // Counting interval fires meant a throttled or suspended timer either ran slow or stopped
 // dead while the page sat there looking live. Reading the deadline instead means a missed
 // fire shows up a moment late rather than costing a second that never comes back.
+let simSaveTick=0;
 function simQSync(){
   if(!sim||!sim.running){ simQStop(); return; }
   if(brkOn()) return;                                           // the paper is paused
@@ -5538,6 +5539,10 @@ function simQSync(){
   simQLeft=left;
   sim.qt=sim.qt||{}; sim.qt[sim.i]=simQLeft;
   renderSimQ();
+  // Write it down every ten seconds. The `at`-based correction makes a resume exact anyway,
+  // but only while the stored qt and at describe the same moment — persisting keeps them
+  // together instead of leaving it to whenever an answer last happened to save.
+  if(++simSaveTick>=10){ simSaveTick=0; simPersist(); }
   if(simQLeft<=0){ sim.qEndAt=0; simQTimeUp(); }
 }
 // The harness drives the clock by hand. The deadline moves with it, so the two never disagree.
@@ -5953,8 +5958,12 @@ function renderBankStats(){
 // to tomorrow resumes where it stopped instead of having expired overnight.
 function simPersist(){
   if(!sim||!sim.running) return;
+  // A copy, not the live object. Sharing the reference meant every tick quietly rewrote the
+  // save's per-question times while `at` stayed where it was, so any unrelated saveProfile()
+  // wrote a pair describing two different moments — and the resume charged the gap twice.
   P.simSave={paper:sim.paper||0, qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
-             qt:sim.qt||{}, brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
+             qt:Object.assign({},sim.qt||{},{[sim.i]:Math.max(0,simQLeft)}),
+             brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
              dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
              claimAt:sim.claimAt||0,
              left:Math.max(0,sim.endAt-Date.now()), mins:sim.mins||SIM_MIN, at:Date.now(),
@@ -9035,7 +9044,7 @@ if(TEST){
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
-    simAwayCost, simPauseSave,
+    simAwayCost, simPauseSave, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,
     clockEnsure, get clockIv(){return clockIv;},
     get simQIv(){return simQIv;},

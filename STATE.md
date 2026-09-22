@@ -352,6 +352,15 @@ not charged — `brkUntil` is an absolute moment, so the overlap is exact.
 treated it as seconds, which made the charge a thousand times too big — and that read as the
 save being unresumable rather than as a wrong number, which is a much harder symptom to trace.
 
+**The per-question clocks are written down, not inferred.** Measured across a real reload, the
+save's `qt` was `{}` after 25 seconds on question one — the resume still landed near the right
+number, but only because `at` happened to be stamped when the question loaded, so "time since
+`at`" and "time on this question" were the same figure. A coincidence, not a design. Worse,
+`P.simSave.qt` was assigned `sim.qt` **by reference**, so every tick rewrote the save while
+`at` stayed put, and any unrelated `saveProfile()` (answering awards XP, which saves) wrote a
+pair describing two different moments — the resume then charged the gap twice. The save takes a
+copy now, always including the current question, and a running paper persists every ten seconds.
+
 If the charge empties the paper it is not silently lost: the run resumes with no time left and
 `simCheckTime()` submits it within the second, so the score for what was answered still lands.
 `simSaved()` subtracts the same cost, so a paper whose budget ran out while away is not offered
