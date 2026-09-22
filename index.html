@@ -5438,19 +5438,16 @@ function ttsStop(){
 // A real word rather than a space: an engine that skips whitespace could keep it in the
 // queue forever and everything after it would be silent. And no tidy-up cancel afterwards,
 // which is the one thing that could cut off whatever the user asks for next.
-let ttsWarmed=false, ttsWarmState='not started';
+let ttsWarmed=false;
 function ttsWarm(){
   if(ttsWarmed||!ttsOk()||TEST) return;
-  ttsWarmed=true; ttsWarmState='waking';
+  ttsWarmed=true;
   try{
     const u=new SpeechSynthesisUtterance('ok');
     u.volume=0; u.rate=1; u.lang='en-US';
-    const t0=Date.now();
-    u.onstart=()=>{ ttsWarmState='awake after '+(Date.now()-t0)+'ms'; };
-    u.onend=()=>{ if(ttsWarmState==='waking') ttsWarmState='ended without starting'; };
-    u.onerror=e=>{ ttsWarmState='failed: '+((e&&e.error)||'error'); };
+    u.onend=u.onerror=()=>{};        // attached so the queue is known to drain
     window.speechSynthesis.speak(u);
-  }catch(e){ ttsWarmState='threw'; }
+  }catch(e){}
 }
 
 // getVoices() is filled in asynchronously and the first call usually returns nothing,
@@ -5515,18 +5512,6 @@ function ttsText(q,i,total){
 // One batch of utterances. `plain` is the fallback the watchdog uses: no voice override,
 // no chunking, nothing clever — just the text, which is the most likely thing to work on an
 // engine that has ignored everything else.
-const TTS_DEBUG=typeof location!=='undefined'&&/[?&]ttsdebug=1/.test(location.search);
-let ttsAskedAt=0, ttsSlowSaid=false;
-// The app times itself, so the only thing anyone has to do to report a delay is press Read.
-function ttsReport(how){
-  const ms=ttsAskedAt?Date.now()-ttsAskedAt:0;
-  ttsAskedAt=0;
-  if(TTS_DEBUG) toast('\u25b6 '+ms+'ms \u00b7 '+how+' \u00b7 warm: '+ttsWarmState);
-  else if(ms>3000&&!ttsSlowSaid){
-    ttsSlowSaid=true;
-    toast('\u23f3 The voice took '+(ms/1000).toFixed(1)+'s to start');
-  }
-}
 function ttsSend(text,seq,plain){
   const ss=window.speechSynthesis;
   const chunks=plain?[String(text)]:ttsChunks(text);
@@ -5538,12 +5523,7 @@ function ttsSend(text,seq,plain){
     const u=new SpeechSynthesisUtterance(part);
     u.rate=P.ttsRate||1; u.lang='en-US';
     if(voice) u.voice=voice;
-    if(k===0) u.onstart=()=>{
-      started=true;
-      ttsReport((plain?'plain retry':chunks.length+' chunk'+(chunks.length===1?'':'s'))+
-                (voice?' \u00b7 '+voice.name:' \u00b7 default voice'));
-      if(seq===ttsSeq){ ttsOn=true; renderTtsBtn(); }
-    };
+    if(k===0) u.onstart=()=>{ started=true; if(seq===ttsSeq){ ttsOn=true; renderTtsBtn(); } };
     if(k===chunks.length-1) u.onend=done;
     u.onerror=done;
     ss.speak(u);
@@ -5561,7 +5541,6 @@ function ttsSpeak(text){
     // avoids the cancel/speak race, rather than skipping the cancel and hoping.
     ss.cancel();
     try{ if(ss.paused) ss.resume(); }catch(e){}
-    ttsAskedAt=Date.now();
     ttsOn=true; renderTtsBtn();
     setTimeout(()=>{
       if(seq!==ttsSeq) return;
@@ -8353,10 +8332,8 @@ if(TEST){
     examDaysLeft, dailyPace, startTimer, renderBank, renderRecords, startMock, startPaper, TIMER_MAX, examDaysLabel, EXAM_MAX_DAYS,
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
-    ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend, TTS_DEBUG,
-    get ttsAskedAt(){return ttsAskedAt;},
-    get ttsVoices(){return ttsVoices;}, get ttsWarmState(){return ttsWarmState;},
-    get ttsWarmed(){return ttsWarmed;},
+    ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
+    get ttsVoices(){return ttsVoices;}, get ttsWarmed(){return ttsWarmed;},
     simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing,
     csvCell, csvRows, exportReview, exportLastExam, get lastExamCsv(){return lastExamCsv;},
     simLen, simMins,

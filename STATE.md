@@ -495,10 +495,12 @@ Run 1 could not show the cold start, because six lines had already woken the
 engine before it reached the warm-up line. Run 2 was a fresh load. If this ever
 comes back, run the probe twice and compare the first line.
 
-**`tts_probe.html` measures this on a real device** — open it on the phone, tap Run, and it times
-how long each of eight strategies takes to make its first sound (bare speak, speak after an idle
-cancel, one long utterance, a local voice, a network voice, after a warm-up). Use it rather than
-guessing; the preview browser has no voices installed, so none of this can be measured here.
+**Both diagnostics have been removed** now that it is fixed — `tts_probe.html` (the standalone
+latency probe, eight strategies timed to first sound) and the `?ttsdebug=1` readout that toasted
+the time from the tap to the first sound inside the app. They are in git history if this comes
+back: the probe at `10bd287`, the in-app readout at `81803b3`. Bring one back rather than
+guessing — the preview browser has no voices installed, so none of this can be measured here,
+which is exactly why the first two attempts were wrong.
 
 **Careful when probing `speechSynthesis` by hand.** Redefining `speaking` or `pending` with
 `Object.defineProperty` and forgetting to restore it poisons the page: `ttsStop()` then reads a
