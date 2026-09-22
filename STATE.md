@@ -293,6 +293,33 @@ fake a non-`en` lang so the app leaves `voice` alone. Batch it with
 Three SQL bugs reached the user before `sql_tests` existed, including one that could pay a duel
 pot twice. Anything touching `supabase_*.sql` should run it first.
 
+## The reading voice
+
+`🗣️ Voice` on the home screen's chip row opens `voiceScreen`.
+
+**Eight presets, not eight engine voices.** Which voices a machine has differs wildly and most
+are named things like "Chrome OS US English 6", so a preset is a rate, a pitch and a purpose:
+Standard, Exam Room (0.85×, an invigilator's pace), Quick Review (1.35×), Sprint (1.8×), Deep
+Focus (low and steady), Bright, Night Study (quieter), Dictation (0.7× and chunked at 80 chars
+so there are gaps to write in). Each carries a Hebrew second line, like the rest of the app.
+
+**It tests every voice before offering it.** This is the point of the screen. On the reporter's
+ChromeOS machine, eight of thirty-four voices report `localService: true` and never make a
+sound — a plain picker would let someone choose one and get silence with no explanation.
+`voiceCheckAll()` speaks a silent word through each English voice and watches for `onstart`;
+anything quiet for two seconds is marked SILENT, greyed and disabled. Results cache in
+`voiceProbe` for the session. "Let the browser choose" is the default and is marked SAFE.
+
+Speed and pitch sliders sit over the preset — `P.ttsRate` had been read by the speech path
+since the beginning and nothing ever set it. Both are clamped (`voiceRate` 0.5–2.2,
+`voicePitch` 0.4–2) and an unknown preset falls back to Standard.
+
+**Not here, on purpose: auto-read.** It was removed on request, and a settings screen is exactly
+where it would creep back in.
+
+The watchdog's plain retry deliberately drops the chosen voice but keeps the speed — a voice is
+the thing most likely to be at fault when nothing speaks; speed has never broken anything.
+
 ## Two devices, one account
 
 The reported symptom was a desktop on Exam 1 and a phone on Exam 2. Three causes, all fixed:

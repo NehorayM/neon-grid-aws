@@ -248,6 +248,30 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
   background:var(--bg);box-shadow:0 30px 0 0 var(--bg)}
 .qbar::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:24px;pointer-events:none;
   background:linear-gradient(180deg,transparent,var(--bg))}
+.vsample{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;font-size:13px;line-height:1.55;color:var(--dim);margin-bottom:6px}
+.vrow{display:flex;align-items:center;gap:12px;padding:2px 2px 6px}
+.vslide{flex:1;min-width:0;accent-color:var(--cyan);height:26px}
+.vval{font-family:var(--mono);font-size:12px;color:var(--cyan);min-width:46px;text-align:right}
+.vpre{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line);text-align:left;width:100%}
+.vpre.on{border-color:var(--cyan);background:color-mix(in srgb, var(--cyan) 9%, var(--surface))}
+.vpre .vem{font-size:19px;flex:none}
+.vpre .vnm{display:block;font-size:14px;font-weight:600;margin-bottom:1px}
+.vpre .vds{display:block;font-size:11.5px;color:var(--dim);line-height:1.45}
+.vpre .vheb{font-size:11.5px;color:var(--dim);direction:rtl;unicode-bidi:isolate;text-align:right;
+  display:block;margin-top:1px}
+.vpre .vtest{flex:none;font-size:11px;font-weight:650;padding:7px 11px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--line2);color:var(--txt)}
+.vvoice{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:11px;
+  background:var(--surface);border:1px solid var(--line);width:100%;text-align:left}
+.vvoice.on{border-color:var(--cyan)}
+.vvoice.dead{opacity:.45}
+.vvoice .vn{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vvoice .vtag{font-family:var(--mono);font-size:9.5px;letter-spacing:.4px;padding:2px 6px;
+  border-radius:5px;border:1px solid var(--line2);color:var(--dim);flex:none}
+.vvoice .vtag.bad{color:var(--red);border-color:var(--red)}
+.vvoice .vtag.good{color:var(--lime);border-color:var(--lime)}
 .elsewhere{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.4px;
   color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:1px 5px;
   margin-left:6px;white-space:nowrap;vertical-align:1px}
@@ -1221,6 +1245,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <button class="minichip" id="recOpen">📊 Records</button>
       <button class="minichip" id="bankOpen">📚 Bank</button>
       <button class="minichip" id="themeOpen">🎨 Themes</button>
+      <button class="minichip" id="voiceOpen">🗣️ Voice</button>
       <button class="minichip" id="logOpen">📋 Exam log</button>
       <button class="minichip" id="csvOpen">⬇ Export CSV</button>
       <button class="minichip" id="soundBtn" aria-label="Mute or unmute sound">🔊</button>
@@ -1830,6 +1855,35 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
   </div>
 
   <!-- THEMES -->
+  <!-- READ-ALOUD VOICE -->
+  <div id="voiceScreen" class="screen hidden">
+    <button class="backbtn" id="voiceBack" aria-label="Back from voice settings">‹</button>
+    <div style="text-align:center;margin-bottom:10px">
+      <h2 class="head">🗣️ Reading Voice</h2>
+      <p class="sub" id="voiceSub">How the 🔊 Read button sounds in an exam</p>
+    </div>
+    <div class="vsample" id="voiceSample"></div>
+    <div class="sechead">Presets</div>
+    <div class="list" id="voicePresets"></div>
+    <div class="sechead">Speed</div>
+    <div class="vrow">
+      <input type="range" id="voiceRate" min="60" max="200" step="5" class="vslide"
+             aria-label="Reading speed">
+      <span class="vval" id="voiceRateVal">1.0×</span>
+    </div>
+    <div class="sechead">Pitch</div>
+    <div class="vrow">
+      <input type="range" id="voicePitch" min="50" max="180" step="5" class="vslide"
+             aria-label="Reading pitch">
+      <span class="vval" id="voicePitchVal">1.0</span>
+    </div>
+    <button class="btn wide" id="voiceTry" style="margin-top:12px">🔊 Try it</button>
+    <div class="sechead">Voices on this device</div>
+    <p class="sub" id="voiceCheckNote" style="margin:0 0 8px">Checking which ones actually speak…</p>
+    <div class="list" id="voiceList"></div>
+    <p class="exfoot" id="voiceFoot"></p>
+  </div>
+
   <div id="themeScreen" class="screen hidden">
     <button class="backbtn" id="themeBack" aria-label="Back from themes">‹</button>
     <div style="text-align:center;margin-bottom:12px">
@@ -2061,9 +2115,9 @@ const DOMAIN_COL=['#9691cc','#85c49b','#7ab6d6','#d4ae76'];   // Secure, Resilie
 const secColor=i=>DOMAIN_COL[domainOf(i)]||'var(--cyan)';
 
 // one emoji per sector, picked for the service it stands for
-const SEC_EM=['\u{1f511}','\u{1f5a5}\ufe0f','\u2699\ufe0f','\u{1f4be}','\u2696\ufe0f','\u{1f5c3}\ufe0f',
-  '\u{1f9ed}','\u{1faa3}','\u{1f30d}','\u{1f4e6}','\u{1f4e8}','\u{1f433}','\u26a1','\u{1f9ee}',
-  '\u{1f4ca}','\u{1f916}','\u{1f4c8}','\u{1f3db}\ufe0f','\u{1f512}','\u{1f578}\ufe0f','\u{1f69a}',
+const SEC_EM=['\u{1f511}','\u{1f5a5}️','\u2699️','\u{1f4be}','⚖️','\u{1f5c3}️',
+  '\u{1f9ed}','\u{1faa3}','\u{1f30d}','\u{1f4e6}','\u{1f4e8}','\u{1f433}','⚡','\u{1f9ee}',
+  '\u{1f4ca}','\u{1f916}','\u{1f4c8}','\u{1f3db}️','\u{1f512}','\u{1f578}️','\u{1f69a}',
   '\u{1f9f0}','\u{1f4b0}'];
 const secEm=i=>SEC_EM[i]||'\u{1f4d8}';
 
@@ -2256,7 +2310,7 @@ const sfx={
 };
 
 // ---------- routing ----------
-const SCREENS=['homeScreen','quizScreen','reelScreen','gameScreen','gresScreen','shopScreen','achScreen','flashScreen','recScreen','sumScreen','pickScreen','logScreen','briefScreen','studyPickScreen','readyScreen','themeScreen','pathScreen','bankScreen','simRevScreen','simDoneScreen','paperScreen','stuPickScreen','stuReadScreen','timerScreen',
+const SCREENS=['homeScreen','quizScreen','reelScreen','gameScreen','gresScreen','shopScreen','achScreen','flashScreen','recScreen','sumScreen','pickScreen','logScreen','briefScreen','studyPickScreen','readyScreen','themeScreen','voiceScreen','pathScreen','bankScreen','simRevScreen','simDoneScreen','paperScreen','stuPickScreen','stuReadScreen','timerScreen',
   'learnPickScreen','learnMapScreen','learnReadScreen','learnQuizScreen','learnRecapScreen','learnSimScreen','learnDoneScreen','authScreen','casinoScreen'];
 let route='homeScreen';
 // Anything that takes over the question screen calls this first, so two engines can never
@@ -4959,6 +5013,176 @@ function renderClock(){
 function toggleClockView(){ showLifetime=!showLifetime; renderClock(); }
 function sessionTime(){ return sessMs; }
 
+
+// ================= READING VOICE =================
+// Eight characters rather than eight engine voices. Which engine voices exist differs wildly
+// between machines and most are named things like "Chrome OS US English 6", so a preset is a
+// rate, a pitch and a purpose, applied over whichever voice actually works here.
+const VOICE_PRESETS=[
+  {id:'standard', em:'🎙️', nm:'Standard',    rate:1.0,  pitch:1.0,
+   ds:'The plain reading. What you get if you never come here.',
+   heb:'\u05d4\u05e7\u05e8\u05d9\u05d0\u05d4 \u05d4\u05e8\u05d2\u05d9\u05dc\u05d4.'},
+  {id:'exam',     em:'🧑‍⚖️', nm:'Exam Room', rate:0.85, pitch:0.95,
+   ds:'Even and unhurried, the pace an invigilator reads at.',
+   heb:'\u05e7\u05e6\u05d1 \u05e9\u05dc \u05de\u05e9\u05d2\u05d9\u05d7 \u05d1\u05d1\u05d7\u05d9\u05e0\u05d4.'},
+  {id:'review',   em:'⚡', nm:'Quick Review', rate:1.35, pitch:1.0,
+   ds:'Faster, for a second pass over something you have already read.',
+   heb:'\u05dc\u05de\u05e2\u05d1\u05e8 \u05e9\u05e0\u05d9 \u05e2\u05dc \u05d7\u05d5\u05de\u05e8 \u05de\u05d5\u05db\u05e8.'},
+  {id:'sprint',   em:'🏃', nm:'Sprint',      rate:1.8,  pitch:1.05,
+   ds:'As fast as it stays intelligible. For the night before.',
+   heb:'\u05de\u05d4\u05e8 \u05db\u05db\u05dc \u05e9\u05e2\u05d5\u05d3 \u05d0\u05e4\u05e9\u05e8 \u05dc\u05d4\u05d1\u05d9\u05df.'},
+  {id:'focus',    em:'🧘', nm:'Deep Focus',  rate:0.92, pitch:0.85,
+   ds:'Low and steady. Easier to sit with for a long paper.',
+   heb:'\u05e0\u05de\u05d5\u05da \u05d5\u05e8\u05d2\u05d5\u05e2, \u05dc\u05de\u05d1\u05d7\u05df \u05d0\u05e8\u05d5\u05da.'},
+  {id:'bright',   em:'☀️', nm:'Bright',      rate:1.1,  pitch:1.25,
+   ds:'Higher and lighter, if the default sends you to sleep.',
+   heb:'\u05d2\u05d1\u05d5\u05d4 \u05d5\u05e2\u05e8\u05e0\u05d9 \u05d9\u05d5\u05ea\u05e8.'},
+  {id:'night',    em:'🌙', nm:'Night Study', rate:0.95, pitch:0.9, volume:0.55,
+   ds:'Quieter and gentler, for late sessions and headphones.',
+   heb:'\u05e9\u05e7\u05d8 \u05d9\u05d5\u05ea\u05e8, \u05dc\u05dc\u05de\u05d9\u05d3\u05d4 \u05d1\u05dc\u05d9\u05dc\u05d4.'},
+  {id:'dictation',em:'✍️', nm:'Dictation',   rate:0.7,  pitch:1.0, gap:true,
+   ds:'Slow, with a breath between sentences, so you can write along.',
+   heb:'\u05d0\u05d9\u05d8\u05d9 \u05e2\u05dd \u05d4\u05e4\u05e1\u05e7\u05d5\u05ea, \u05db\u05d3\u05d9 \u05dc\u05db\u05ea\u05d5\u05d1 \u05ea\u05d5\u05da \u05db\u05d3\u05d9 \u05db\u05da.'}
+];
+const voicePreset=()=>VOICE_PRESETS.find(p=>p.id===(P.voicePreset||'standard'))||VOICE_PRESETS[0];
+function voiceRate(){ const p=voicePreset(); return clamp01(P.ttsRate!=null?P.ttsRate:p.rate,0.5,2.2); }
+function voicePitch(){ const p=voicePreset(); return clamp01(P.ttsPitch!=null?P.ttsPitch:p.pitch,0.4,2); }
+function voiceVolume(){ const p=voicePreset(); return clamp01(p.volume==null?1:p.volume,0,1); }
+function clamp01(n,lo,hi){ n=Number(n); return isFinite(n)?Math.min(hi,Math.max(lo,n)):lo; }
+
+// ---------- which voices on this machine actually speak ----------
+// Eight of the reporter's thirty-four report localService:true and never produce a sound.
+// Offering a voice that cannot speak is worse than offering none, so each is tried once.
+const voiceProbe={};          // name -> 'live' | 'dead' | 'testing'
+function voiceTest(v){
+  if(!v||!ttsOk()) return Promise.resolve(false);
+  if(voiceProbe[v.name]==='live') return Promise.resolve(true);
+  if(voiceProbe[v.name]==='dead') return Promise.resolve(false);
+  voiceProbe[v.name]='testing';
+  return new Promise(res=>{
+    let done=false;
+    const finish=ok=>{ if(done) return; done=true; voiceProbe[v.name]=ok?'live':'dead'; res(ok); };
+    try{
+      const u=new SpeechSynthesisUtterance('ok');
+      u.voice=v; u.volume=0; u.rate=1.6; u.lang=v.lang||'en-US';
+      u.onstart=()=>finish(true);
+      u.onerror=()=>finish(false);
+      u.onend=()=>finish(voiceProbe[v.name]==='live');
+      window.speechSynthesis.speak(u);
+      setTimeout(()=>finish(false),2000);      // silence for two seconds is a dead voice
+    }catch(e){ finish(false); }
+  });
+}
+function voiceChosen(){
+  if(!P.ttsVoice) return null;
+  return ttsVoicesEn().find(v=>v.name===P.ttsVoice)||null;
+}
+
+const VOICE_SAMPLE='Question 1 of 65. A company needs a storage solution that stays '+
+  'available when one Availability Zone fails. Which service meets this requirement?';
+
+function renderVoice(){
+  const P1=voicePreset();
+  const rate=voiceRate(), pitch=voicePitch();
+  $('voiceSample').textContent=VOICE_SAMPLE;
+  $('voiceRate').value=Math.round(rate*100);
+  $('voiceRateVal').textContent=rate.toFixed(2).replace(/0$/,'')+'\u00d7';
+  $('voicePitch').value=Math.round(pitch*100);
+  $('voicePitchVal').textContent=pitch.toFixed(2).replace(/0$/,'');
+
+  const L=$('voicePresets'); L.innerHTML='';
+  VOICE_PRESETS.forEach(p=>{
+    const b=document.createElement('button');
+    b.className='vpre'+(p.id===P1.id?' on':'');
+    b.setAttribute('aria-pressed',p.id===P1.id?'true':'false');
+    b.innerHTML='<span class="vem">'+p.em+'</span><span style="flex:1;min-width:0">'+
+      '<span class="vnm">'+esc(p.nm)+'</span>'+
+      '<span class="vds">'+esc(p.ds)+'</span>'+
+      '<span class="vheb" dir="rtl">'+esc(p.heb)+'</span></span>'+
+      '<span class="vtest">\u25b6</span>';
+    b.setAttribute('aria-label',p.nm+' \u2014 '+p.ds);
+    b.onclick=e=>{
+      const onTest=e.target.classList&&e.target.classList.contains('vtest');
+      P.voicePreset=p.id;
+      if(!onTest){ delete P.ttsRate; delete P.ttsPitch; }   // a preset resets the sliders
+      saveProfile(); renderVoice();
+      voiceSay();
+    };
+    L.appendChild(b);
+  });
+
+  const VL=$('voiceList'); VL.innerHTML='';
+  const en=ttsVoicesEn();
+  if(!en.length){
+    $('voiceCheckNote').textContent='This browser has no English voice installed, so nothing can be read aloud.';
+  }
+  const auto=document.createElement('button');
+  auto.className='vvoice'+(P.ttsVoice?'':' on');
+  auto.innerHTML='<span class="vn">Let the browser choose</span><span class="vtag good">SAFE</span>';
+  auto.setAttribute('aria-label','Let the browser choose the voice');
+  auto.onclick=()=>{ delete P.ttsVoice; saveProfile(); renderVoice(); voiceSay(); };
+  VL.appendChild(auto);
+
+  en.forEach(v=>{
+    const st=voiceProbe[v.name];
+    const b=document.createElement('button');
+    b.className='vvoice'+(P.ttsVoice===v.name?' on':'')+(st==='dead'?' dead':'');
+    b.innerHTML='<span class="vn">'+esc(v.name)+'</span>'+
+      '<span class="vtag'+(st==='live'?' good':st==='dead'?' bad':'')+'">'+
+      (st==='live'?'WORKS':st==='dead'?'SILENT':'\u2026')+'</span>';
+    b.setAttribute('aria-label',v.name+(st==='dead'?' \u2014 does not speak on this device':''));
+    b.disabled=(st==='dead');
+    b.onclick=()=>{ P.ttsVoice=v.name; saveProfile(); renderVoice(); voiceSay(); };
+    VL.appendChild(b);
+  });
+
+  const dead=en.filter(v=>voiceProbe[v.name]==='dead').length;
+  const live=en.filter(v=>voiceProbe[v.name]==='live').length;
+  $('voiceFoot').textContent=dead
+    ? (dead+' of the '+en.length+' voices this device reports do not actually make a sound. '+
+       'They are greyed out rather than hidden, so it is clear they were tried.')
+    : (live?('All '+live+' voices here speak.'):'');
+}
+
+// speak the sample with whatever is selected right now
+function voiceSay(){
+  if(!ttsOk()) { toast('This browser cannot read aloud'); return; }
+  ttsStop();
+  setTimeout(()=>{
+    try{
+      const ss=window.speechSynthesis;
+      const p=voicePreset();
+      const parts=p.gap?ttsChunks(VOICE_SAMPLE,80):[VOICE_SAMPLE];
+      parts.forEach(txt=>{
+        const u=new SpeechSynthesisUtterance(txt);
+        u.rate=voiceRate(); u.pitch=voicePitch(); u.volume=voiceVolume(); u.lang='en-US';
+        const v=voiceChosen(); if(v) u.voice=v;
+        ss.speak(u);
+      });
+    }catch(e){}
+  },0);
+}
+
+async function voiceCheckAll(){
+  const en=ttsVoicesEn();
+  const note=$('voiceCheckNote');
+  if(!en.length) return;
+  for(let i=0;i<en.length;i++){
+    if(note) note.textContent='Checking which ones actually speak\u2026 '+(i+1)+' of '+en.length;
+    await voiceTest(en[i]);
+    renderVoice();
+  }
+  if(note) note.textContent='Each one below was asked to speak. Anything that stayed silent is marked.';
+  renderVoice();
+}
+
+function openVoice(){
+  ttsLoadVoices();
+  renderVoice();
+  go('voiceScreen');
+  if(!TEST) voiceCheckAll();
+}
+
 // ================= FULL EXAM SIMULATION =================
 // 65 questions, 130 minutes, domain-weighted — the shape of the real SAA-C03.
 const SIM_LEN=65, SIM_PASS=72;
@@ -5514,14 +5738,20 @@ function ttsText(q,i,total){
 // engine that has ignored everything else.
 function ttsSend(text,seq,plain){
   const ss=window.speechSynthesis;
-  const chunks=plain?[String(text)]:ttsChunks(text);
+  const p=(typeof voicePreset==='function')?voicePreset():null;
+  const chunks=plain?[String(text)]:ttsChunks(text,p&&p.gap?80:160);
   if(!chunks.length) return false;
-  const voice=plain?null:ttsVoice();
+  // A chosen voice is the thing most likely to be at fault when nothing speaks, so the
+  // watchdog's retry drops it. Speed and pitch have never broken anything, so they stay.
+  const voice=plain?null:(typeof voiceChosen==='function'?voiceChosen():null);
   let started=false;
   const done=()=>{ if(seq===ttsSeq){ ttsOn=false; renderTtsBtn(); } };
   chunks.forEach((part,k)=>{
     const u=new SpeechSynthesisUtterance(part);
-    u.rate=P.ttsRate||1; u.lang='en-US';
+    u.rate=typeof voiceRate==='function'?voiceRate():1;
+    u.pitch=typeof voicePitch==='function'?voicePitch():1;
+    u.volume=typeof voiceVolume==='function'?voiceVolume():1;
+    u.lang='en-US';
     if(voice) u.voice=voice;
     if(k===0) u.onstart=()=>{ started=true; if(seq===ttsSeq){ ttsOn=true; renderTtsBtn(); } };
     if(k===chunks.length-1) u.onend=done;
@@ -6196,6 +6426,13 @@ $('readyCard').onclick=()=>{ openReadiness(); };
 $('mockOpen').onclick=()=>{ openReadiness(); };
 $('readyBack').onclick=()=>{ go('homeScreen'); renderHome(); };
 $('mockStart').onclick=startMock;
+$('voiceOpen').onclick=()=>openVoice();
+$('voiceBack').onclick=()=>{ ttsStop(); go('homeScreen'); renderHome(); };
+$('voiceTry').onclick=()=>voiceSay();
+$('voiceRate').oninput=e=>{ P.ttsRate=clamp01(Number(e.target.value)/100,0.5,2.2); renderVoice(); };
+$('voiceRate').onchange=()=>{ saveProfile(); voiceSay(); };
+$('voicePitch').oninput=e=>{ P.ttsPitch=clamp01(Number(e.target.value)/100,0.4,2); renderVoice(); };
+$('voicePitch').onchange=()=>{ saveProfile(); voiceSay(); };
 $('themeOpen').onclick=()=>{ renderThemes(); go('themeScreen'); };
 $('pathOpen').onclick=()=>{ renderPath(); go('pathScreen'); };
 $('pathBack').onclick=()=>{ go('homeScreen'); renderHome(); };
@@ -8333,6 +8570,8 @@ if(TEST){
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
     ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
+    VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
+    voiceTest, voiceProbe, renderVoice, voiceSay, voiceCheckAll, openVoice, VOICE_SAMPLE,
     get ttsVoices(){return ttsVoices;}, get ttsWarmed(){return ttsWarmed;},
     simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing,
     csvCell, csvRows, exportReview, exportLastExam, get lastExamCsv(){return lastExamCsv;},

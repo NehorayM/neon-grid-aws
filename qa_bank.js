@@ -532,6 +532,84 @@ async function resumeChecks(){
   t.simAbandon(); await sleep(20);
 }
 
+// ---------- the reading voice ----------
+async function voiceChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const keep={p:t.P.voicePreset, r:t.P.ttsRate, pi:t.P.ttsPitch, v:t.P.ttsVoice};
+
+  eq(t.VOICE_PRESETS.length,8,'there are eight presets');
+  const ids=t.VOICE_PRESETS.map(p=>p.id);
+  eq(ids.length,new Set(ids).size,'with distinct ids');
+  t.VOICE_PRESETS.forEach(p=>{
+    ok(p.nm&&p.ds&&p.heb,p.id+' has a name, a description and a Hebrew line');
+    ok(p.rate>=0.5&&p.rate<=2.2,p.id+' asks for a sane speed ('+p.rate+')');
+    ok(p.pitch>=0.4&&p.pitch<=2,p.id+' asks for a sane pitch');
+    ok(/[\u0590-\u05FF]/.test(p.heb),p.id+"'s second line is Hebrew");
+  });
+
+  // the preset drives the reading
+  t.P.voicePreset='exam'; delete t.P.ttsRate; delete t.P.ttsPitch;
+  eq(t.voiceRate(),0.85,'Exam Room reads slowly');
+  t.P.voicePreset='sprint';
+  eq(t.voiceRate(),1.8,'Sprint reads fast');
+  t.P.voicePreset='night';
+  eq(t.voiceVolume(),0.55,'Night Study is quieter');
+  t.P.voicePreset='standard';
+  eq(t.voiceVolume(),1,'and the others are not');
+
+  // the sliders override it, within limits
+  t.P.voicePreset='exam'; t.P.ttsRate=1.75;
+  eq(t.voiceRate(),1.75,'a chosen speed beats the preset');
+  t.P.ttsRate=9;    eq(t.voiceRate(),2.2,'an absurd speed is capped');
+  t.P.ttsRate=-3;   eq(t.voiceRate(),0.5,'and a negative one floored');
+  t.P.ttsRate='abc';eq(t.voiceRate(),0.5,'nonsense does not reach the engine');
+  delete t.P.ttsRate;
+  t.P.ttsPitch=99;  eq(t.voicePitch(),2,'pitch is capped too');
+  delete t.P.ttsPitch;
+  t.P.voicePreset='does-not-exist';
+  eq(t.voiceRate(),1,'an unknown preset falls back to Standard');
+  t.P.voicePreset='standard';
+
+  // a voice that never speaks can never be chosen — this is the whole point of the screen
+  const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis');
+  const realU=window.SpeechSynthesisUtterance;
+  Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
+    speak(u){ if(!/Chrome OS/.test((u.voice&&u.voice.name)||'')) setTimeout(()=>u.onstart&&u.onstart(),5); },
+    cancel(){}, addEventListener(){}, removeEventListener(){},
+    getVoices(){ return [{lang:'en-US',name:'Google US English',localService:false},
+                         {lang:'en-US',name:'Chrome OS US English 1',localService:true}]; },
+    get speaking(){return false;}, get pending(){return false;}, get paused(){return false;}
+  }});
+  window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };
+  t.ttsLoadVoices();
+  await t.voiceCheckAll();
+  eq(t.voiceProbe['Google US English'],'live','a voice that answers is marked live');
+  eq(t.voiceProbe['Chrome OS US English 1'],'dead','one that stays silent is marked dead');
+  const rows=[...document.querySelectorAll('#voiceList .vvoice')];
+  ok(rows.length>=3,'the list shows the browser option and both voices');
+  const dud=rows.find(b=>/Chrome OS/.test(b.textContent));
+  ok(dud&&dud.disabled,'the silent one cannot be selected');
+  ok(dud&&/SILENT/.test(dud.textContent),'and says why');
+  const good=rows.find(b=>/Google US English/.test(b.textContent));
+  ok(good&&!good.disabled,'the working one can be');
+  ok(/do not actually make a sound/.test($('voiceFoot').textContent),'and the footer explains it');
+
+  window.SpeechSynthesisUtterance=realU;
+  if(real) Object.defineProperty(window,'speechSynthesis',real); else delete window.speechSynthesis;
+
+  // it is reachable and leaves cleanly
+  t.openVoice(); await sleep(20);
+  eq(t.route,'voiceScreen','the Voice chip opens it');
+  eq(document.querySelectorAll('#voicePresets .vpre').length,8,'with all eight presets drawn');
+  $('voiceBack').click(); await sleep(20);
+  eq(t.route,'homeScreen','and the back arrow leaves');
+
+  t.P.voicePreset=keep.p||'standard';
+  if(keep.r==null) delete t.P.ttsRate; else t.P.ttsRate=keep.r;
+  if(keep.pi==null) delete t.P.ttsPitch; else t.P.ttsPitch=keep.pi;
+  if(keep.v==null) delete t.P.ttsVoice; else t.P.ttsVoice=keep.v;
+}
+
 // ---------- the fixes from the bug hunt ----------
 async function hardeningChecks(){
   const t=T(), $=id=>document.getElementById(id);
@@ -1446,7 +1524,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
