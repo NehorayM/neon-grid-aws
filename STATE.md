@@ -464,6 +464,37 @@ and puts the button back. The worst case is a stutter, never a button that does 
 `ttsStop()` still avoids cancelling an idle engine on every question load — the one part of the
 second pass that is safe, and the likeliest cause of the original delay.
 
+**Then the probe was run, twice, and settled it.** Same ChromeOS machine, 34 voices:
+
+| | run 1 | run 2 (fresh load) |
+| --- | --- | --- |
+| short text, default voice | FAILED `canceled` | **4591 ms** |
+| short, right after `cancel()` | 631 ms | 425 ms |
+| LONG text in one go | 710 ms | 438 ms |
+| short again | 477 ms | 331 ms |
+| short, **local** voice | **never started in 15s** | — |
+| short, network voice | 353 ms | — |
+
+Two separate faults, and each of the two guesses above had caught one of them:
+
+1. **The delay is a cold engine.** The first utterance after a page load costs
+   four and a half seconds; every one after costs about a third of a second.
+   Nothing about the text, the length or the cancel. The warm-up was right — so
+   it is back, hooked to the **first touch anywhere in the app**, not to
+   `ensureAudio()`, which only runs when a paper starts and is therefore the same
+   moment the reader reaches the Read button. It speaks a real word ("ok") at
+   volume 0, with `onend`/`onerror` attached and **no tidy-up cancel**, which is
+   what could jam a queue.
+2. **The silence was the voice override.** The eight `Chrome OS US English`
+   voices report `localService: true` and never make a sound. `ttsVoice()`
+   preferred exactly those, on the theory that local beats network. Nothing sets
+   `utterance.voice` any more — the engine's own default is the one path never
+   measured failing. `ttsVoice()` returns null and there is an assertion on it.
+
+Run 1 could not show the cold start, because six lines had already woken the
+engine before it reached the warm-up line. Run 2 was a fresh load. If this ever
+comes back, run the probe twice and compare the first line.
+
 **`tts_probe.html` measures this on a real device** — open it on the phone, tap Run, and it times
 how long each of eight strategies takes to make its first sound (bare speak, speak after an idle
 cancel, one long utterance, a local voice, a network voice, after a warm-up). Use it rather than

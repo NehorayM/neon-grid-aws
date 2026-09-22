@@ -884,6 +884,12 @@ async function ttsChecks(){
   eq(lossy,0,'every question in the bank chunks without losing or reordering a word');
   eq(over,0,'and no piece exceeds the limit');
 
+  // Nothing sets utterance.voice any more. A ChromeOS machine reported eight voices with
+  // localService:true that never made a sound — 15 seconds and nothing — and the old
+  // ttsVoice() preferred exactly those. The engine's default spoke in 477ms on the same box.
+  eq(t.ttsVoice(),null,'no voice is chosen for the utterance');
+  ok(Array.isArray(t.ttsVoicesEn()),'though the English voices can still be listed');
+
   // the fallback the watchdog falls back to: one utterance, no voice override, no chunking
   const nBefore=spoken.length;
   const live=t.ttsSend('One. Two. Three. '+('padding words here. '.repeat(20)),999,true);

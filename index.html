@@ -5431,12 +5431,27 @@ function ttsStop(){
   renderTtsBtn();
 }
 
-// There was a zero-volume warm-up utterance here, to wake a cold engine on the first user
-// gesture. It is gone: some engines never emit a silent utterance but still hold it in the
-// queue, and everything spoken afterwards queues behind it and is never heard. Waking the
-// engine is not worth a mode where the button does nothing at all.
-let ttsWarmed=false;
-function ttsWarm(){ ttsWarmed=true; }      // kept so ensureAudio() has something to call
+// Measured: the first utterance after a page load takes 4591ms on a cold engine, and every
+// one after it takes about 350ms. That is the whole delay. So the engine is woken the first
+// time the user touches anything — minutes before they reach an exam and press Read.
+//
+// A real word rather than a space: an engine that skips whitespace could keep it in the
+// queue forever and everything after it would be silent. And no tidy-up cancel afterwards,
+// which is the one thing that could cut off whatever the user asks for next.
+let ttsWarmed=false, ttsWarmState='not started';
+function ttsWarm(){
+  if(ttsWarmed||!ttsOk()||TEST) return;
+  ttsWarmed=true; ttsWarmState='waking';
+  try{
+    const u=new SpeechSynthesisUtterance('ok');
+    u.volume=0; u.rate=1; u.lang='en-US';
+    const t0=Date.now();
+    u.onstart=()=>{ ttsWarmState='awake after '+(Date.now()-t0)+'ms'; };
+    u.onend=()=>{ if(ttsWarmState==='waking') ttsWarmState='ended without starting'; };
+    u.onerror=e=>{ ttsWarmState='failed: '+((e&&e.error)||'error'); };
+    window.speechSynthesis.speak(u);
+  }catch(e){ ttsWarmState='threw'; }
+}
 
 // getVoices() is filled in asynchronously and the first call usually returns nothing,
 // so the list is warmed at boot and refreshed rather than asked for at the tap.
@@ -5445,13 +5460,18 @@ function ttsLoadVoices(){
   try{ ttsVoices=window.speechSynthesis.getVoices()||[]; }catch(e){ ttsVoices=[]; }
   return ttsVoices;
 }
-function ttsVoice(){
+// This used to prefer a voice with localService:true, on the theory that a local voice
+// starts speaking sooner than a network one that has to fetch its audio. Measured on a
+// ChromeOS machine with 34 voices installed, the eight "Chrome OS US English" voices report
+// localService:true and NEVER produce a sound — 15 seconds and nothing. The engine's own
+// default spoke in 477ms on the same machine. So nothing is chosen any more: u.lang is set
+// and the engine picks, which is the one path that has never been measured failing.
+//
+// Kept, and still exposed, because the probe uses it to report what is installed.
+function ttsVoice(){ return null; }
+function ttsVoicesEn(){
   const list=(ttsVoices&&ttsVoices.length)?ttsVoices:ttsLoadVoices();
-  const en=list.filter(v=>/^en/i.test(v.lang||''));
-  // A local voice speaks the moment it is asked. A network one fetches its audio from a
-  // server first, which is where the several-second wait before any sound came from —
-  // and on Chrome a Google network voice is usually first in the list.
-  return en.find(v=>v.localService)||en.find(v=>/^en[-_]US/i.test(v.lang))||en[0]||null;
+  return list.filter(v=>/^en/i.test(v.lang||''));
 }
 if(typeof window!=='undefined'&&'speechSynthesis' in window){
   ttsLoadVoices();
@@ -5540,9 +5560,9 @@ function ttsSpeak(text){
           if(seq!==ttsSeq) return;
           if(live2&&live2()) return;
           ttsOn=false; renderTtsBtn();
-          toast(ttsLoadVoices().length
+          toast(ttsVoicesEn().length
             ? 'This browser will not play speech \u2014 check the volume and the site sound setting'
-            : 'No speech voices are installed in this browser');
+            : 'No English speech voice is installed in this browser');
         },1200);
       },900);
     },0);
@@ -8254,6 +8274,16 @@ const LEARN_T={
 // ================= BOOT =================
 (()=>{ const fc=$('flashCount');                  // stated 88 for a deck that has been 90
   if(fc) fc.textContent=Object.keys(CODEX).length+' AWS terms'; })();
+// ensureAudio() only runs when a paper or a session starts, which is the same moment the
+// reader lands on the question — too late to absorb a 4.6-second engine wake-up. Warm it on
+// the first touch anywhere instead: the home screen, the Exam tab and picking a paper all
+// happen first, so the engine has had seconds by the time anyone reaches Read.
+['pointerdown','keydown','touchstart'].forEach(ev=>{
+  document.addEventListener(ev,function once(){
+    ['pointerdown','keydown','touchstart'].forEach(e2=>document.removeEventListener(e2,once,true));
+    try{ ttsWarm(); }catch(e){}
+  },true);
+});
 sizeCanvas(); refreshTop(); renderHome(); syncLifeCosts(); renderDaily(); renderInv(); applyFS(); syncNav();
 renderDiff(); renderCharge(); renderQuests(); renderChest(); renderResume();
 renderGoals(); renderWeek(); renderTomorrow(); renderReadiness(); renderSkill(); renderPath();
@@ -8305,7 +8335,8 @@ if(TEST){
     examDaysLeft, dailyPace, startTimer, renderBank, renderRecords, startMock, startPaper, TIMER_MAX, examDaysLabel, EXAM_MAX_DAYS,
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
-    ttsChunks, ttsVoice, ttsLoadVoices, ttsWarm, ttsSend, get ttsVoices(){return ttsVoices;},
+    ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
+    get ttsVoices(){return ttsVoices;}, get ttsWarmState(){return ttsWarmState;},
     get ttsWarmed(){return ttsWarmed;},
     simSpeak, ttsToggle, renderTtsBtn, renderExamBrief, BRIEF_PAPERS, buildBriefing,
     csvCell, csvRows, exportReview, exportLastExam, get lastExamCsv(){return lastExamCsv;},
