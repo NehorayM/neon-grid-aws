@@ -692,8 +692,10 @@ async function breakChecks(){
   t.startPaper(1); await sleep(30);
 
   // the build stamp: a screenshot of an already-fixed bug turned out to be a cached page
-  ok(typeof t.BUILD==='string'&&t.BUILD.length>6,'the page says which build it is');
-  ok(/^[0-9a-f]{7}/.test(t.BUILD),'stamped with the commit it was built from');
+  ok(typeof t.BUILD==='string'&&t.BUILD.length>6,'the page says when it was built');
+  ok(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(t.BUILD),
+     'as a timestamp — a hash stamped before committing always names the previous commit');
+  ok(/build /.test(($('recBuild')||{}).textContent||''),'and the Records screen shows it');
 
   t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave();
 }

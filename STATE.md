@@ -299,7 +299,10 @@ A screenshot arrived showing a bug that was already fixed **and deployed** — b
 identical on GitHub Pages and locally. The page in the screenshot was a cached copy, and
 nothing on it said so, which cost a round of hunting for a bug that no longer existed.
 
-`BUILD` carries the commit and build time, and the Records screen shows it. **When a fixed bug
+`BUILD` carries the **build time**, and the Records screen shows it. A timestamp rather than a
+commit hash on purpose: the stamp cannot contain the hash of the commit that carries it, so
+stamping before committing always names the *previous* commit — exactly the wrong answer to
+"is this page stale?". A timestamp cannot be wrong that way. **When a fixed bug
 reappears, check that first.** A hard reload is the fix; the app is one file on GitHub Pages,
 so there is no cache-busting to reach for.
 

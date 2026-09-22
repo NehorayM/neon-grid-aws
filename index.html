@@ -2155,8 +2155,12 @@ const DATA=JSON.parse($('data').textContent);
 const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A screenshot arrived showing a bug that was already fixed and deployed: the page was a
 // cached copy and nothing on it said so. This is the first thing to check when a fixed bug
-// comes back. It is also on the Records screen.
-const BUILD='3c6bd0c · 2026-09-22 12:10';
+// comes back — it is on the Records screen.
+//
+// A build time rather than a commit hash, because the stamp cannot contain the hash of the
+// commit that carries it: stamping before committing always names the PREVIOUS commit, which
+// is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
+const BUILD='2026-09-22 12:19 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
