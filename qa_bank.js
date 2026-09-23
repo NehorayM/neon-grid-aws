@@ -947,6 +947,19 @@ async function refreshChecks(){
 // A paper is sat either under exam conditions or as practice, and the difference is entirely
 // in the breaks. Everything below is a rule the picker introduced or a bug found building it.
 // The sheets are dialogs for a keyboard and a screen reader too, not just to the eye.
+// An answer given just before the page closed used to be lost: saves wait 250 ms and
+// nothing flushed them. And a browser refusing every write was never mentioned.
+async function saveFlushChecks(){
+  const t=T();
+  t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
+  const base=localStorage.getItem('academy_profile');
+  t.simPick(t.QS[t.sim.qs[0]].o[0][0]);
+  eq(localStorage.getItem('academy_profile'),base,'a save still waits a moment, so bursts become one write');
+  window.dispatchEvent(new Event('pagehide'));
+  const saved=JSON.parse(localStorage.getItem('academy_profile'));
+  ok(!!(saved.simSave&&saved.simSave.ans&&saved.simSave.ans[0]),'but closing the page writes it straight away');
+  t.simAbandon(); await sleep(30); t.simClearSave(); await sleep(300);
+}
 async function dialogChecks(){
   const t=T(), $=id=>document.getElementById(id);
   const key=k=>document.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
@@ -2443,7 +2456,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
