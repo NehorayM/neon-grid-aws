@@ -2137,9 +2137,9 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 
   <!-- STUDY CARD -->
   <!-- exam break -->
-  <div id="brkAsk" class="hidden">
+  <div id="brkAsk" class="hidden" role="dialog" aria-modal="true" aria-labelledby="brkAskTitle">
     <div class="sheet">
-      <h3>☕ Take a break?</h3>
+      <h3 id="brkAskTitle">☕ Take a break?</h3>
       <p class="sub" id="brkAskSub"></p>
       <div class="brkfacts">
         <div class="brkfact"><b id="brkAskLen">6:00</b><span>each break</span></div>
@@ -2150,7 +2150,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <button class="btn ghost sm" id="brkAskNo" style="width:100%;margin-top:8px">Stay on the question</button>
     </div>
   </div>
-  <div id="modeAsk" class="hidden">
+  <div id="modeAsk" class="hidden" role="dialog" aria-modal="true" aria-labelledby="modeAskTitle">
     <div class="sheet">
       <h3 id="modeAskTitle">How do you want to sit this paper?</h3>
       <p class="sub" id="modeAskSub"></p>
@@ -2181,9 +2181,9 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     <span class="bclock" id="brkClock">6:00</span>
   </div>
 
-  <div id="studyModal" class="hidden">
+  <div id="studyModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="studyTitle">
     <div class="sheet">
-      <h3>📖 Study Card</h3>
+      <h3 id="studyTitle">📖 Study Card</h3>
       <p class="sub">The correct answer, plus the services this question is testing.</p>
       <div class="lbl">Correct answer</div>
       <div class="ansbox" id="studyAnswer"></div>
@@ -7276,6 +7276,45 @@ $('reelSkip').onclick=()=>{ nextQuestion(); };
 $('reelGo').onclick=()=>launchGame(GAMES[Math.floor(Math.random()*GAMES.length)].id);
 $('studyBtn').onclick=openStudy;
 $('studyClose').onclick=closeStudy;
+// ---------- the sheets behave as dialogs ----------
+// Each sheet was a dialog to the eye only: focus stayed on the page it covered, so Tab walked
+// through hidden controls, and Escape did nothing. One observer handles focus for all of
+// them; one keydown handler handles Escape and keeps Tab inside the open sheet.
+const SHEETS=[
+  {id:'modeAsk',    close:()=>modeAskClose()},
+  {id:'brkAsk',     close:()=>brkAskClose()},
+  {id:'studyModal', close:()=>closeStudy()},
+];
+const sheetReturn={};
+const openSheet=()=>SHEETS.find(x=>{ const e=$(x.id); return e&&!e.classList.contains('hidden'); });
+const focusables=el=>[...el.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+  .filter(x=>!x.disabled&&x.offsetParent!==null);
+SHEETS.forEach(sh=>{
+  const el=$(sh.id); if(!el||typeof MutationObserver==='undefined') return;
+  let wasOpen=!el.classList.contains('hidden');
+  new MutationObserver(()=>{
+    const open=!el.classList.contains('hidden');
+    if(open===wasOpen) return;
+    wasOpen=open;
+    if(open){
+      sheetReturn[sh.id]=document.activeElement;
+      const f=focusables(el)[0]; if(f) f.focus({preventScroll:true});
+    } else {
+      const back=sheetReturn[sh.id]; sheetReturn[sh.id]=null;
+      if(back&&document.contains(back)&&typeof back.focus==='function') back.focus({preventScroll:true});
+    }
+  }).observe(el,{attributes:true,attributeFilter:['class']});
+});
+document.addEventListener('keydown',e=>{
+  const sh=openSheet(); if(!sh) return;
+  if(e.key==='Escape'){ e.preventDefault(); sh.close(); return; }
+  if(e.key!=='Tab') return;
+  const list=focusables($(sh.id)); if(!list.length) return;
+  const first=list[0], last=list[list.length-1];
+  if(!$(sh.id).contains(document.activeElement)){ e.preventDefault(); first.focus(); return; }
+  if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
+});
 function renderInv(){
   const el=$('invStrip'); if(!el) return;
   el.innerHTML='';

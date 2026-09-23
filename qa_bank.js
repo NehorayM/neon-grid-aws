@@ -946,6 +946,35 @@ async function refreshChecks(){
 // ---------- two six-minute breaks per paper ----------
 // A paper is sat either under exam conditions or as practice, and the difference is entirely
 // in the breaks. Everything below is a rule the picker introduced or a bug found building it.
+// The sheets are dialogs for a keyboard and a screen reader too, not just to the eye.
+async function dialogChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const key=k=>document.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
+  ['modeAsk','brkAsk','studyModal'].forEach(id=>{
+    eq($(id).getAttribute('role'),'dialog',id+' is announced as a dialog');
+    eq($(id).getAttribute('aria-modal'),'true',id+' is modal');
+    const lab=$(id).getAttribute('aria-labelledby');
+    ok(!!lab&&!!$(lab)&&$(lab).textContent.trim().length>3,id+' is labelled by its own heading');
+  });
+  t.simClearSave(); t.go('paperScreen'); t.renderPapers(); await sleep(20);
+  const opener=document.querySelector('#paperScreen .paperrow button'); opener.focus();
+  t.modeAsk('Exam 1',()=>{}); await sleep(30);
+  ok($('modeAsk').contains(document.activeElement),'opening a sheet moves focus into it');
+  const list=[...document.querySelectorAll('#modeAsk button')];
+  list[list.length-1].focus(); key('Tab');
+  eq(document.activeElement,list[0],'Tab from the last control wraps to the first, not the page behind');
+  key('Escape'); await sleep(30);
+  ok($('modeAsk').classList.contains('hidden'),'Escape closes it');
+  eq(document.activeElement,opener,'and focus goes back to what opened it');
+  ok(!(t.sim&&t.sim.running),'without starting anything');
+  t.startPaper(1,'exam'); await sleep(20);
+  $('navHome').click(); await sleep(30);
+  ok($('brkAsk').contains(document.activeElement),'the break sheet takes focus too');
+  key('Escape'); await sleep(30);
+  eq(t.route,'quizScreen','Escape on the break sheet means stay on the question');
+  eq(t.brkLeft(),2,'and costs no break');
+  t.simAbandon(); await sleep(30); t.simClearSave(); t.go('homeScreen'); await sleep(20);
+}
 async function modeChecks(){
   const t=T(), $=id=>document.getElementById(id);
 
@@ -2404,7 +2433,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
