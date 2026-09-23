@@ -63,10 +63,10 @@ function bankChecks(){
 function paperChecks(){
   const t=T();
   eq(t.PAPER_LEN,65,'papers are 65 questions');
-  eq(t.SIM_QSEC,90,'a question gets 90 seconds');
-  eq(t.PAPER_MIN,98,'a 65-question paper is budgeted at 90s each');
-  eq(t.simBudget(65),98,'65 questions, 98 minutes');
-  eq(t.simBudget(31),47,'the short paper is budgeted the same way');
+  eq(t.SIM_QSEC,105,'a question gets 105 seconds');
+  eq(t.PAPER_MIN,Math.ceil(65*t.SIM_QSEC/60),'a 65-question paper is budgeted at the per-question limit each');
+  eq(t.simBudget(65),114,'65 questions, 114 minutes');
+  eq(t.simBudget(31),Math.ceil(31*t.SIM_QSEC/60),'the short paper is budgeted the same way');
   eq(t.PAPER_COUNT, Math.ceil(t.QS.length/65), 'paper count covers the bank');
   const seen=new Set();
   for(let n=1;n<=t.PAPER_COUNT;n++){
@@ -118,7 +118,7 @@ async function runPaper(n,{answerAll=true,rightRatio=0.6,flagEvery=7}={}){
   ok(left>(bud-1)*60000&&left<=bud*60000,
      'the paper budget starts at '+bud+' minutes, got '+Math.round(left/60000));
   eq(t.simQLeft,t.SIM_QSEC,'and the question starts on a full 90 seconds');
-  eq($('playClock').textContent,'⏳ 1:30','the top bar counts this question down');
+  eq($('playClock').textContent,'⏳ '+fmtMs(t.SIM_QSEC*1000),'the top bar counts this question down');
   // the second line used to label the big number; it now carries the paper's own remaining,
   // which is the more useful of the two and is on screen the whole time
   ok(/left$/.test($('clockSub').textContent),'the second line shows what the paper has left');
@@ -256,7 +256,7 @@ function homeCheck(){
   const t=T();
   hittable($('paperOpen'),'Practice Exams tile');
   ok(/Practice Exams/.test($('paperOpen').textContent),'the tile is labelled');
-  ok(/90 seconds a question/.test($('paperOpen').textContent),'the tile states the per-question limit');
+  ok(new RegExp(t.SIM_QSEC+' seconds a question').test($('paperOpen').textContent),'the tile states the per-question limit');
 }
 
 // The rest of the app reads the same bank; these walk each mode far enough to
@@ -1257,7 +1257,7 @@ async function hunt9Checks(){
   // 1
   t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; delete t.P.lastPaper;
   t.startPaper(12,'exam'); await sleep(30);
-  t.simQTick(90); await sleep(20);
+  t.simQTick(t.SIM_QSEC); await sleep(20);
   t.simJump(0); await sleep(20);
   eq(t.simQLeft,0,'a question that ran out shows no time when you go back to it');
   t.QS[t.sim.qs[0]].a.forEach(l=>t.simPick(l));
@@ -2027,10 +2027,10 @@ async function qClockChecks(){
   const t=T(), $=id=>document.getElementById(id);
   t.simClearSave();
   t.startPaper(11); await sleep(20);            // 11 does not teach, so nothing else is on screen
-  eq(t.simQLeft,90,'a fresh question has the full 90 seconds');
+  eq(t.simQLeft,t.SIM_QSEC,'a fresh question has the full 90 seconds');
   eq($('qTimerFill').style.width,'100%','and a full bar');
 
-  t.simQTick(60); await sleep(5);
+  t.simQTick(t.SIM_QSEC-30); await sleep(5);
   eq(t.simQLeft,30,'it counts down');
   eq($('playClock').textContent,'⏳ 0:30','the clock follows');
   ok($('playClock').classList.contains('warn'),'it warns at 30 seconds');
@@ -2044,17 +2044,17 @@ async function qClockChecks(){
   const blank=(t.sim.ans[0]||[]).length;
   t.simQTick(9); await sleep(20);
   eq(t.sim.i,1,'running out moves to the next question');
-  eq(t.simQLeft,90,'which starts on a full 90 seconds');
+  eq(t.simQLeft,t.SIM_QSEC,'which starts on a full 90 seconds');
   eq((t.sim.ans[0]||[]).length,blank,'the question it left stays blank');
   eq(t.simAnsweredCount(),0,'so it counts as unanswered, which scores as wrong');
 
   // what is left is remembered per question
   t.simQTick(40); await sleep(5);
-  eq(t.simQLeft,50,'question two is down to 50');
+  eq(t.simQLeft,t.SIM_QSEC-40,'question two is down by 40');
   t.simJump(2); await sleep(20);
-  eq(t.simQLeft,90,'a question never opened is still on 90');
+  eq(t.simQLeft,t.SIM_QSEC,'a question never opened is still on 90');
   t.simJump(1); await sleep(20);
-  eq(t.simQLeft,50,'and coming back to question two gives back its 50');
+  eq(t.simQLeft,t.SIM_QSEC-40,'and coming back to question two gives back what it had');
 
   // a spent question can be reopened without being thrown out of it again
   t.simJump(0); await sleep(20);
@@ -2076,20 +2076,20 @@ async function qClockChecks(){
 
   // the last question runs out into the review, not into nothing
   t.simJump(t.simLen()-1); await sleep(20);
-  t.simQTick(90); await sleep(20);
+  t.simQTick(t.SIM_QSEC); await sleep(20);
   eq(t.route,'simRevScreen','running out of the last question lands on the review');
 
   // and it survives walking away
   t.simJump(4); await sleep(20);
   t.simQTick(25); await sleep(5);
-  eq(t.simQLeft,65,'question five is down to 65');
+  eq(t.simQLeft,t.SIM_QSEC-25,'question five is down by 25');
   t.simAbandon(); await sleep(20);
   const sv=t.simSaved();
   ok(!!sv,'the paper was saved');
-  eq(sv.qt[4],65,'the save kept what was left of that question');
+  eq(sv.qt[4],t.SIM_QSEC-25,'the save kept what was left of that question');
   t.simResume(); await sleep(20);
   eq(t.sim.i,4,'it resumed on the same question');
-  eq(t.simQLeft,65,'with the same time left');
+  eq(t.simQLeft,t.SIM_QSEC-25,'with the same time left');
 
   // ---- the clock is a deadline, not a count of ticks
   t.simAbandon(); await sleep(20); t.simClearSave();
@@ -2097,9 +2097,9 @@ async function qClockChecks(){
   ok(t.sim.qEndAt>Date.now(),'a question carries a deadline, not just a counter');
   const dl=t.sim.qEndAt;
   t.simQTick(20); await sleep(10);
-  eq(t.simQLeft,70,'ticking by hand still works for the harness');
+  eq(t.simQLeft,t.SIM_QSEC-20,'ticking by hand still works for the harness');
   ok(t.sim.qEndAt<dl,'and the deadline moves with it, so the two cannot disagree');
-  ok(Math.abs((t.sim.qEndAt-Date.now())/1000-70)<2,'the deadline agrees with the counter');
+  ok(Math.abs((t.sim.qEndAt-Date.now())/1000-(t.SIM_QSEC-20))<2,'the deadline agrees with the counter');
   // In a simulation, time in another tab IS spent on the question. It used to be pushed out,
   // which made the tab bar a free break: three minutes away gave the question 180 seconds
   // back while the paper was charged.
@@ -2124,32 +2124,32 @@ async function qClockChecks(){
   // ---- what the whole paper has left, not just this question
   t.simAbandon(); await sleep(20); t.simClearSave();
   t.startPaper(1); await sleep(30);
-  eq(t.simTotalLeft(),65*90,'a fresh 65-question paper has 65 x 90 seconds');
-  eq(t.simTotalFull(),65*90,'which is also its full budget');
+  eq(t.simTotalLeft(),65*t.SIM_QSEC,'a fresh 65-question paper has 65 x the per-question limit');
+  eq(t.simTotalFull(),65*t.SIM_QSEC,'which is also its full budget');
   eq(t.simQsLeft(),65,'and 65 questions with time on them');
-  eq($('simTotalVal').textContent,'1:37:30','shown as 1:37:30');
+  eq($('simTotalVal').textContent,fmtMs(65*t.SIM_QSEC*1000),'shown as hours:minutes:seconds');
   eq($('simTotalFill').style.width,'100%','with a full bar');
   ok(/65 questions still open/.test($('simTotalSub').textContent),'and the count beneath it');
-  ok(/1:37:30 left/.test($('clockSub').textContent),'the top clock carries it too');
+  ok($('clockSub').textContent.indexOf(fmtMs(65*t.SIM_QSEC*1000)+' left')>=0,'the top clock carries it too');
 
-  t.simQTick(90); await sleep(20);
-  eq(t.simTotalLeft(),64*90,'one question spent leaves 64 x 90');
-  eq($('simTotalVal').textContent,'1:36:00','which reads 1:36:00');
+  t.simQTick(t.SIM_QSEC); await sleep(20);
+  eq(t.simTotalLeft(),64*t.SIM_QSEC,'one question spent leaves 64 of them');
+  eq($('simTotalVal').textContent,fmtMs(64*t.SIM_QSEC*1000),'which reads that');
   eq(t.simQsLeft(),64,'and 64 questions still open');
 
   t.simQTick(30); await sleep(10);
-  eq(t.simTotalLeft(),63*90+60,'it is a real sum, not questions-left times ninety');
+  eq(t.simTotalLeft(),63*t.SIM_QSEC+(t.SIM_QSEC-30),'it is a real sum, not questions-left times the limit');
   t.simJump(5); await sleep(20); t.simQTick(40); await sleep(10);
   const totBefore=t.simTotalLeft();
   t.simJump(9); await sleep(20);
   eq(t.simTotalLeft(),totBefore,'moving between questions does not change the total');
   t.simJump(5); await sleep(20);
-  eq(t.simQLeft,50,'and a half-used question still holds its remainder');
+  eq(t.simQLeft,t.SIM_QSEC-40,'and a half-used question still holds its remainder');
 
   t.simAbandon(); await sleep(20); t.simClearSave();
   t.startPaper(t.PAPER_COUNT); await sleep(30);
   ok(t.simLen()<65,'the last paper is shorter ('+t.simLen()+')');
-  eq(t.simTotalLeft(),t.simLen()*90,'and totals its own question count');
+  eq(t.simTotalLeft(),t.simLen()*t.SIM_QSEC,'and totals its own question count');
 
   t.simAbandon(); await sleep(20); t.simClearSave();
   t.startPaper(1); await sleep(30);
@@ -2174,8 +2174,8 @@ async function qClockChecks(){
   const q=t.QS[t.sim.qs[0]];
   q.a.forEach(l=>t.simPick(l)); await sleep(20);
   ok($('explain').classList.contains('show'),'paper 1 explains the answer');
-  eq(t.simQLeft,90,'and the clock did not stop for it');
-  t.simQTick(89); await sleep(5);
+  eq(t.simQLeft,t.SIM_QSEC,'and the clock did not stop for it');
+  t.simQTick(t.SIM_QSEC-1); await sleep(5);
   eq(t.sim.i,0,'reading is on the same 90 seconds');
   ok($('explain').classList.contains('show'),'still reading');
   t.simQTick(1); await sleep(20);
@@ -2710,7 +2710,7 @@ async function integrationChecks(){
   ok(spoken[0].length<=160,'starting with a short piece, so sound is immediate');
   ok(spoken.join(' ').indexOf('Option')<0,'and did not read the options');
   const c0=cancels;
-  t.simQTick(90); await sleep(30);
+  t.simQTick(t.SIM_QSEC); await sleep(30);
   eq(t.sim.i,1,'the 90 seconds ran out and moved on');
   ok(cancels>c0,'which stopped the voice');
   eq($('simTts').textContent,'\ud83d\udd0a Read','and put the button back');
@@ -2747,8 +2747,8 @@ async function integrationChecks(){
   });
   const eng=$('explain').querySelector('.exeach .exopt>span>b');
   if(eng) eq(getComputedStyle(eng).direction,'ltr','while the option text stays left to right');
-  eq(t.simQLeft,90,'and the clock did not pause to let us read');
-  t.simQTick(90); await sleep(30);
+  eq(t.simQLeft,t.SIM_QSEC,'and the clock did not pause to let us read');
+  t.simQTick(t.SIM_QSEC); await sleep(30);
   eq(t.sim.i,1,'it moved on mid-read');
   ok(!$('explain').classList.contains('show'),'clearing the Hebrew panel behind it');
 
@@ -2780,7 +2780,7 @@ async function integrationChecks(){
   t.simPick(wrong); await sleep(20);
   t.simFlagToggle(); await sleep(10);
   t.simGo(1); await sleep(20);
-  t.simQTick(90); await sleep(30);          // let one time out, so it exports as blank
+  t.simQTick(t.SIM_QSEC); await sleep(30);          // let one time out, so it exports as blank
   t.simSubmit(true); await sleep(60);
   const rec=t.lastExamCsv;
   ok(!!rec&&rec.list.length>0,'submitting still leaves something to export');

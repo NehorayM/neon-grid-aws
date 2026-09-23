@@ -119,7 +119,7 @@ visual language. Chapters are coloured by the exam domain they mostly serve.
   still be opened and answered from the review list — it shows an empty clock rather than
   bouncing you straight back out, which is what `if(simQLeft<=0){ simQStop(); return; }` at
   the top of `simQTick` is for.
-  On papers 1–10 the same 90 seconds covers reading the feedback, so it can move on mid-read.
+  On papers 1–10 the same per-question time (SIM_QSEC, now 105 s) covers reading the feedback, so it can move on mid-read.
   **There is one clock** — see "One clock" below. `simTimeLeft()` is the sum of the question
   clocks, and `simCheckTime` ends the paper when that reaches zero. `simBudget(n)` survives
   only as the headline figure.
