@@ -696,6 +696,20 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .simbtn.danger{color:var(--red);border-color:var(--line)}
 .simbtn.go{flex:none;padding:8px 14px;background:var(--cyan);border-color:var(--cyan);color:#10161c}
 .simbtn:disabled{opacity:.4}
+/* Narrow phones: six buttons on one line pushed Next and Quit off the screen in a redo (which
+   adds Answer). Prev and Next get the top row, big, where a thumb lands; the rest share the
+   second. */
+@media (max-width:420px){
+  .simnav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  .simnav .simbtn{min-width:0;overflow:hidden;text-overflow:ellipsis;padding-left:2px;padding-right:2px}
+  #simPrev{order:-2;grid-column:span 2}
+  #simNext{order:-1;grid-column:span 2}
+}
+@media (max-width:360px){
+  .simnav .simbtn:not(#simPrev):not(#simNext){font-size:10.5px;letter-spacing:-.1px}
+}
+/* the two tools in the question header were 27px — too small to hit reliably */
+.qtop .qtool{min-height:32px;min-width:34px}
 .simstrip{display:grid;grid-template-columns:repeat(22,1fr);gap:3px;margin:9px 0 7px}
 .simstrip .sq{display:block;height:9px;border-radius:2px;background:rgba(255,255,255,.13);cursor:pointer}
 .simstrip .sq.done{background:var(--cyan)}
@@ -2365,7 +2379,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 13:31 UTC';
+const BUILD='2026-09-23 18:06 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -6143,6 +6157,7 @@ function renderSimTotal(){
   const box=$('simTotal'); if(!box) return;
   if(!sim||!sim.running){ box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
+  { const lb=box.querySelector('.stline .stlbl'); if(lb) lb.textContent=isRedo()?'Redo':'Paper remaining'; }
   if(isRedo()){
     $('simTotalVal').textContent='no timer';
     $('simTotalFill').style.width='100%';
@@ -8673,7 +8688,9 @@ function renderExplain(q,picked,ok,timedOut){
     // Inside an exam this panel only appears for a question whose time ran out. Its button has
     // to move the PAPER on — the practice one below was wired to the practice quiz and did
     // nothing here.
-    bits.push('<div class="exfoot">This question\u2019s time is spent, so reading costs the paper nothing.</div>');
+    bits.push('<div class="exfoot">'+(isRedo()
+      ?'A redo has no timer \u2014 change your answer whenever you like.'
+      :'This question\u2019s time is spent, so reading costs the paper nothing.')+'</div>');
     bits.push('<button class="btn" id="exSimNext" style="width:100%;margin-top:2px">'+
               (sim.i>=simLen()-1?'On to the review \u203a':'Next question \u203a')+'</button>');
   } else {

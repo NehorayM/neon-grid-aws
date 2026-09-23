@@ -580,6 +580,22 @@ desktop's 30-second owner check stopped and discarded question 34.
 and covers the list, the restore, the taken-away copy and a finished run. **Not yet exercised with
 two real signed-in devices against Supabase** — the merge is tested; the network round trip is not.
 
+## Exam screens — measured, not eyeballed
+
+Five rounds on the exam screens, each measured on a 375px and a 320px phone:
+- question screen: the briefing sits between question and options, closed on every question (it
+  was 1,081px, open, above the question); the paper box is one row. Question starts at 220px.
+- explanation: each option's text once — heading names the answer, no You picked/Correct answer
+  boxes when there is a write-up, a reminder line per option that skips the words all options
+  share, service definitions and decision rules folded. 1,744px -> 763px.
+- result screen: actions under the score, short meta line, last three history entries. 1,827 -> 1,116px.
+- exam list: short subtitle, "Not started" rows, CSV below the list, Best on the /1000 scale.
+- narrow phones: the exam buttons go two rows under 420px (Prev/Next on top) — in a redo the six
+  buttons pushed Next off a 320px screen. `--topH` keeps every screen below the top bar, which grew
+  past 64px when the name/XP line wrapped.
+`fuzz_exam.js` random-walks every exam flow with invariants; run it with `await FUZZ_EXAM(500,seed)`.
+Negative control: against build 1452c21 it finds the stale pause bar and the paused redo.
+
 ## Exam history and redo
 
 **Its own tab and its own table.** The list is the **Redo** tab (`redoScreen`, `renderRedoScreen`):
