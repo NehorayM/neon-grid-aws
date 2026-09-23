@@ -2336,7 +2336,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 13:21 UTC';
+const BUILD='2026-09-23 13:31 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -5660,6 +5660,8 @@ function brkAsk(go2){
   if(brkOn()) return false;
   // Nothing to weigh up in practice: the pause is free and reversible, so asking would only
   // be a dialog between you and the thing you already asked for.
+  // A redo has no clock at all, so there is nothing to pause: leaving it is just leaving.
+  if(isRedo()){ if(go2) go2(); return true; }
   if(isPractice()){ brkStart(); if(go2) go2(); return true; }
   if(!brkLeft()){
     toast('\u23f1 No breaks left \u2014 the clock keeps running');
@@ -6172,6 +6174,9 @@ function renderSimQ(){
 }
 function simLoad(){
   if(!sim) return;
+  // The pause bar follows the paper's real state. A resume ends a pause (simResume clears it)
+  // without telling the bar, which stayed up saying "Paused" over a question in progress.
+  renderBrk();
   const qi=sim.qs[sim.i], q=QS[qi];
   curQ=qi; answeredThis=false; eliminated.clear();
   chosen.clear(); (sim.ans[sim.i]||[]).forEach(l=>chosen.add(l));

@@ -1402,6 +1402,29 @@ async function histSyncChecks(){
   } finally { t.cloudForTest(was[0],was[1]); t.histTable='unknown'; }
   t.P.examHist={}; t.simClearSave(); t.go('homeScreen'); await sleep(20);
 }
+// The pause bar stayed up over a question in progress: a resume cleared the pause without
+// telling the bar. And a redo, which has no clock, paused at all.
+async function pauseBarChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.P.examHist={}; delete t.P.lastPaper;
+  t.startPaper(4,'exam'); await sleep(20);
+  for(let k=0;k<3;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+  t.simSubmit(true); await sleep(40);
+  $('navRedo').click(); await sleep(30); document.querySelector('#redoList .rdcard button').click(); await sleep(50);
+  $('navHome').click(); await sleep(30);
+  eq(t.route,'homeScreen','leaving a redo just leaves');
+  ok(!t.brkOn()&&$('brkBar').classList.contains('hidden'),'without starting a pause — a redo has no clock');
+  $('navRedo').click(); await sleep(30); document.querySelector('#redoList .rdcard button').click(); await sleep(50);
+  ok($('brkBar').classList.contains('hidden'),'and coming back shows no pause bar');
+  t.simAbandon(); await sleep(20); t.simClearSave(); t.P.examHist={};
+  t.startPaper(5,'practice'); await sleep(30);
+  $('navHome').click(); await sleep(30);
+  ok(t.brkOn()&&!$('brkBar').classList.contains('hidden'),'a practice paper still pauses when you leave');
+  t.simPersist(); t.simResume(); await sleep(50);
+  ok(!t.brkOn(),'resuming ends the pause');
+  ok($('brkBar').classList.contains('hidden'),'and the bar goes with it, instead of staying over the question');
+  t.simAbandon(); await sleep(20); t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -2939,7 +2962,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
