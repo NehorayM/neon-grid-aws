@@ -531,6 +531,12 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .stval{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--cyan);
   font-variant-numeric:tabular-nums;letter-spacing:.5px}
 .simtotal.tight .stval{color:var(--gold)}
+.stlive{display:flex;align-items:baseline;gap:8px;margin-top:7px;padding-top:7px;
+  border-top:1px dashed color-mix(in srgb, var(--cyan) 22%, var(--line))}
+.stlive.hidden{display:none}
+.stlive .stval.pass{color:var(--lime)}
+.stlive .stval.fail{color:var(--red)}
+.stlivesub{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
 .sttrack{position:relative;height:7px;border-radius:4px;margin:7px 0 5px;overflow:hidden;
   background:rgba(255,255,255,.07)}
 .sttrack i{display:block;height:100%;border-radius:4px;transition:width .95s linear;
@@ -1403,6 +1409,11 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
         </div>
         <div class="sttrack"><i id="simTotalFill"></i></div>
         <div class="stsub" id="simTotalSub"></div>
+        <div class="stlive hidden" id="simLive">
+          <span class="stlbl">Score so far</span>
+          <span class="stval" id="simLiveVal">—</span>
+          <span class="stlivesub" id="simLiveSub"></span>
+        </div>
       </div>
       <div class="charge" id="chargeBar">
         <span class="lbl" id="chargeLbl">CHARGE</span>
@@ -2256,7 +2267,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 06:50 UTC';
+const BUILD='2026-09-23 10:47 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -2490,7 +2501,8 @@ function normaliseProfile(p){
   const n0=v=>{ const n=Number(v); return isFinite(n)?n:0; };
   const dstr=v=>/^\d{4}-\d{1,2}-\d{1,2}$/.test(String(v||''))?String(v):'';
   if(Array.isArray(p.simLog)) p.simLog=p.simLog.filter(m=>m&&typeof m==='object').slice(0,12).map(m=>({
-    d:dstr(m.d), p:n0(m.p), pass:m.pass?1:0, mins:n0(m.mins), pr:m.pr?1:0, ct:m.ct?1:0,
+    d:dstr(m.d), p:n0(m.p), sc:m.sc!==undefined?Math.max(100,Math.min(1000,n0(m.sc))):undefined,
+    pass:m.pass?1:0, mins:n0(m.mins), pr:m.pr?1:0, ct:m.ct?1:0,
     dom:(Array.isArray(m.dom)?m.dom:[]).slice(0,8).map(n0)}));
   if(Array.isArray(p.examLog)) p.examLog=p.examLog.filter(e=>e&&typeof e==='object').slice(0,20).map(e=>
     Object.assign({},e,{d:dstr(e.d)||String(e.d||'').replace(/[<>&"']/g,'').slice(0,40),
@@ -4770,6 +4782,51 @@ const DOMAINS=[
   {id:3,nm:'Design Cost-Optimized Architectures',short:'Cost',      w:20, secs:[21,22,16]}
 ];
 function domainOf(sec){ const d=DOMAINS.find(x=>x.secs.includes(sec)); return d?d.id:2; }
+// ---------- the SAA-C03 domain a QUESTION tests ----------
+// domainOf() files a question by its service, so every EC2, S3, database and networking
+// question counted as High-Performing and the bank read 11/31/55/3 against the exam's
+// 30/26/24/20. The exam classifies by the task being tested, and these questions state it in
+// their requirement line. The service is the fallback when a question states nothing.
+const DOM_CUE=[
+  /\bsecur(e|ely|ity)\b|encrypt|least[- ]privilege|unauthori[sz]ed|permissions?\b|access control|complian(ce|t)|credentials?|\bIAM\b|\bKMS\b|protect|attack|DDoS|vulnerab|audit|\bMFA\b|sensitive|restrict(ed)? access|private(ly)? (connect|access)|in transit|at rest|intrusion|malicious/i,
+  /highly available|high availability|fault[- ]toleran|disaster recovery|\bRPO\b|\bRTO\b|fail ?over|resilien|durab|decoupl|loosely coupled|data loss|outage|redundan|multi-AZ|Availability Zone (failure|outage)|recover|single point of failure|retry|survive/i,
+  /performance|latency|throughput|\bscal(e|es|able|ability|ing)\b|\bIOPS\b|faster|real[- ]time|cach(e|ing)|high-performing|response time|concurrent|burst|milliseconds?|speed|bottleneck/i,
+  /cost[- ]effective|lowest cost|least (expensive|costly|cost)|minimi[sz]e (the )?costs?|reduce (the )?costs?|economical|cost[- ]optimi|cheapest|lower (the )?costs?|costs? (savings|less)|without (additional|incurring) costs?|\bbudget|pay (only )?for|spend/i,
+];
+function examDomainOf(q){
+  // the requirement line, with a trailing "(Select TWO.)" taken off so it can be found
+  const x=String(q.q||'').replace(/\(\s*(select|choose)[^)]*\)\s*$/i,'').trim();
+  const m=x.match(/[^.?!]*\?\s*$/), tail=m?m[0]:'';
+  const sc=[0,0,0,0];
+  DOM_CUE.forEach((re,d)=>{ if(re.test(tail)) sc[d]+=3; if(re.test(x)) sc[d]+=1; });
+  const best=Math.max(...sc), svc=domainOf(q.s);
+  if(!best) return svc;
+  const tops=sc.map((v,i)=>v===best?i:-1).filter(i=>i>=0);
+  return tops.includes(svc)?svc:tops[0];
+}
+let EXAM_DOM=null;
+function qDom(qi){ if(!EXAM_DOM) EXAM_DOM=QS.map(examDomainOf); return EXAM_DOM[qi]; }
+// ---------- the SAA-C03 score ----------
+// Weighted by the exam's own domain mix, not the paper's; a domain with few questions on the
+// paper is blended with the overall accuracy so two questions cannot swing it by 100 points.
+const SAA_PASS=720, SAA_SHRINK=6;   // six questions' worth of overall accuracy
+function saaScaled(f){
+  f=Math.max(0,Math.min(1,Number(f)||0));
+  const P=SIM_PASS/100;       // 72% -> 720; 0% -> 100; 100% -> 1000 (AWS does not publish theirs)
+  return Math.round(f<=P ? 100+(f/P)*(SAA_PASS-100) : SAA_PASS+((f-P)/(1-P))*(1000-SAA_PASS));
+}
+function saaScore(pairs){
+  const n=[0,0,0,0], c=[0,0,0,0]; let N=0, C=0;
+  (pairs||[]).forEach(p=>{ const d=qDom(p.qi); n[d]++; N++; if(p.ok){ c[d]++; C++; } });
+  if(!N) return null;
+  const overall=C/N;
+  let f=0, W=0;
+  DOMAINS.forEach(d=>{ const acc=(c[d.id]+SAA_SHRINK*overall)/(n[d.id]+SAA_SHRINK); f+=d.w*acc; W+=d.w; });
+  f/=W;
+  const scaled=saaScaled(f);
+  return {frac:f, pct:Math.round(f*100), scaled, passed:scaled>=SAA_PASS, n, c, N, C,
+          raw:Math.round(overall*100)};
+}
 function domainStats(){
   return DOMAINS.map(d=>{
     let a=0,c=0,pool=0;
@@ -5951,9 +6008,33 @@ function renderSimTotal(){
   // ticked once per question, capped so the ticks do not turn into a solid block
   const tick=Math.max(1.6,100/Math.max(1,simLen()));
   $('simTotal').style.setProperty('--tick',tick.toFixed(2)+'%');
+  renderSimLive();
   // Amber in the last five minutes, while there is still something unanswered to spend it on.
   // (It used to mark the second, hidden clock taking over — the thing that is gone now.)
   box.classList.toggle('tight',left<300&&simAnsweredCount()<simLen());
+}
+// Where the paper stands on the SAA scale, over what has been answered. Only where each answer
+// is already revealed — a teaching paper, or practice — because on an exam-conditions paper a
+// running score would say whether every answer was right.
+function renderSimLive(){
+  const box=$('simLive'); if(!box) return;
+  const show=!!(sim&&sim.running&&(simTeaches()||isPractice()));
+  box.classList.toggle('hidden',!show);
+  if(!show) return;
+  const pairs=[];
+  sim.qs.forEach((qi,i)=>{
+    const picked=sim.ans[i]||[];
+    if(!picked.length) return;
+    if(simTeaches()&&!simRevealed(i)) return;
+    const q=QS[qi], set=new Set(picked);
+    pairs.push({qi, ok:q.a.length===set.size&&q.a.every(a=>set.has(a))});
+  });
+  const S=saaScore(pairs), v=$('simLiveVal');
+  v.classList.remove('pass','fail');
+  if(!S){ v.textContent='\u2014'; $('simLiveSub').textContent='answer one to start'; return; }
+  v.textContent=S.scaled;
+  v.classList.add(S.passed?'pass':'fail');
+  $('simLiveSub').textContent='/ 1000 \u00b7 pass '+SAA_PASS+' \u00b7 '+S.C+'/'+S.N+' right';
 }
 function renderSimQ(){
   const wrap=$('qTimerWrap'), fill=$('qTimerFill');
@@ -6036,7 +6117,7 @@ function simPick(ltr){
     if(simTeaches()) simReveal();
     else toast('\u{1f680} '+examCheer(sim.i,sim.qs.length));
   }
-  simPersist(); renderSimStrip();
+  simPersist(); renderSimStrip(); renderSimLive();
 }
 // ---------- feedback during a teaching paper ----------
 function simRevealed(i){ return !!(sim&&sim.rev&&sim.rev[(i==null?sim.i:i)]); }
@@ -6150,13 +6231,14 @@ function simSubmit(auto){
   ttsStop(); hideExplain(); simClearSave();
   const paper=sim.paper||0;
   const cont=!!sim.cont, base=sim.base||{blank:{},pct:0,passed:0};
-  let correct=0, gain=0; const byDom={0:[0,0],1:[0,0],2:[0,0],3:[0,0]}; const missed=[];
+  let correct=0, gain=0; const byDom={0:[0,0],1:[0,0],2:[0,0],3:[0,0]}; const missed=[], scored=[];
   const csv=[];
   sim.qs.forEach((qi,i)=>{
     const q=QS[qi], picked=new Set(sim.ans[i]||[]);
     const ok=q.a.length===picked.size&&q.a.every(a=>picked.has(a));
-    const d=domainOf(q.s);
+    const d=qDom(qi);
     byDom[d][1]++; if(ok){ byDom[d][0]++; correct++; } else missed.push(qi);
+    scored.push({qi,ok});
     // a question flagged during the exam becomes a bookmark, so it survives the
     // exam and shows up in the review export later
     if(sim.flag[i]&&(P.marks||[]).indexOf(qi)<0) (P.marks=P.marks||[]).push(qi);
@@ -6183,8 +6265,11 @@ function simSubmit(auto){
                 mins:sim.mins, d:dayKey()};
     P.lastPaper=snap; }
   const len=simLen();
-  const pct=Math.round(correct/len*100);
-  const passed=pct>=SIM_PASS;
+  // Scored like SAA-C03: weighted by the exam's domain mix, on 100–1000, pass at 720. Blanks
+  // count as wrong, as they do on the real exam. `pct` is the weighted percentage now.
+  const S=saaScore(scored)||{pct:0,scaled:100,passed:false,raw:0};
+  const pct=S.pct;
+  const passed=S.passed;
   if(P.lastPaper){ P.lastPaper.pct=pct; P.lastPaper.passed=passed?1:0;
                    if(!lastOpen(P.lastPaper).length) delete P.lastPaper; }
   // a continuation pays the pass bonus only if this is the sitting that crosses the line
@@ -6196,7 +6281,7 @@ function simSubmit(auto){
   if(newPass) P.simsPassed=(P.simsPassed||0)+1;
   P.bestSim=Math.max(P.bestSim||0,pct);
   P.simLog=(P.simLog||[]);
-  P.simLog.unshift({d:dayKey(),p:pct,pass:passed?1:0,mins,pr:isPractice()?1:0,ct:cont?1:0,
+  P.simLog.unshift({d:dayKey(),p:pct,sc:S.scaled,pass:passed?1:0,mins,pr:isPractice()?1:0,ct:cont?1:0,
     dom:DOMAINS.map(x=>byDom[x.id][1]?Math.round(byDom[x.id][0]/byDom[x.id][1]*100):0)});
   P.simLog=P.simLog.slice(0,12);
   if(cont){ P.correct+=gain; }
@@ -6212,11 +6297,12 @@ function simSubmit(auto){
   const coins=earned+(newPass?90:0);
   addCoins(coins); addXP(earned*6+(newPass?200:0));
   $('simDone').classList.remove('hidden');
-  $('simScore').textContent=pct+'%';
+  $('simScore').textContent=S.scaled;
   $('simScore').style.color=passed?'var(--lime)':'var(--red)';
   $('simVerdict').textContent=(paper?'Exam '+paper+' — ':'')+
-    (passed?'PASS — above the 72% line':'BELOW PASS — 72% needed');
-  $('simMeta').textContent=correct+' / '+len+' correct · '+mins+' min · +'+coins+' 🪙'+
+    (passed?'PASS':'BELOW PASS')+' \u00b7 '+S.scaled+' / 1000, '+SAA_PASS+' needed';
+  $('simMeta').textContent=correct+' / '+len+' correct ('+S.raw+'%) \u00b7 '+
+    pct+'% weighted by the exam\u2019s domain mix \u00b7 '+mins+' min · +'+coins+' 🪙'+
     (cont?' · finished later':'')+
     (csv.length?' · '+csv.length+' to export':'');
   $('simHeb').innerHTML=hebHTML(passed?'pass':'fail');
@@ -6859,7 +6945,7 @@ function renderPapers(){
       '<div class="ds">'+esc(meta)+'</div>'+
       (rec?'<div class="pbar"><i style="width:'+pctW(rec.best)+';background:'+col+'"></i></div>':'')+
       '</div>'+
-      ((rec&&!here)?'<div class="pscore" style="color:'+col+'">'+(Number(rec.best)|0)+'%'+
+      ((rec&&!here)?'<div class="pscore" style="color:'+col+'">'+saaScaled((Number(rec.best)||0)/100)+
         (rec.bestMode==='practice'?'<i class="pmode">practice</i>':'')+'</div>':'');
     // The row for the paper you are part way through offers to continue it, rather than
     // making you find the bar at the top — and rather than saying "Retake" over a run you
@@ -7012,7 +7098,8 @@ function renderSimLog(){
     const num=v=>{ const n=Number(v); return isFinite(n)?Math.round(n):0; };
     const dom=Array.isArray(m.dom)?m.dom:[];
     row.innerHTML='<div class="em">'+(m.pass?'🎓':'📝')+'</div><div style="flex:1">'+
-      '<div class="nm">'+num(m.p)+'% '+(m.pass?'— pass':'— below 72%')+(m.ct?' · finished later':m.pr?' · practice':'')+'</div>'+
+      '<div class="nm">'+(m.sc?num(m.sc)+' / 1000 ':num(m.p)+'% ')+(m.pass?'— pass':(m.sc?'— below 720':'— below 72%'))+
+        (m.ct?' · finished later':m.pr?' · practice':'')+'</div>'+
       '<div class="ds">'+esc(m.d)+' · '+num(m.mins)+' min · '+DOMAINS.map((d,i)=>esc(d.short)+' '+num(dom[i])+'%').join(' · ')+'</div></div>';
     L.appendChild(row);
   });
@@ -9939,7 +10026,7 @@ if(TEST){
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
-    isPractice, brkOpen, brkElapsed, simContinue, lastOpen, renderSimCont, simChargeEnd, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
+    isPractice, brkOpen, brkElapsed, saaScore, saaScaled, qDom, examDomainOf, renderSimLive, SAA_PASS, simContinue, lastOpen, renderSimCont, simChargeEnd, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
     simAwayCost, simPauseSave, resumeOnBoot, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,

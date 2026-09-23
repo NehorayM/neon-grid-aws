@@ -549,6 +549,33 @@ scores what was answered rather than resuming into limbo.
 **The headline is the only clock.** It once quoted `min(question sum, wall clock)` and the
 subtitle explained which was binding — a careful description of a trap. The wall clock is gone.
 
+## The SAA-C03 score
+
+From the official exam guide: a scaled score of 100–1,000, 720 to pass; four domains weighted
+30 / 26 / 24 / 20 % of scored content (Secure, Resilient, High-Performing, Cost-Optimized);
+compensatory (only the overall must pass); blanks scored wrong; the raw-to-scaled conversion is
+not published.
+
+- **A question's exam domain is what it asks** (`examDomainOf`, cached in `qDom(qi)`): its
+  requirement line — "MOST cost-effectively", "MOST secure", "highly available" — weighted 3x,
+  the whole stem 1x, the service-based `domainOf(q.s)` breaking ties and filling in when the
+  question states nothing. The service labels read 11/31/55/3; these read 27/16/41/15. The rest
+  of the skew is the bank's own. `domainOf(sec)` is still what readiness and the study views use.
+- **`saaScore(pairs)`** weights each domain's accuracy by the exam's mix, not the paper's. A
+  domain with few questions on a paper is blended with the overall accuracy (`SAA_SHRINK` = 6
+  questions' worth), so two Cost questions move the score by ~60 — about what 2 of 50 scored
+  questions are worth on the real exam — instead of ~200.
+- **`saaScaled(f)`** anchors 0% -> 100, 72% -> 720, 100% -> 1000. It is an estimate, kept at
+  the app's existing 72% line (the stricter of the two common readings).
+- The result headline is the scaled score; the meta line keeps the raw count and the weighted
+  %. `P.papers[n].best` and simLog `p` now hold the weighted %, simLog `sc` the scaled score;
+  entries from before carry only a raw `p` and are shown as a percentage.
+- **"Score so far"** (`renderSimLive`) shows on teaching papers and in practice only. On an
+  exam-conditions paper it would say whether each answer was right, so it waits for Submit.
+
+`saaChecks()` holds the scale anchors, the classification of each kind of requirement line, the
+weighting against a skewed paper, the small-domain blend, and where the live score shows.
+
 ## One clock — and finishing a paper later
 
 **The bug.** A paper ran two clocks with the same 97.5-minute budget. The big PAPER REMAINING
