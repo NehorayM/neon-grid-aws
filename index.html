@@ -58,6 +58,40 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .opt.locked{opacity:.62;cursor:default}
 #runBox,#histBox{margin-bottom:14px}
 .histrow .ds{white-space:normal}
+/* ---- Exam Redo ---- */
+.rdsync{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 10px;border-radius:99px;
+  font-size:10.5px;font-family:var(--mono);color:var(--dim);border:1px solid var(--line);background:var(--surface)}
+.rdsync.ok{color:var(--lime);border-color:color-mix(in srgb, var(--lime) 35%, var(--line))}
+.rdsync.warn{color:var(--gold);border-color:color-mix(in srgb, var(--gold) 35%, var(--line))}
+.rdchart{padding:12px 12px 8px;margin-bottom:14px}
+.rdcharthead{display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);
+  color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.rdpass{color:var(--gold)}
+.rdchart-in{position:relative;height:84px;display:flex;align-items:flex-end;gap:5px}
+.rdchart-in .pl{position:absolute;left:0;right:0;border-top:1px dashed color-mix(in srgb, var(--gold) 70%, transparent);pointer-events:none}
+.rdchart-in .b{flex:1;min-width:0;border-radius:4px 4px 0 0;position:relative;
+  background:linear-gradient(180deg,var(--red),color-mix(in srgb, var(--red) 40%, transparent))}
+.rdchart-in .b.pass{background:linear-gradient(180deg,var(--lime),color-mix(in srgb, var(--lime) 40%, transparent))}
+.rdcard{display:flex;gap:12px;align-items:center;padding:12px;border-radius:15px;
+  background:var(--surface);border:1px solid var(--line);margin-bottom:10px}
+.rdcard.pass{border-color:color-mix(in srgb, var(--lime) 30%, var(--line))}
+.rdscore{flex:none;width:62px;text-align:center}
+.rdscore b{display:block;font-family:var(--mono);font-size:21px;font-weight:700;color:var(--red);line-height:1.1}
+.rdcard.pass .rdscore b{color:var(--lime)}
+.rdscore span{font-size:9.5px;color:var(--dim);font-family:var(--mono)}
+.rdbody{flex:1;min-width:0}
+.rdbody .nm{font-weight:650;font-size:13.5px}
+.rdbody .ds{font-size:11px;color:var(--dim);margin-top:2px;white-space:normal}
+.rdbar{position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,.07);margin-top:7px;overflow:hidden}
+.rdbar i{display:block;height:100%;border-radius:3px;background:var(--red)}
+.rdcard.pass .rdbar i{background:var(--lime)}
+.rdbar::after{content:'';position:absolute;top:0;bottom:0;left:69%;width:2px;background:var(--gold)}
+.rdcard .buy{flex:none}
+.rdempty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:34px 18px;
+  color:var(--dim);font-size:12.5px}
+.rdempty.hidden{display:none}
+.rdempty-ic{font-size:34px;margin-bottom:4px}
+.rdempty b{color:var(--txt);font-size:14px}
 .runrow .ds{white-space:normal}
 .opt.locked.sel{opacity:.9}
 @media (prefers-reduced-motion:reduce){.opt.nope{animation:none;outline:2px solid var(--red)}}
@@ -784,6 +818,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .navbtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px 5px;
   border-radius:14px;font-size:9.5px;font-weight:600;letter-spacing:.3px;color:var(--dim);transition:.15s}
 .navbtn .ic{font-size:19px;line-height:1}
+@media (max-width:360px){ .navbtn{font-size:8.5px;padding:7px 0 5px} .navbtn .ic{font-size:17px} }
 .navbtn.on{color:var(--cyan);background:color-mix(in srgb, var(--cyan) 12%, transparent)}
 .navbtn:active{transform:scale(.93)}
 .screen{padding-bottom:calc(86px + var(--safeB))}
@@ -1511,6 +1546,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     <button class="navbtn on" id="navHome"><span class="ic">🏠</span>Home</button>
     <button class="navbtn" id="navPlay"><span class="ic">📖</span>Study</button>
     <button class="navbtn" id="navExam"><span class="ic">🎓</span>Exam</button>
+    <button class="navbtn" id="navRedo"><span class="ic">✎</span>Redo</button>
     <button class="navbtn" id="navCasino"><span class="ic">🎰</span>Casino</button>
     <button class="navbtn" id="navShop"><span class="ic">🛒</span>Shop</button>
     <button class="navbtn" id="navBadges"><span class="ic">🏆</span>Badges</button>
@@ -1634,6 +1670,25 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
   </div>
 <!-- STUDY:SCREENS:END -->
   <!-- NUMBERED PRACTICE EXAMS -->
+  <div id="redoScreen" class="screen hidden">
+    <div style="text-align:center;margin-bottom:12px">
+      <h2 class="head">✎ Exam Redo</h2>
+      <p class="sub">Every exam you have submitted, kept with every answer. Redo any of them with no timer — change answers and watch the score move.</p>
+      <div class="rdsync" id="redoSync"></div>
+    </div>
+    <div class="statstrip" id="redoStats"></div>
+    <div class="card rdchart hidden" id="redoChartBox">
+      <div class="rdcharthead"><span>Recent scores</span><span class="rdpass">720 to pass</span></div>
+      <div class="rdchart-in" id="redoChart"></div>
+    </div>
+    <div class="list" id="redoList"></div>
+    <div class="rdempty hidden" id="redoEmpty">
+      <div class="rdempty-ic">📝</div>
+      <b>No exams here yet</b>
+      <span>Submit an exam from the Exam tab and it appears here, ready to redo.</span>
+      <button class="btn" id="redoGoExam" style="margin-top:12px">Go to exams ›</button>
+    </div>
+  </div>
   <div id="paperScreen" class="screen hidden">
     <button class="backbtn" id="paperBack" aria-label="Back from Practice Exams">‹</button>
     <div style="text-align:center;margin-bottom:12px">
@@ -1655,8 +1710,8 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     </div>
     <div id="histBox" class="hidden">
       <div class="sechead">Exam history</div>
-      <p class="sub" style="margin:-4px 0 8px">Every exam you have submitted. Redo any of them with no timer — change answers and watch the score move.</p>
-      <div class="list" id="histList"></div>
+      <button class="exresume" id="histGoRedo">✎ Your submitted exams are in the Redo tab ›</button>
+      <div class="list hidden" id="histList"></div>
     </div>
     <div class="list" id="paperList"></div>
   </div>
@@ -2281,7 +2336,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 13:11 UTC';
+const BUILD='2026-09-23 13:21 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -2648,7 +2703,7 @@ const sfx={
 };
 
 // ---------- routing ----------
-const SCREENS=['homeScreen','quizScreen','reelScreen','gameScreen','gresScreen','shopScreen','achScreen','flashScreen','recScreen','sumScreen','pickScreen','logScreen','briefScreen','studyPickScreen','readyScreen','themeScreen','voiceScreen','pathScreen','bankScreen','simRevScreen','simDoneScreen','paperScreen','stuPickScreen','stuReadScreen','timerScreen',
+const SCREENS=['redoScreen','homeScreen','quizScreen','reelScreen','gameScreen','gresScreen','shopScreen','achScreen','flashScreen','recScreen','sumScreen','pickScreen','logScreen','briefScreen','studyPickScreen','readyScreen','themeScreen','voiceScreen','pathScreen','bankScreen','simRevScreen','simDoneScreen','paperScreen','stuPickScreen','stuReadScreen','timerScreen',
   'learnPickScreen','learnMapScreen','learnReadScreen','learnQuizScreen','learnRecapScreen','learnSimScreen','learnDoneScreen','authScreen','casinoScreen'];
 let route='homeScreen';
 // Walking away from a mini-game used to leave its animation loop running: still stepping
@@ -6399,6 +6454,59 @@ function simSubmit(auto){
   if(passed) celebrate();
   go('simDoneScreen');
 }
+// ---------- exam history in its own table (supabase_exam_history.sql) ----------
+// One row per exam, upserted within a second and a half of any change to it. Without the table
+// (it has not been created yet) the profile copy still syncs, and the Redo screen says so.
+let histTable='unknown', histLastSync=0, histTimer=null;
+const histDirty=new Set();
+function histMissing(e){
+  const m=String(e&&e.message||'');
+  return !!e&&(e.code==='42P01'||e.code==='PGRST205'||(/exam_history/.test(m)&&/does not exist|schema cache|could not find/i.test(m)));
+}
+function histCloudQueue(hid){
+  if(!hid) return;
+  histDirty.add(hid);
+  if(histTimer) clearTimeout(histTimer);
+  histTimer=setTimeout(histCloudPush,1500);
+}
+async function histCloudPush(){
+  histTimer=null;
+  if(typeof sb==='undefined'||!sb||!sbUser||histTable==='missing'||!histDirty.size) return;
+  const rows=[...histDirty].map(h=>(P.examHist||{})[h]).filter(e=>e&&e.hid)
+    .map(e=>({user_id:sbUser.id, hid:String(e.hid), exam:e}));
+  histDirty.clear();
+  if(!rows.length) return;
+  try{
+    const {error}=await sb.from('exam_history').upsert(rows);
+    if(error){ if(histMissing(error)) histTable='missing'; else rows.forEach(r=>histDirty.add(r.hid)); }
+    else { histTable='ok'; histLastSync=Date.now(); }
+  }catch(e){ rows.forEach(r=>histDirty.add(r.hid)); }
+  if(route==='redoScreen') renderRedoScreen();
+}
+async function histCloudPull(){
+  if(typeof sb==='undefined'||!sb||!sbUser||histTable==='missing') return false;
+  let data=null;
+  try{
+    const r=await sb.from('exam_history').select('hid,exam');
+    if(r.error){ if(histMissing(r.error)) histTable='missing'; return false; }
+    data=r.data||[];
+  }catch(e){ return false; }
+  histTable='ok';
+  P.examHist=P.examHist||{};
+  const seen={}; let changed=false;
+  data.forEach(row=>{
+    const e=row.exam; if(!e||!Array.isArray(e.qs)) return;
+    seen[row.hid]=Number(e.at)||0;
+    const mine=P.examHist[row.hid];
+    if(!mine||(Number(e.at)||0)>(Number(mine.at)||0)){ P.examHist[row.hid]=e; changed=true; }
+  });
+  // anything this device has that the table lacks, or has older, goes up
+  Object.keys(P.examHist).forEach(h=>{ if(!(h in seen)||(Number(P.examHist[h].at)||0)>seen[h]) histDirty.add(h); });
+  if(changed){ normaliseProfile(P); histPrune(); saveProfile(); }
+  histLastSync=Date.now();
+  if(histDirty.size) histCloudPush();
+  return changed;
+}
 // ---------- exam history ----------
 const HIST_KEEP=30;
 function histPrune(p){
@@ -6429,6 +6537,7 @@ function histWrite(){
     d:prev.d||dayKey(), d0:prev.d0||Date.now(), at:Date.now(),
     redos:prev.redos||0}, sc);
   histPrune();
+  histCloudQueue(hid);
 }
 function histOpen(hid,btn){
   const r=(P.examHist||{})[hid]; if(!r) return;
@@ -6443,7 +6552,7 @@ function histOpen(hid,btn){
     const k=sim.qs.findIndex((q,i)=>!((sim.ans[i]||[]).length));
     sim.i=k>=0?k:0;
     // counted when a redo starts — counting on save counted a crash-and-resume twice
-    r.redos=(Number(r.redos)||0)+1; r.at=Date.now();
+    r.redos=(Number(r.redos)||0)+1; r.at=Date.now(); histCloudQueue(hid);
     saveProfile(); renderClock(); simLoad(); simClaim(); simPersist();
     toast('\u270e Redo \u2014 no timer. Change any answer; the score updates as you go');
   };
@@ -6463,8 +6572,61 @@ function redoFinish(){
   { const stb=$('simTotal'); if(stb) stb.classList.add('hidden'); }
   simClearSave();
   sim=null; saveProfile(); renderClock();
-  renderPapers(); go('paperScreen');
+  renderRedoScreen(); go('redoScreen'); syncNav();
   toast('\u2714 '+(e.paper?'Exam '+e.paper:'Mock exam')+' saved \u2014 '+e.sc+' / 1000 ('+e.c+'/'+e.n+' right)');
+}
+function renderRedoScreen(){
+  const L=$('redoList'); if(!L) return;
+  histPrune();
+  const h=P.examHist||{};
+  const ks=Object.keys(h).filter(k=>h[k].qs.every(i=>!!QS[i]))
+    .sort((a,b)=>(Number(h[b].d0)||0)-(Number(h[a].d0)||0));
+  // sync status: which way this list reaches the other device
+  const st=$('redoSync');
+  if(st){
+    st.className='rdsync';
+    if(!(typeof sbUser!=='undefined'&&sbUser)){ st.textContent='\u25cb Saved on this device \u2014 sign in to sync'; }
+    else if(histTable==='missing'){ st.classList.add('warn'); st.textContent='\u25d0 Syncing inside your profile \u2014 run supabase_exam_history.sql for its own table'; }
+    else { st.classList.add('ok'); st.textContent='\u25cf Synced to your account'+(histLastSync?' \u00b7 '+new Date(histLastSync).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):''); }
+  }
+  $('redoEmpty').classList.toggle('hidden',!!ks.length);
+  const scs=ks.map(k=>Number(h[k].sc)||100);
+  const passN=scs.filter(x=>x>=SAA_PASS).length;
+  $('redoStats').innerHTML=ks.length?
+    '<div class="stat"><b>'+ks.length+'</b><span>exams kept</span></div>'+
+    '<div class="stat"><b>'+Math.max(...scs)+'</b><span>best</span></div>'+
+    '<div class="stat"><b>'+Math.round(scs.reduce((a,b)=>a+b,0)/scs.length)+'</b><span>average</span></div>'+
+    '<div class="stat"><b>'+passN+'</b><span>passed</span></div>':'';
+  // the last twelve, oldest first, against the pass line
+  const cb=$('redoChartBox'), ch=$('redoChart');
+  cb.classList.toggle('hidden',ks.length<2);
+  if(ks.length>=2){
+    const last=ks.slice(0,12).reverse();
+    const y=v=>Math.max(4,Math.round((v-100)/900*100));
+    ch.innerHTML='<div class="pl" style="bottom:'+y(SAA_PASS)+'%"></div>'+last.map(k=>{
+      const v=Number(h[k].sc)||100;
+      return '<div class="b'+(v>=SAA_PASS?' pass':'')+'" style="height:'+y(v)+'%" title="'+
+        (h[k].paper?'Exam '+(Number(h[k].paper)|0):'Mock')+': '+v+'"></div>'; }).join('');
+  }
+  L.innerHTML='';
+  const open=simSaved();
+  ks.forEach(k=>{
+    const r=h[k], v=Number(r.sc)||100, pass=v>=SAA_PASS;
+    const live=!!(open&&open.mode==='redo'&&open.hid===k);
+    const card=document.createElement('div'); card.className='rdcard'+(pass?' pass':'');
+    card.innerHTML='<div class="rdscore"><b></b><span>/ 1000</span></div>'+
+      '<div class="rdbody"><div class="nm"></div><div class="ds"></div><div class="rdbar"><i></i></div></div>';
+    card.querySelector('.rdscore b').textContent=v;
+    card.querySelector('.nm').textContent=(r.paper?'Exam '+(Number(r.paper)|0):'Mock exam')+(pass?' \u00b7 pass':'');
+    card.querySelector('.ds').textContent=(Number(r.c)|0)+'/'+(Number(r.n)|0)+' right \u00b7 '+(r.d||'')+
+      (r.mode==='practice'?' \u00b7 practice':'')+(r.redos?' \u00b7 redone '+plural(Number(r.redos)|0,'time'):'');
+    card.querySelector('.rdbar i').style.width=pctW(Math.round((v-100)/900*100));
+    const b=document.createElement('button'); b.className='buy';
+    b.textContent=live?'\u25b6 Continue':'\u25b6 Redo';
+    b.setAttribute('aria-label',(live?'Continue the redo of ':'Redo ')+card.querySelector('.nm').textContent+', '+v+' out of 1000');
+    b.onclick=()=>live?(simSaved()&&simResume()):histOpen(k,b);
+    card.appendChild(b); L.appendChild(card);
+  });
 }
 function renderHist(){
   const box=$('histBox'), L=$('histList'); if(!box||!L) return;
@@ -7779,6 +7941,8 @@ $('simAgain').onclick=()=>{
   else startSim((sim&&sim.mode)||'exam');
 };
 $('simCsv').onclick=exportLastExam;
+$('histGoRedo').onclick=()=>{ renderRedoScreen(); go('redoScreen'); syncNav(); };
+$('redoGoExam').onclick=()=>{ renderPapers(); go('paperScreen'); syncNav(); };
 // In a redo, look at the answer and the reasoning without locking the question.
 $('simAnsBtn').onclick=()=>{
   if(!sim||!isRedo()) return;
@@ -7848,7 +8012,7 @@ function renderStudyPicker(){
 }
 
 // ---------- bottom navigation ----------
-const NAVS=[['navHome','homeScreen'],['navPlay','stuPickScreen'],['navExam','paperScreen'],
+const NAVS=[['navHome','homeScreen'],['navPlay','stuPickScreen'],['navExam','paperScreen'],['navRedo','redoScreen'],
             ['navCasino','casinoScreen'],['navShop','shopScreen'],['navBadges','achScreen']];
 function syncNav(){
   const hide=(route==='gameScreen'||route==='reelScreen');
@@ -7865,6 +8029,9 @@ $('navPlay').onclick=()=>{ if(L) learnLeave(true);
   renderStudyPick(); go('stuPickScreen'); syncNav(); };
 $('navExam').onclick=()=>{ if(L) learnLeave(true);
   renderPapers(); go('paperScreen'); syncNav(); };
+$('navRedo').onclick=()=>{ if(L) learnLeave(true);
+  renderRedoScreen(); go('redoScreen'); syncNav();
+  histCloudPull().then(ch=>{ if(route==='redoScreen') renderRedoScreen(); }); };
 $('navShop').onclick=()=>{ if(L) toast('Subject paused — tap Home to leave it');
   renderShop(); go('shopScreen'); syncNav(); };
 $('navBadges').onclick=()=>{ renderBadges(); go('achScreen'); syncNav(); };
@@ -8738,6 +8905,8 @@ async function syncNow(silent){
       refreshTop(); renderHome(); renderDaily&&renderDaily(); renderInv&&renderInv();
       // did the merge just hand our exam to the other device?
       if(simOwnerCheck()) { syncing=false; renderAuth(); return; }
+      await histCloudPull();
+      if(route==='redoScreen') renderRedoScreen();
       if(route==='paperScreen') renderPapers();
     }
     const ok=await pushCloud();
@@ -10372,7 +10541,9 @@ if(TEST){
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
-    isPractice, brkOpen, brkElapsed, isRedo, histOpen, histWrite, redoFinish, renderHist, readAllowed, simAnsweredIn, renderRuns, runRestore, runRecord, runDone, runPrune, svRid, simSnapshot, saaScore, saaScaled, qDom, examDomainOf, renderSimLive, SAA_PASS, simContinue, lastOpen, renderSimCont, simChargeEnd, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
+    // the harness plugs a fake client in to test the table sync; the page never uses this
+    cloudForTest(client,user){ const was=[sb,sbUser]; sb=client; sbUser=user; return was; },
+    isPractice, brkOpen, brkElapsed, renderRedoScreen, histCloudPull, histCloudPush, histCloudQueue, get histTable(){return histTable;}, set histTable(v){histTable=v;}, isRedo, histOpen, histWrite, redoFinish, renderHist, readAllowed, simAnsweredIn, renderRuns, runRestore, runRecord, runDone, runPrune, svRid, simSnapshot, saaScore, saaScaled, qDom, examDomainOf, renderSimLive, SAA_PASS, simContinue, lastOpen, renderSimCont, simChargeEnd, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
     simAwayCost, simPauseSave, resumeOnBoot, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,

@@ -582,6 +582,15 @@ two real signed-in devices against Supabase** — the merge is tested; the netwo
 
 ## Exam history and redo
 
+**Its own tab and its own table.** The list is the **Redo** tab (`redoScreen`, `renderRedoScreen`):
+summary, a recent-scores chart against 720, a card per exam. The data is also in its own table,
+`exam_history` (`supabase_exam_history.sql`, RLS own-rows-only, tested in `sql_tests/`): any change
+to an exam upserts its row within 1.5 s (`histCloudQueue`/`histCloudPush`); every `syncNow` and
+opening the tab pull it (`histCloudPull`, newer `at` wins, local-only entries sent up). **The SQL
+must be run once in the Supabase SQL editor** — until then `histTable==='missing'` and history
+syncs through the profile copy only, which the Redo screen says. `cloudForTest()` on the test
+surface lets the harness plug in a fake client.
+
 Every submit calls `histWrite()`, keeping the exam in `P.examHist[hid]` (hid = the run id; 30
 most recent): paper, date, every answer, flags, SAA score, right/total. Finishing later carries
 the hid and updates the same entry. The Exam screen lists them (`renderHist`); **Redo**

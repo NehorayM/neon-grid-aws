@@ -1322,9 +1322,10 @@ async function histChecks(){
   eq(Object.keys(e0.ans).length,30,'with every answer');
   ok(e0.sc>=100&&e0.sc<=1000,'and its score on the exam scale');
   const coins0=t.P.coins, exams0=t.P.exams;
-  t.renderPapers(); t.go('paperScreen'); await sleep(20);
-  const row=document.querySelector('#histList .histrow');
-  ok(!!row&&/Exam 6/.test(row.textContent),'the Exam screen lists it');
+  $('navRedo').click(); await sleep(40);
+  eq(t.route,'redoScreen','the Redo tab opens the exam list');
+  const row=document.querySelector('#redoList .rdcard');
+  ok(!!row&&/Exam 6/.test(row.textContent),'it lists the exam');
   hittable(row.querySelector('button'),'the Redo button');
   row.querySelector('button').click(); await sleep(60);
   ok(t.isRedo(),'Redo opens it');
@@ -1346,7 +1347,7 @@ async function histChecks(){
   ok(t.isRedo(),'a crash mid-redo comes back as the redo');
   eq(t.simAnsweredIn(t.sim),40,'with every edit kept');
   $('simSubmit').click(); await sleep(50);
-  eq(t.route,'paperScreen','Save & close returns to the exam list');
+  eq(t.route,'redoScreen','Save & close returns to the Redo tab');
   eq(t.P.examHist[hid].c,40,'the entry keeps the new answers');
   eq(t.P.examHist[hid].redos,1,'counted as one redo, crash or not');
   eq(t.P.coins,coins0,'a redo pays nothing');
@@ -1356,6 +1357,50 @@ async function histChecks(){
   const m=t.mergeProfiles(other,JSON.parse(JSON.stringify(t.P)));
   ok(!!m.examHist.x1&&!!m.examHist[hid],'history from both devices is kept');
   t.P.examHist={}; t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
+}
+// Exam history in its own table: a change goes up within a second and a half, a newer copy on
+// the other device comes down, and a missing table falls back to the profile without breaking.
+async function histSyncChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const table={}; let fail=null;
+  const client={from(name){ return {
+    upsert(rows){ if(fail) return Promise.resolve({error:fail});
+      rows.forEach(r=>{ table[r.hid]=JSON.parse(JSON.stringify(r)); }); return Promise.resolve({error:null}); },
+    select(){ if(fail) return Promise.resolve({error:fail,data:null});
+      return Promise.resolve({error:null,data:Object.values(table).map(r=>({hid:r.hid,exam:r.exam}))}); } }; }};
+  const was=t.cloudForTest(client,{id:'u-test'});
+  try{
+    t.histTable='unknown';
+    t.simClearSave(); t.P.examHist={}; t.P.runs={}; t.P.runsDone=[]; delete t.P.lastPaper;
+    t.startPaper(4,'exam'); await sleep(20);
+    for(let k=0;k<5;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+    t.simSubmit(true); await sleep(1700);
+    const hid=Object.keys(t.P.examHist)[0];
+    ok(!!table[hid],'a submitted exam is written to its own row in the table');
+    eq(table[hid].exam.c,5,'with its answers and score');
+    eq(table[hid].user_id,'u-test','under this user');
+    // the other device edited it: its copy is newer
+    const theirs=JSON.parse(JSON.stringify(table[hid].exam)); theirs.c=40; theirs.sc=780; theirs.at=Date.now()+60000;
+    table[hid].exam=theirs;
+    const changed=await t.histCloudPull();
+    ok(changed,'a pull notices the other device changed it');
+    eq(t.P.examHist[hid].sc,780,'and takes the newer copy');
+    // an exam only this device has goes up on the next pull
+    t.P.examHist.only={hid:'only',paper:2,qs:t.paperQs(2),ans:{},sc:200,c:0,n:65,at:Date.now(),d0:Date.now()};
+    await t.histCloudPull(); await sleep(1700);
+    ok(!!table.only,'an exam the table is missing is sent up');
+    // the Redo screen shows it is syncing through the table
+    t.renderRedoScreen();
+    ok(/Synced to your account/.test($('redoSync').textContent),'the Redo screen says it is synced');
+    // no table yet: falls back without breaking
+    fail={code:'42P01',message:'relation "public.exam_history" does not exist'};
+    t.histTable='unknown';
+    eq(await t.histCloudPull(),false,'a missing table does not throw');
+    eq(t.histTable,'missing','it is noticed');
+    t.renderRedoScreen();
+    ok(/supabase_exam_history\.sql/.test($('redoSync').textContent),'and the screen says how to create it');
+  } finally { t.cloudForTest(was[0],was[1]); t.histTable='unknown'; }
+  t.P.examHist={}; t.simClearSave(); t.go('homeScreen'); await sleep(20);
 }
 async function saveFlushChecks(){
   const t=T();
@@ -2894,7 +2939,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
