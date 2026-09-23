@@ -1511,6 +1511,20 @@ async function hardeningChecks(){
   const keepDate=t.P.examDate;
   t.P.examDate='2020-01-01';
   eq(t.examDaysLeft(),-1,'a date in the past reports as past');
+  // a date-only string used to be read as UTC midnight: a day short west of UTC
+  const ld=t.localDate('2026-10-01');
+  ok(!!ld&&ld.getFullYear()===2026&&ld.getMonth()===9&&ld.getDate()===1&&ld.getHours()===0,
+     'the exam date is read as a local calendar day, not UTC midnight');
+  eq(t.localDate('2026-02-31'),null,'an impossible date is refused, not rolled into March');
+  eq(t.localDate('soon'),null,'and so is anything that is not a date');
+  { const d=new Date(); d.setDate(d.getDate()+7);
+    const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const was=t.P.examDate; t.P.examDate=iso;
+    eq(t.examDaysLeft(),7,'a week from today is seven days, in any timezone');
+    const today=new Date(), tk=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+    t.P.examDate=tk;
+    eq(t.examDaysLeft(),0,'and today is exam day, not "passed"');
+    t.P.examDate=was; }
   ok(/passed/.test(t.examDaysLabel(t.examDaysLeft(),t.dailyPace())),'and says so instead of "0 days to go"');
   t.P.examDate='2999-01-01';
   eq(t.examDaysLeft(),t.EXAM_MAX_DAYS,'a date centuries out is capped');

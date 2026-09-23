@@ -4728,12 +4728,22 @@ function readinessTrend(){
 // A date in the past used to clamp to 0, which the pace then divided by a floor of 1 day
 // and reported as "0 days to go · 900 questions/day". A date centuries out read 355,118 days.
 const EXAM_MAX_DAYS=730;
+// new Date('2026-10-01') is UTC midnight, which west of UTC is the evening before — the
+// countdown ran a day short across the Americas and called exam day "passed". The date input
+// hands back YYYY-MM-DD, so build it as a local calendar date.
+function localDate(iso){
+  const m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(iso||'').trim());
+  if(!m) return null;
+  const d=new Date(+m[1],+m[2]-1,+m[3]);
+  // reject 2026-02-31 rolling over to March rather than being refused
+  if(d.getFullYear()!==+m[1]||d.getMonth()!==+m[2]-1||d.getDate()!==+m[3]) return null;
+  return d;
+}
 function examDaysLeft(){
   if(!P.examDate) return null;
   const now=new Date(); now.setHours(0,0,0,0);
-  const d=new Date(P.examDate);
-  if(isNaN(d.getTime())) return null;
-  d.setHours(0,0,0,0);
+  const d=localDate(P.examDate);
+  if(!d) return null;
   const days=Math.round((d-now)/86400000);
   if(days<0) return -1;                     // in the past, and the caller should say so
   return Math.min(EXAM_MAX_DAYS,days);
@@ -9709,7 +9719,7 @@ if(TEST){
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
-    isPractice, brkOpen, brkElapsed, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
+    isPractice, brkOpen, brkElapsed, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
     simAwayCost, simPauseSave, resumeOnBoot, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,
