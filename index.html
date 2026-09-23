@@ -2410,7 +2410,60 @@ function normaliseProfile(p){
   if(!p.highs||typeof p.highs!=='object') p.highs={};
   ['breaker','dash','firewall','signal','sort','orbit','boss','match','scenario','defend']
     .forEach(g=>{ if(typeof p.highs[g]!=='number'||!isFinite(p.highs[g])) p.highs[g]=0; });
-  if(typeof p.diff!=='string') p.diff='easy';
+  // Any string used to pass, so an unknown difficulty — from an import, or an older build
+  // that named them differently — made diff() undefined and crashed the quiz screen, the
+  // charge meter and the goals panel on their first read of .need.
+  if(typeof p.diff!=='string'||(typeof DIFFS!=='undefined'&&!DIFFS[p.diff])) p.diff='easy';
+  // study chapter records: best check score, drawn on each chapter card
+  if(p.study&&typeof p.study==='object'&&!Array.isArray(p.study)){
+    Object.keys(p.study).forEach(k=>{ const r=p.study[k];
+      if(!r||typeof r!=='object'){ delete p.study[k]; return; }
+      if(r.best!==undefined) r.best=Math.max(0,Math.min(100,Number(r.best)||0));
+      r.read=r.read?1:0; });
+  }
+  // per-subject attempts and correct answers — counts, drawn raw on every subject card
+  if(p.secStats&&typeof p.secStats==='object'&&!Array.isArray(p.secStats)){
+    Object.keys(p.secStats).forEach(k=>{ const r=p.secStats[k];
+      if(!r||typeof r!=='object'){ delete p.secStats[k]; return; }
+      const a=Math.max(0,Number(r.a)|0), c=Math.max(0,Number(r.c)|0);
+      r.a=a; r.c=Math.min(c,a); });
+  }
+  if(p.inv&&typeof p.inv==='object'&&!Array.isArray(p.inv)){
+    Object.keys(p.inv).forEach(k=>{ const n=Number(p.inv[k]);
+      if(!/^[a-z0-9_-]{1,24}$/i.test(k)||!isFinite(n)||n<=0) delete p.inv[k]; else p.inv[k]=Math.floor(n); });
+  }
+  // Score records: numbers when the app writes them, anything at all in an imported file.
+  const n1=v=>{ const n=Number(v); return isFinite(n)?n:0; };
+  const MODE=v=>v==='practice'?'practice':'exam';
+  if(p.papers&&typeof p.papers==='object'&&!Array.isArray(p.papers)){
+    Object.keys(p.papers).forEach(k=>{
+      const r=p.papers[k];
+      if(!r||typeof r!=='object'){ delete p.papers[k]; return; }
+      r.best=Math.max(0,Math.min(100,n1(r.best))); r.tries=Math.max(0,n1(r.tries)|0);
+      if(r.ptries!==undefined) r.ptries=Math.max(0,n1(r.ptries)|0);
+      r.last=String(r.last==null?'':r.last).replace(/[^0-9%.]/g,'').slice(0,6);
+      if(r.bestMode!==undefined) r.bestMode=MODE(r.bestMode);
+      if(r.lastMode!==undefined) r.lastMode=MODE(r.lastMode);
+    });
+  }
+  if(p.courses&&typeof p.courses==='object'&&!Array.isArray(p.courses)){
+    Object.keys(p.courses).forEach(k=>{
+      const r=p.courses[k];
+      if(!r||typeof r!=='object'){ delete p.courses[k]; return; }
+      if(r.best!==undefined) r.best=Math.max(0,Math.min(100,n1(r.best)));
+      if(r.runs!==undefined) r.runs=Math.max(0,n1(r.runs)|0);
+    });
+  }
+  // Log entries are rebuilt from typed fields. A string where a number belongs is how the
+  // two log screens ended up rendering an imported file's markup.
+  const n0=v=>{ const n=Number(v); return isFinite(n)?n:0; };
+  const dstr=v=>/^\d{4}-\d{1,2}-\d{1,2}$/.test(String(v||''))?String(v):'';
+  if(Array.isArray(p.simLog)) p.simLog=p.simLog.filter(m=>m&&typeof m==='object').slice(0,12).map(m=>({
+    d:dstr(m.d), p:n0(m.p), pass:m.pass?1:0, mins:n0(m.mins), pr:m.pr?1:0,
+    dom:(Array.isArray(m.dom)?m.dom:[]).slice(0,8).map(n0)}));
+  if(Array.isArray(p.examLog)) p.examLog=p.examLog.filter(e=>e&&typeof e==='object').slice(0,20).map(e=>
+    Object.assign({},e,{d:dstr(e.d)||String(e.d||'').replace(/[<>&"']/g,'').slice(0,40),
+                        c:n0(e.c), t:n0(e.t), p:e.p?1:0}));
   // simSave starts life absent, not as an empty object the resume code would try to read
   if(p.simSave&&!Array.isArray(p.simSave.qs)) delete p.simSave;
   return p;
@@ -2602,7 +2655,7 @@ function renderHome(){
       '<div class="secdom">'+esc(dom.short)+' · '+dom.w+'%</div>'+
       '<div class="cnt">'+plural(n,'question')+'</div>'+
       '<div class="mbar"><i style="width:'+pctW(pct)+';background:'+col+'"></i></div>'+
-      '<div class="pct">'+((P.secStats[i]&&P.secStats[i].a)||0)+' seen · '+pct+'% correct</div>';
+      '<div class="pct">'+(Number(P.secStats[i]&&P.secStats[i].a)|0)+' seen · '+(Number(pct)|0)+'% correct</div>';
     b.onclick=()=>startSession(i);
     g.appendChild(b);
   });
@@ -3757,7 +3810,9 @@ const STORE_CONS=[
   {id:'potion',em:'🧪', nm:'XP Potion',     ds:'Double XP for your next 10 questions', cost:50},
   {id:'freeze',em:'❄️', nm:'Time Freeze',   ds:'+10s on your next mini-game',         cost:26}
 ];
-function invCount(id){ return (P.inv&&P.inv[id])||0; }
+// Always a whole, non-negative count. It returned whatever was stored, and the shop wrote
+// that into innerHTML — an imported file's markup, or NaN arithmetic on shield--.
+function invCount(id){ const n=Number(P.inv&&P.inv[id]); return isFinite(n)&&n>0?Math.floor(n):0; }
 function usePotion(){
   if(invCount('potion')<1) return false;
   P.inv.potion--; P.potionLeft=(P.potionLeft||0)+10;
@@ -4504,9 +4559,10 @@ function renderExamLog(){
     L.appendChild(d); return; }
   log.forEach(e=>{
     const row=document.createElement('div'); row.className='item';
+    const num=v=>{ const n=Number(v); return isFinite(n)?Math.round(n):0; };
     row.innerHTML='<div class="em">'+(e.p?'🎖':'📋')+'</div><div style="flex:1">'+
-      '<div class="nm">'+e.c+' / '+e.t+(e.p?' — passed':' — missed')+'</div>'+
-      '<div class="ds">'+e.d+'</div></div>';
+      '<div class="nm">'+num(e.c)+' / '+num(e.t)+(e.p?' — passed':' — missed')+'</div>'+
+      '<div class="ds">'+esc(e.d)+'</div></div>';
     L.appendChild(row);
   });
 }
@@ -6666,7 +6722,7 @@ function renderPapers(){
       '<div class="ds">'+esc(meta)+'</div>'+
       (rec?'<div class="pbar"><i style="width:'+pctW(rec.best)+';background:'+col+'"></i></div>':'')+
       '</div>'+
-      ((rec&&!here)?'<div class="pscore" style="color:'+col+'">'+rec.best+'%'+
+      ((rec&&!here)?'<div class="pscore" style="color:'+col+'">'+(Number(rec.best)|0)+'%'+
         (rec.bestMode==='practice'?'<i class="pmode">practice</i>':'')+'</div>':'');
     // The row for the paper you are part way through offers to continue it, rather than
     // making you find the bar at the top — and rather than saying "Retake" over a run you
@@ -6797,9 +6853,13 @@ function renderSimLog(){
     L.appendChild(d); return; }
   log.forEach(m=>{
     const row=document.createElement('div'); row.className='item';
+    // Everything interpolated is escaped or forced to a number: an imported profile can put
+    // anything in these fields, and this used to write them into innerHTML as they came.
+    const num=v=>{ const n=Number(v); return isFinite(n)?Math.round(n):0; };
+    const dom=Array.isArray(m.dom)?m.dom:[];
     row.innerHTML='<div class="em">'+(m.pass?'🎓':'📝')+'</div><div style="flex:1">'+
-      '<div class="nm">'+m.p+'% '+(m.pass?'— pass':'— below 72%')+'</div>'+
-      '<div class="ds">'+m.d+' · '+m.mins+' min · '+DOMAINS.map((d,i)=>d.short+' '+m.dom[i]+'%').join(' · ')+'</div></div>';
+      '<div class="nm">'+num(m.p)+'% '+(m.pass?'— pass':'— below 72%')+(m.pr?' · practice':'')+'</div>'+
+      '<div class="ds">'+esc(m.d)+' · '+num(m.mins)+' min · '+DOMAINS.map((d,i)=>esc(d.short)+' '+num(dom[i])+'%').join(' · ')+'</div></div>';
     L.appendChild(row);
   });
 }
@@ -8963,8 +9023,8 @@ function renderLearnPick(){
       '<span class="cmeta">'+plural(d.modules.length,'part')+' · '+mins+' min · '+
       d.modules.reduce((a,m)=>a+m.checks.length,0)+' check questions · 10-question exam'+
       (done?' · '+done+'/'+plural(d.modules.length,'part')+' passed':'')+
-      (rec?' · best '+rec.best+'%':'')+'</span></span>'+
-      (rec?'<span class="cdone">✓ '+rec.runs+'</span>':'');
+      (rec?' · best '+(Number(rec.best)|0)+'%':'')+'</span></span>'+
+      (rec?'<span class="cdone">✓ '+(Number(rec.runs)|0)+'</span>':'');
     b.onclick=()=>startLearn(sec);
     list.appendChild(b);
   });
@@ -9521,7 +9581,7 @@ function renderStudyPick(){
       '<span style="flex:1;min-width:0"><span class="snm">'+esc(c.nm)+'</span>'+
       '<div class="ssub">'+esc(c.sub)+'</div>'+
       '<div class="smeta">'+c.topics.length+' topics · '+c.min+' min read · '+
-      c.quiz.length+' checks'+(rec&&rec.best?' · check '+rec.best+'%':'')+'</div>'+
+      c.quiz.length+' checks'+(rec&&rec.best?' · check '+(Number(rec.best)|0)+'%':'')+'</div>'+
       stuWeightHTML(i)+'</span>'+
       (rec&&rec.read?'<span class="studone">✓ read</span>':'');
     b.onclick=()=>stuOpen(i);

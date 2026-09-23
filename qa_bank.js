@@ -644,6 +644,53 @@ function whyQualityChecks(){
 // The exam cue under an answer must be about that answer. It used to clear its threshold on
 // generic stem words alone, so a Site-to-Site VPN question was cued with CloudFront Signed
 // Cookies, and "Global Accelerator (not CloudFront)" qualified under a CloudFront answer.
+// An imported profile is untrusted: every value in it is replaced with markup that runs code
+// if it ever becomes an element, the result goes through the same door a real import does, and
+// every screen and every renderer is drawn. The exam log, the simulation log and the score
+// chips all used to write these fields into innerHTML raw.
+async function xssChecks(){
+  const t=T();
+  const PAY='<img src=x class=xssprobe onerror="window.__pwned=(window.__pwned||0)+1">';
+  const backup=JSON.stringify(t.P);
+  const rich=JSON.parse(backup);
+  Object.assign(rich,{papers:{1:{best:80,tries:2,last:'80%',d:'2026-09-01',bestMode:'exam'}},
+    simLog:[{d:'2026-09-01',p:80,pass:1,mins:90,pr:0,dom:[1,2,3,4]}], examLog:[{d:'2026-09-01',c:50,t:65,p:1}],
+    courses:{0:{best:90,runs:2,mods:['a']}}, lastTimer:{mode:'pomo',work:25,rest:5,rounds:4,nm:'Deep'},
+    study:{0:{read:1,best:70,at:'2026-09-01'}}, examDate:'2026-12-01', name:'me',
+    secStats:{0:{a:10,c:7},3:{a:4,c:2}}, inv:{shield:2,potion:1}});
+  const poison=v=>Array.isArray(v)?v.map(poison):(v&&typeof v==='object')
+    ?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,poison(x)])):PAY;
+  window.__pwned=0;
+  const P=t.P; Object.keys(P).forEach(k=>delete P[k]); Object.assign(P,poison(rich)); t.normaliseProfile(P);
+  const thrown=[];
+  for(let pass=0;pass<2;pass++){
+    for(const sc of [...document.querySelectorAll('.screen')].map(x=>x.id)){ try{ t.go(sc); }catch(e){ thrown.push(sc); } }
+    for(const k of Object.keys(t).filter(k=>/^render/.test(k)&&typeof t[k]==='function'&&k!=='renderExplain')){
+      try{ t[k](); }catch(e){ thrown.push(k); } }
+  }
+  await sleep(200);
+  const probes=[...document.querySelectorAll('.xssprobe')];
+  const where=[...new Set(probes.map(e=>{ let q=e.parentElement,path=[]; while(q&&path.length<4){
+    path.push(q.id||(''+q.className).split(' ')[0]); q=q.parentElement; } return path.join('<'); }))];
+  eq(probes.length,0,'no value from an imported profile becomes live markup '+where.join(' ; '));
+  eq(window.__pwned,0,'and none of it runs');
+  eq([...new Set(thrown)].join(', '),'','and every screen still draws from a corrupted profile'+
+     ' \u2014 an unknown difficulty used to crash three of them, which also hid their injections');
+  document.querySelectorAll('.xssprobe').forEach(e=>e.remove());
+  Object.keys(P).forEach(k=>delete P[k]); Object.assign(P,JSON.parse(backup));
+  // write the restored profile now, so no save queued while it was poisoned lands later
+  t.saveProfile(); t.flushProfile(); t.go('homeScreen');
+  // an unknown difficulty used to crash three screens; it now falls back at the door
+  const dd={diff:'nightmare'}; t.normaliseProfile(dd); eq(dd.diff,'easy','an unknown difficulty falls back to easy');
+  // and the door does not damage real data on its way through
+  const good={simLog:[{d:'2026-09-20',p:78,pass:1,mins:88,pr:1,dom:[80,70,90,60]}],
+              examLog:[{d:'2026-09-21',c:50,t:65,p:1}],
+              papers:{3:{best:84,tries:3,last:'84%',d:'2026-09-21',bestMode:'practice',lastMode:'exam',ptries:1}}};
+  const g=JSON.parse(JSON.stringify(good)); t.normaliseProfile(g);
+  eq(JSON.stringify(g.simLog),JSON.stringify(good.simLog),'a real simulation log passes the door unchanged');
+  eq(JSON.stringify(g.examLog),JSON.stringify(good.examLog),'so does a real exam log');
+  eq(JSON.stringify(g.papers),JSON.stringify(good.papers),'and real paper records');
+}
 // The auth library runs with access to the signed-in session, so it is pinned and hashed.
 function sriChecks(){
   const src=document.documentElement.outerHTML;
@@ -2500,7 +2547,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
