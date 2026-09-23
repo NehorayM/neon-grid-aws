@@ -1189,6 +1189,67 @@ async function saaChecks(){
   ok(!$('simLive').classList.contains('hidden'),'practice shows it');
   t.simAbandon(); await sleep(20); t.simClearSave(); delete t.P.lastPaper;
 }
+// Opening the app on a second device threw away the exam on the first: the phone resumed and
+// claimed its own old copy (question 4), wrote it over the cloud, and the desktop at question 34
+// was told the paper had been picked up and dropped its progress.
+async function multiDeviceChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  delete t.P.lastPaper; t.simClearSave(); t.P.runs={}; t.P.runsDone=[];
+  t.startPaper(5,'exam'); await sleep(30);
+  ok(!!t.sim.rid,'every exam run has an id');
+  for(let k=0;k<3;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+  t.simJump(3); t.simPersist();
+  const phone=JSON.parse(JSON.stringify(t.P.simSave)); phone.dev='phone-x'; phone.devKind='phone';
+  for(let k=3;k<30;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+  t.simJump(33); t.simPersist();
+  const desk=JSON.parse(JSON.stringify(t.P));
+  phone.claimAt=Date.now()+60000; phone.at=Date.now()+60000;      // claimed later
+  const phoneP=JSON.parse(JSON.stringify(desk)); phoneP.simSave=phone;
+  phoneP.runs={}; phoneP.runs[phone.rid+'|phone-x']=phone;
+  const m1=t.mergeProfiles(phoneP,desk), m2=t.mergeProfiles(desk,phoneP);
+  eq(m1.simSave.i,33,'a stale copy claimed later does not beat the copy at question 34');
+  eq(m2.simSave.i,33,'in either order');
+  eq(t.simAnsweredIn(m1.simSave),30,'with all thirty answers');
+  eq(Object.keys(m1.runs).length,2,'and both devices\u2019 copies are kept as a backup');
+  // equal copies still go by claim, so two open devices do not ping-pong
+  const same=JSON.parse(JSON.stringify(desk.simSave)); same.dev='phone-x'; same.claimAt=Date.now()+9e5;
+  eq(t.simSaveNewer(desk.simSave,same).dev,'phone-x','two copies with the same answers go to the later claim');
+  // the running-exams list
+  t.simAbandon(); await sleep(20);
+  Object.assign(t.P,{runs:m1.runs,runsDone:m1.runsDone});
+  t.renderPapers(); t.go('paperScreen'); await sleep(30);
+  ok(!$('runBox').classList.contains('hidden'),'the exam screen lists running exams');
+  const rows=[...document.querySelectorAll('#runList .runrow')];
+  eq(rows.length,2,'one row per device copy');
+  const far=rows.find(r=>/furthest/.test(r.querySelector('.nm').textContent));
+  ok(!!far&&/question 34/.test(far.querySelector('.ds').textContent),'the furthest copy is marked');
+  hittable(far.querySelector('button'),'the Continue button on a running exam');
+  far.querySelector('button').click(); await sleep(20);
+  ok(/question 34/.test(far.querySelector('button').textContent),'continuing asks first, naming the question');
+  far.querySelector('button').click(); await sleep(60);
+  eq(t.sim&&t.sim.i,33,'and brings the exam back at question 34');
+  eq(t.simAnsweredIn(t.sim),30,'with its answers');
+  // taken by another device: this device keeps its own copy, paused
+  const theirs=JSON.parse(JSON.stringify(t.P.simSave)); theirs.dev='phone-x'; theirs.devKind='phone';
+  theirs.claimAt=Date.now()+99999;
+  t.P.simSave=theirs;
+  ok(t.simOwnerCheck(),'another device taking the exam stops it here');
+  const mine=Object.keys(t.P.runs).find(k=>k.endsWith('|'+t.DEVICE_ID));
+  ok(!!mine&&t.P.runs[mine].paused===1,'but keeps this device\u2019s copy, paused, so nothing is lost');
+  // finished: gone everywhere, and a device that has not heard cannot bring it back
+  t.P.simSave.dev=t.DEVICE_ID; t.simResume(); await sleep(40);
+  const rid=t.sim.rid, stale=JSON.parse(JSON.stringify(t.P));
+  t.simSubmit(true); await sleep(50);
+  ok(t.P.runsDone.includes(rid),'submitting marks the run finished');
+  const mg=t.mergeProfiles(stale,JSON.parse(JSON.stringify(t.P)));
+  ok(!Object.keys(mg.runs).some(k=>k.startsWith(rid+'|')),'a stale device cannot bring a finished run back');
+  ok(!(mg.simSave&&t.svRid(mg.simSave)===rid),'nor leave it open');
+  // the paper-record merge keeps the practice/exam marks
+  const pm=t.mergeProfiles({papers:{3:{best:80,tries:2,last:'80%',d:'x',bestMode:'practice',ptries:1}}},
+                           {papers:{3:{best:70,tries:3,last:'70%',d:'y',lastMode:'exam'}}});
+  eq(pm.papers[3].bestMode,'practice','a merge keeps how the best score was set');
+  delete t.P.lastPaper; t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -2712,7 +2773,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -549,6 +549,37 @@ scores what was answered rather than resuming into limbo.
 **The headline is the only clock.** It once quoted `min(question sum, wall clock)` and the
 subtitle explained which was binding — a careful description of a trap. The wall clock is gone.
 
+## Two devices, one exam — and the running-exams backup
+
+**The bug.** Opening the app on a second device threw away the exam on the first. `resumeOnBoot()`
+resumed the phone's own saved copy (question 4) before looking at the cloud; resuming claims the
+paper, and `pushCloud()` then wrote the phone's whole profile over the cloud's — a plain upsert.
+`cloudTouch()` did the same after every save, so the cloud was last-writer-wins and merged only when
+a device pulled. `simSaveNewer()` picked the copy claimed LAST, the phone's stale one, and the
+desktop's 30-second owner check stopped and discarded question 34.
+
+**Now.**
+- Every run has an id (`sim.rid`, `svRid(sv)` falls back to paper + questions for old saves). For
+  two copies of the same run, `simSaveNewer` keeps the one with MORE ANSWERS, whoever claimed last.
+  Equal copies still go by claim — answers only change when you act, so the stale copy loses and
+  two open devices do not ping-pong. Different runs still go by claim.
+- `resumeOnBoot` waits for the first cloud sync (`authFirst`, up to 6 s) before resuming, and does
+  not resume a paper another device owns — it says where it is running instead.
+- `simClaim` and `cloudTouch` call `syncNow(true)` (pull, merge, push). No blind upserts remain on
+  the exam path.
+- **Running exams** (`P.runs`, keyed `rid|device`): every save leaves this device's copy of the run;
+  merged by union so no merge loses a copy; a device whose exam is taken keeps its copy, paused (so
+  continuing it does not charge the gap). Listed on the Exam screen with question, answers, time
+  left, device and age; "furthest" marks a copy genuinely ahead. `runRestore` continues any of them
+  here (it arms first). A run is dropped on submit or deliberate discard (`simClearSave` →
+  `runDone`), and `P.runsDone` is merged too, so a device that has not heard cannot resurrect it.
+  Kept: 8 most recent, 14 days.
+- The paper-record merge now keeps `bestMode`/`lastMode`/`ptries`.
+
+`multiDeviceChecks()` reproduces the report (stale copy claimed later vs the copy at question 34)
+and covers the list, the restore, the taken-away copy and a finished run. **Not yet exercised with
+two real signed-in devices against Supabase** — the merge is tested; the network round trip is not.
+
 ## The SAA-C03 score
 
 From the official exam guide: a scaled score of 100–1,000, 720 to pass; four domains weighted
