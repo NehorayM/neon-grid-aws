@@ -170,7 +170,7 @@ async function runPaper(n,{answerAll=true,rightRatio=0.6,flagEvery=7}={}){
   ok(scaled>=100&&scaled<=1000,'the score is on the exam\u2019s 100\u20131000 scale ('+scaled+')');
   const meta=$('simMeta').textContent;
   ok(meta.indexOf(expectRight+' / '+len+' correct')===0,'and the raw count matches what was answered');
-  const pct=parseInt((/(\d+)% weighted/.exec(meta)||[])[1],10);
+  const pct=parseInt((/weighted (\d+)%/.exec($('simDomHead').textContent)||[])[1],10);
   ok(pct>=0&&pct<=100,'the weighted percentage is shown');
   eq(/PASS/.test($('simVerdict').textContent)&&!/BELOW/.test($('simVerdict').textContent),scaled>=720,
      'pass and fail follow the 720 line');

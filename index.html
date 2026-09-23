@@ -42,6 +42,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   padding:calc(10px + var(--safeT)) 14px 10px;
   background:linear-gradient(180deg,var(--bg) 62%,color-mix(in srgb,var(--bg) 55%,transparent) 88%,transparent)}
 .rankbadge{display:flex;align-items:center;gap:9px;min-width:0;flex:1}
+.rankmeta{min-width:0}
+.rankmeta .nm,.rankmeta .xp{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rankring{position:relative;width:38px;height:38px;flex:none}
 .rankring svg{transform:rotate(-90deg)}
 .rankring b{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-weight:650;color:var(--cyan)}
@@ -56,6 +58,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes nope{0%,100%{transform:none}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
 .opt.nope{animation:nope .32s ease}
 .opt.locked{opacity:.62;cursor:default}
+.simacts{margin:16px 0 0;gap:8px;justify-content:center;flex-wrap:wrap}
+.simacts2{margin:8px 0 4px;gap:8px;justify-content:center}
 /* the explanation, said once */
 .exbrief1{display:block;font-weight:600;opacity:.75;font-size:.92em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .expick{display:inline-block;font-style:normal;font-size:10px;font-family:var(--mono);letter-spacing:.5px;
@@ -111,7 +115,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
 /* ---------- screens ---------- */
 .screen{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;
-  padding:calc(64px + var(--safeT)) 16px calc(16px + var(--safeB));overflow-y:auto;
+  /* the top bar is not always 64px: a long name or XP line made it taller and the top of every
+     screen slid under it, so the space follows the bar's real height (--topH, measured) */
+  padding:max(calc(64px + var(--safeT)), var(--topH, 0px)) 16px calc(16px + var(--safeB));overflow-y:auto;
   -webkit-overflow-scrolling:touch;animation:fadeUp .3s ease}
 .screen.hidden{display:none}
 .hidden{display:none !important}
@@ -1637,16 +1643,20 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <div class="ch-t" id="simVerdict"></div>
       <div class="ch-note" id="simMeta"></div>
       <div class="ch-note simheb" id="simHeb"></div>
-      <button class="btn wide hidden" id="simCont" style="margin:14px auto 0;max-width:420px"></button>
-      <div class="sechead">Domain breakdown</div>
-      <div class="card" id="simDomList"></div>
-      <div class="sechead">History</div>
-      <div class="list" id="simLogList"></div>
-      <div class="row" style="margin:16px 0 0">
+      <div class="row simacts">
         <button class="btn" id="simAgain">Run another</button>
+        <button class="btn ghost" id="simRedoThis">✎ Review this exam</button>
+      </div>
+      <div class="row simacts2">
         <button class="btn ghost sm" id="simCsv">⬇ CSV</button>
         <button class="btn ghost sm" id="simHome">Home</button>
       </div>
+      <button class="btn wide hidden" id="simCont" style="margin:14px auto 0;max-width:420px"></button>
+      <div class="sechead" id="simDomHead">Domain breakdown</div>
+      <div class="card" id="simDomList"></div>
+      <div class="sechead">Recent</div>
+      <div class="list" id="simLogList"></div>
+      <button class="minichip" id="simAllRedo" style="margin:8px auto 0">All your exams are in the Redo tab ›</button>
     </div>
   </div>
 
@@ -6457,10 +6467,11 @@ function simSubmit(auto){
   $('simScore').style.color=passed?'var(--lime)':'var(--red)';
   $('simVerdict').textContent=(paper?'Exam '+paper+' — ':'')+
     (passed?'PASS':'BELOW PASS')+' \u00b7 '+S.scaled+' / 1000, '+SAA_PASS+' needed';
-  $('simMeta').textContent=correct+' / '+len+' correct ('+S.raw+'%) \u00b7 '+
-    pct+'% weighted by the exam\u2019s domain mix \u00b7 '+mins+' min · +'+coins+' 🪙'+
-    (cont?' · finished later':'')+
-    (csv.length?' · '+csv.length+' to export':'');
+  $('simMeta').textContent=correct+' / '+len+' correct \u00b7 '+mins+' min \u00b7 +'+coins+' 🪙'+
+    (cont?' \u00b7 finished later':'');
+  $('simDomHead').textContent='Domain breakdown \u00b7 weighted '+pct+'%';
+  { const hid=(P.lastPaper&&P.lastPaper.hid)||Object.keys(P.examHist||{}).sort((a,b)=>(P.examHist[b].at||0)-(P.examHist[a].at||0))[0];
+    const rb=$('simRedoThis'); rb.dataset.hid=hid||''; rb.classList.toggle('hidden',!hid); }
   $('simHeb').innerHTML=hebHTML(passed?'pass':'fail');
   $('simAgain').textContent=paper?(paper<PAPER_COUNT?'Exam '+(paper+1)+' ›':'Back to exams'):'Run another';
   const L=$('simDomList'); L.innerHTML='';
@@ -7565,7 +7576,8 @@ let lastExamCsv=null;
 function renderSimLog(){
   const L=$('simLogList'); if(!L) return;
   L.innerHTML='';
-  const log=P.simLog||[];
+  // the result screen shows the last three; the Redo tab has them all
+  const log=(P.simLog||[]).slice(0,3);
   if(!log.length){ const d=document.createElement('div'); d.className='item';
     d.innerHTML='<div class="em">📝</div><div style="flex:1"><div class="ds">No full simulations yet.</div></div>';
     L.appendChild(d); return; }
@@ -7967,6 +7979,8 @@ $('simAgain').onclick=()=>{
   else startSim((sim&&sim.mode)||'exam');
 };
 $('simCsv').onclick=exportLastExam;
+$('simRedoThis').onclick=()=>{ const h=$('simRedoThis').dataset.hid; if(h) histOpen(h,$('simRedoThis')); };
+$('simAllRedo').onclick=()=>{ renderRedoScreen(); go('redoScreen'); syncNav(); };
 $('histGoRedo').onclick=()=>{ renderRedoScreen(); go('redoScreen'); syncNav(); };
 $('redoGoExam').onclick=()=>{ renderPapers(); go('paperScreen'); syncNav(); };
 // In a redo, look at the answer and the reasoning without locking the question.
@@ -10551,6 +10565,14 @@ async function resumeOnBoot(){
 }
 go('homeScreen');
 authFirst=initAuth();
+// keep the screens clear of the top bar at whatever height it actually is
+(function(){
+  const bar=$('topbar'); if(!bar) return;
+  const set=()=>document.documentElement.style.setProperty('--topH',Math.ceil(bar.getBoundingClientRect().bottom+4)+'px');
+  set();
+  if(typeof ResizeObserver!=='undefined') new ResizeObserver(set).observe(bar);
+  window.addEventListener('resize',set);
+})();
 
 if(TEST){
   window.__t={
