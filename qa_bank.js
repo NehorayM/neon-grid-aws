@@ -84,6 +84,8 @@ function paperChecks(){
 
 async function runPaper(n,{answerAll=true,rightRatio=0.6,flagEvery=7}={}){
   const t=T();
+  // walk a fresh paper, whatever earlier checks left behind to finish later
+  delete t.P.lastPaper; t.simClearSave();
   // open it the way a user does: tile -> list -> Start
   $('paperOpen').click(); await sleep(30);
   eq(t.route,'paperScreen','the practice-exam screen opened');
@@ -93,7 +95,8 @@ async function runPaper(n,{answerAll=true,rightRatio=0.6,flagEvery=7}={}){
   eq(rows.length, t.PAPER_COUNT, 'one row per paper');
   eq(rows[0].querySelector('.nm').textContent,'Exam 1','the first row names Exam 1');
   ok(/^Exam \d+ · short paper \(\d+ questions\)$/.test(rows[rows.length-1].querySelector('.nm').textContent),'the last row is marked short');
-  const btn=rows[n-1].querySelector('button');
+  // Start is the row's LAST button: a restart arrow or a finish-later button can sit before it
+  const btn=[...rows[n-1].querySelectorAll('button')].pop();
   hittable(btn,'Start button on exam '+n);
   btn.click(); await sleep(40);
 
@@ -209,7 +212,9 @@ async function timeoutCheck(){
   const before=(t.paperRec(2)||{tries:0}).tries;
   t.startPaper(2); await sleep(20);
   ok(!!t.sim,'a second exam started');
-  t.sim.endAt=Date.now()-1;            // pretend the clock ran out
+  // a paper runs out when its questions do — the only clock it has
+  t.sim.qs.forEach((q,i)=>{ t.sim.qt[i]=0; });
+  t.simQTick(t.SIM_QSEC); await sleep(20);
   t.simCheckTime(); await sleep(40);
   eq(t.route,'simDoneScreen','running out of time submits the exam');
   ok(!t.sim,'the exam is closed after a timeout');
@@ -657,7 +662,9 @@ async function xssChecks(){
     simLog:[{d:'2026-09-01',p:80,pass:1,mins:90,pr:0,dom:[1,2,3,4]}], examLog:[{d:'2026-09-01',c:50,t:65,p:1}],
     courses:{0:{best:90,runs:2,mods:['a']}}, lastTimer:{mode:'pomo',work:25,rest:5,rounds:4,nm:'Deep'},
     study:{0:{read:1,best:70,at:'2026-09-01'}}, examDate:'2026-12-01', name:'me',
-    secStats:{0:{a:10,c:7},3:{a:4,c:2}}, inv:{shield:2,potion:1}});
+    secStats:{0:{a:10,c:7},3:{a:4,c:2}}, inv:{shield:2,potion:1},
+    login:{last:Date.now(),streak:3,claimed:0}, rHist:[{d:'2026-09-01',p:40}], lastSec:2, dailyStreak:3,
+    badges:['first'], known:[1,2]});
   const poison=v=>Array.isArray(v)?v.map(poison):(v&&typeof v==='object')
     ?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,poison(x)])):PAY;
   window.__pwned=0;
@@ -674,6 +681,10 @@ async function xssChecks(){
     path.push(q.id||(''+q.className).split(' ')[0]); q=q.parentElement; } return path.join('<'); }))];
   eq(probes.length,0,'no value from an imported profile becomes live markup '+where.join(' ; '));
   eq(window.__pwned,0,'and none of it runs');
+  // and none of it shows up as garbage text either: NaN, undefined, or markup drawn as words
+  const junk=[...document.querySelectorAll('.screen')].map(sc=>{
+    const m=/NaN|undefined|<img|\[object/.exec(sc.textContent||''); return m?sc.id:null; }).filter(Boolean);
+  eq(junk.join(', '),'','no screen reads NaN, undefined or stray markup after a corrupted import');
   eq([...new Set(thrown)].join(', '),'','and every screen still draws from a corrupted profile'+
      ' \u2014 an unknown difficulty used to crash three of them, which also hid their injections');
   document.querySelectorAll('.xssprobe').forEach(e=>e.remove());
@@ -683,13 +694,19 @@ async function xssChecks(){
   // an unknown difficulty used to crash three screens; it now falls back at the door
   const dd={diff:'nightmare'}; t.normaliseProfile(dd); eq(dd.diff,'easy','an unknown difficulty falls back to easy');
   // and the door does not damage real data on its way through
-  const good={simLog:[{d:'2026-09-20',p:78,pass:1,mins:88,pr:1,dom:[80,70,90,60]}],
+  const good={simLog:[{d:'2026-09-20',p:78,pass:1,mins:88,pr:1,ct:0,dom:[80,70,90,60]}],
               examLog:[{d:'2026-09-21',c:50,t:65,p:1}],
               papers:{3:{best:84,tries:3,last:'84%',d:'2026-09-21',bestMode:'practice',lastMode:'exam',ptries:1}}};
   const g=JSON.parse(JSON.stringify(good)); t.normaliseProfile(g);
   eq(JSON.stringify(g.simLog),JSON.stringify(good.simLog),'a real simulation log passes the door unchanged');
   eq(JSON.stringify(g.examLog),JSON.stringify(good.examLog),'so does a real exam log');
   eq(JSON.stringify(g.papers),JSON.stringify(good.papers),'and real paper records');
+  // a stray entry in a course's module list made "every part passed" a count that never matched
+  const cr={courses:{0:{runs:2,best:90,mins:'x',mods:['identities','<b>x</b>',5,'identities','policies']}}};
+  t.normaliseProfile(cr);
+  eq(JSON.stringify(cr.courses[0].mods),JSON.stringify(['identities','policies']),
+     'a course keeps only real module ids, once each');
+  eq(cr.courses[0].mins,0,'and a number where minutes go');
 }
 // The auth library runs with access to the signed-in session, so it is pinned and hashed.
 function sriChecks(){
@@ -860,8 +877,9 @@ function arithmeticChecks(){
 // leave for ten minutes, look everything up, come back, and the clock was where you left it.
 async function refreshChecks(){
   const t=T();
+  // the app saves every ten seconds while a question runs; do what it would have done
   const setup=async()=>{ t.simClearSave(); t.startPaper(2); await sleep(30);
-                         t.simQTick(20); await sleep(10); };
+                         t.simQTick(20); t.simPersist(); await sleep(10); };
 
   // a closed tab is charged for
   await setup();
@@ -899,11 +917,13 @@ async function refreshChecks(){
   ok(Math.abs(c2-360)<5,'and that is what the paper loses ('+c2+'s)');
   t.simAbandon(); await sleep(30); t.simClearSave();
 
-  // away long enough and the paper is simply over
+  // away long enough and the paper is over — but it is scored, not thrown away with its answers
   await setup();
   t.P.simSave.paused=0; t.P.simSave.at-=3*60*60*1000;
-  ok(!t.simSaved(),'a paper whose budget ran out while away is not offered back');
-  t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave();
+  ok(!!t.simSaved(),'a paper whose time ran out while away is still there');
+  t.simResume(); await sleep(60);
+  eq(t.route,'simDoneScreen','and resuming it scores it');
+  t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave(); delete t.P.lastPaper;
 
   // the row must advertise what a resume would really hand back, not the saved figure
   await setup();
@@ -1025,6 +1045,92 @@ async function pickCapChecks(){
   opts[0].click(); opts[2].click(); await sleep(20);
   ok(t.sim.ans[k].includes(opts[2].dataset.ltr),'dropping one first lets the new one in');
   t.simAbandon(); await sleep(30); t.simClearSave();
+}
+// The paper ended on a hidden wall clock that kept running while no question clock did — an
+// explanation, the review grid, a practice paper in a background tab — and cut Exam 5 off part
+// way with half an hour still showing. It has one clock now.
+async function oneClockChecks(){
+  const t=T();
+  const realNow=Date.now; let skew=0; Date.now=()=>realNow()+skew;
+  try{
+    t.simClearSave(); t.startPaper(5,'exam'); await sleep(30);
+    ok(t.simTeaches(),'a teaching paper, where an explanation follows every answer');
+    let endedAt=-1;
+    for(let k=0;k<t.simLen();k++){
+      skew+=60000; t.simQTick(60);                        // a minute on the question
+      t.QS[t.sim.qs[t.sim.i]].a.forEach(l=>t.simPick(l));
+      skew+=60000; t.simCheckTime();                       // a minute reading the explanation
+      if(!t.sim||!t.sim.running){ endedAt=k+1; break; }
+      if(k<t.simLen()-1) t.simGo(1);
+    }
+    eq(endedAt,-1,'reading every explanation for a minute does not end the paper early');
+    ok(t.sim&&t.simAnsweredCount()===t.simLen(),'all '+t.simLen()+' questions got answered');
+    eq(t.simTimeLeft(),t.simTotalLeft()*1000,'the clock the paper ends on is the clock on screen');
+    t.simSubmit(true); await sleep(40);
+    ok(/ 65 min /.test(' '+document.getElementById('simMeta').textContent+' '),
+       'and the result reports time spent answering, not wall time: '+document.getElementById('simMeta').textContent);
+  } finally { Date.now=realNow; }
+  // a practice paper left in a closed tab is not charged — it is how you stop on a phone
+  t.simClearSave(); t.startPaper(6,'practice'); await sleep(30);
+  t.simPersist();
+  const sv=JSON.parse(JSON.stringify(t.P.simSave)); sv.at-=14*3600*1000;
+  eq(t.simAwayCost(sv),0,'fourteen hours away from a practice paper costs nothing');
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  // a simulation still pays for time away in full, from the question you were on and then the end
+  t.startPaper(7,'exam'); await sleep(30);
+  t.simQTick(20); t.simPersist();
+  const full0=t.simTotalLeft();
+  t.P.simSave.at-=10*60*1000;
+  t.simResume(); await sleep(30);
+  ok(Math.abs((full0-t.simTotalLeft())-600)<5,'ten minutes away from a simulation costs it ten minutes');
+  eq(t.sim.qt[t.sim.qs.length-1],0,'taken from the end of the paper');
+  ok(t.simQLeft===t.SIM_QSEC,'not from the question you come back to');
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  // a spent save is scored, not dropped
+  t.startPaper(8,'exam'); await sleep(30);
+  t.QS[t.sim.qs[0]].a.forEach(l=>t.simPick(l));
+  t.simPersist();
+  t.P.simSave.at-=10*3600*1000;
+  ok(!!t.simSaved(),'a simulation whose time ran out while saved is still there to resume');
+  t.simResume(); await sleep(60);
+  eq(t.route,'simDoneScreen','and resuming it scores what was answered');
+  t.simClearSave(); delete t.P.lastPaper;
+}
+// Finishing a paper later: the questions nobody reached are answerable, the earlier answers
+// are locked, and nothing is counted twice.
+async function continueChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  delete t.P.lastPaper; t.simClearSave();
+  t.startPaper(14,'exam'); await sleep(30);
+  for(let k=0;k<6;k++){ t.simJump(k); await sleep(2); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+  t.simSubmit(true); await sleep(50);
+  ok(!$('simCont').classList.contains('hidden'),'a paper ended with questions left offers to finish them');
+  ok(/59 left/.test($('simCont').textContent),'and says how many');
+  const was={answered:t.P.answered, exams:t.P.exams, tries:t.P.papers[14].tries, correct:t.P.correct};
+  t.renderPapers(); await sleep(10);
+  const fin=[...document.querySelectorAll('#paperScreen .paperrow')][13].querySelector('button');
+  ok(/59/.test(fin.textContent),'the paper\u2019s row in the exam list offers it too');
+  $('simCont').click(); await sleep(40);
+  eq(t.route,'quizScreen','finishing reopens the paper');
+  eq(t.sim.i,6,'on the first question nobody reached');
+  ok(t.isPractice(),'under practice rules, since the answers have been shown');
+  t.simJump(0); await sleep(5);
+  const a0=t.sim.ans[0].join(), q0=t.QS[t.sim.qs[0]];
+  t.simPick(q0.o.map(x=>x[0]).find(l=>!t.sim.ans[0].includes(l))); await sleep(5);
+  eq(t.sim.ans[0].join(),a0,'an answer from the first sitting is locked');
+  for(let k=6;k<16;k++){ t.simJump(k); await sleep(2); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+  t.simPersist();
+  eq(JSON.stringify(t.P.simSave.locked),JSON.stringify(t.sim.locked),'the lock survives a refresh');
+  t.simSubmit(true); await sleep(50);
+  eq(t.P.answered,was.answered,'finishing later is not another sixty-five answered');
+  eq(t.P.correct-was.correct,10,'only the newly right answers are added');
+  eq(t.P.exams,was.exams,'nor another exam');
+  eq(t.P.papers[14].tries,was.tries,'nor another attempt');
+  eq(t.P.papers[14].bestMode,'practice','and the score is marked as practice');
+  eq((t.P.simLog[0]||{}).ct,1,'the history says it was finished later');
+  const g={simLog:[{d:'2026-09-20',p:40,pass:0,mins:30,pr:1,ct:1,dom:[1,2,3,4]}]}; t.normaliseProfile(g);
+  eq(g.simLog[0].ct,1,'and that survives the load door');
+  delete t.P.lastPaper; t.simClearSave();
 }
 async function saveFlushChecks(){
   const t=T();
@@ -1267,8 +1373,9 @@ async function breakChecks(){
   ok(!t.brkOn(),'the break is over');
   eq(t.route,'quizScreen','and it hands you back to the question');
   const wallAfter=Math.round(t.simTimeLeft()/1000);
-  ok(Math.abs((wallAfter-wallBefore)-360)<5,
-     'the paper budget is paid back the full six minutes ('+(wallAfter-wallBefore)+'s)');
+  // With one clock a break never cost the paper anything to pay back: it is not answering time.
+  ok(Math.abs(wallAfter-wallBefore)<3,
+     'the break cost the paper nothing ('+(wallAfter-wallBefore)+'s)');
 
   // the second one behaves the same
   $('navHome').click(); await sleep(20);
@@ -1881,10 +1988,12 @@ async function qClockChecks(){
   const totBox=$('simTotal');
   t.simQTick(30); t.renderSimTotal();
   ok(!totBox.classList.contains('tight'),'ordinary play does not cry wolf');
-  t.sim.endAt=Date.now()+60*1000; t.renderSimTotal();
-  ok(totBox.classList.contains('tight'),'it warns when the paper clock becomes the binding one');
-  ok(/own clock is what runs out/.test($('simTotalSub').textContent),'and says why');
-  t.sim.endAt=Date.now()+99*60*1000; t.renderSimTotal();
+  // the amber is for the last five minutes, not for a second clock that used to take over
+  const qtWas=Object.assign({},t.sim.qt);
+  t.sim.qs.forEach((q,i)=>{ if(i!==t.sim.i) t.sim.qt[i]=0; }); t.renderSimTotal();
+  ok(totBox.classList.contains('tight'),'it warns in the last five minutes');
+  ok(!/own clock/.test($('simTotalSub').textContent),'and there is no second clock to blame');
+  t.sim.qt=qtWas; t.renderSimTotal();
   ok(!totBox.classList.contains('tight'),'and calms down again');
 
   t.simAbandon(); await sleep(30);
@@ -2547,7 +2656,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

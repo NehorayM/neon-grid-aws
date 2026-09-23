@@ -120,9 +120,9 @@ visual language. Chapters are coloured by the exam domain they mostly serve.
   bouncing you straight back out, which is what `if(simQLeft<=0){ simQStop(); return; }` at
   the top of `simQTick` is for.
   On papers 1–10 the same 90 seconds covers reading the feedback, so it can move on mid-read.
-  The whole-paper budget is `simBudget(n) = ceil(n * 90 / 60)` — 98 minutes for 65 questions,
-  47 for the short one — so the two clocks agree instead of contradicting each other. It is
-  still enforced by `simCheckTime`, and the review screen is where it is shown.
+  **There is one clock** — see "One clock" below. `simTimeLeft()` is the sum of the question
+  clocks, and `simCheckTime` ends the paper when that reaches zero. `simBudget(n)` survives
+  only as the headline figure.
 - **Papers 1–10 teach; 11–19 test.** On the first ten, a collapsible panel above each question
   (`buildBriefing()`) names the services it turns on, the ones it name-drops as distractors and
   how the exam phrases the ask — capped at four concepts and three distractors. And the moment
@@ -413,8 +413,9 @@ The remaining-time design stays — it is right for the Quit button. What was mi
 difference between the two ways of leaving:
 
 - **Quit** is a decision. `simPauseSave()` stamps `paused:1` and the paper pauses, as always.
-- **Closing, refreshing or crashing** is not. `simAwayCost(sv)` charges everything since
-  `sv.at` against both the paper's budget and the question that was open.
+- **Closing, refreshing or crashing** is not — in a simulation. `simAwayCost(sv)` measures
+  everything since `sv.at`; the question that was open is charged first and the rest comes off
+  the END of the paper (`simChargeEnd`). A practice paper is not charged at all.
 
 `sv.at` was already in the save and had never been read. Time covered by a break in progress is
 not charged — `brkUntil` is an absolute moment, so the overlap is exact.
@@ -432,11 +433,9 @@ number, but only because `at` happened to be stamped when the question loaded, s
 pair describing two different moments — the resume then charged the gap twice. The save takes a
 copy now, always including the current question, and a running paper persists every ten seconds.
 
-If the charge empties the paper it is not silently lost: the run resumes with no time left and
-`simCheckTime()` submits it within the second, so the score for what was answered still lands.
-`simSaved()` subtracts the same cost, so a paper whose budget ran out while away is not offered
-back, and the resume rows quote what a resume would really hand you rather than the saved
-figure.
+If the charge empties the paper it is not lost: the run resumes with no time left and
+`simCheckTime()` submits it, so the score for what was answered lands. `simSaved()` used to
+DROP such a save, answers and all — it now keeps it on offer so resuming can score it.
 
 ## Simulation or practice, asked at the start
 
@@ -547,11 +546,46 @@ open one from the review list and wrong here, because this is not somewhere you 
 A resume now moves to the first question that still has time, and if none do it submits and
 scores what was answered rather than resuming into limbo.
 
-**The headline is whichever clock binds.** The strip read `PAPER REMAINING 1:36:00` above
-"the paper clock runs out first — 1:16:12 of wall time". Both numbers were true — the first is
-what the questions still hold, the second is the paper's own budget — but quoting the larger,
-less binding one in the big type reads as a contradiction of its own subtitle. It now shows
-`min(question sum, wall clock)` and the subtitle says which of the two it is.
+**The headline is the only clock.** It once quoted `min(question sum, wall clock)` and the
+subtitle explained which was binding — a careful description of a trap. The wall clock is gone.
+
+## One clock — and finishing a paper later
+
+**The bug.** A paper ran two clocks with the same 97.5-minute budget. The big PAPER REMAINING
+number was the sum of the 65 question clocks, but the paper ended on a separate wall clock
+(`sim.endAt`) that kept running whenever no question clock did — reading the explanation after
+answering on a teaching paper, the review grid, a practice paper in a background tab. Reproduced
+on the previous build: every answer right, a minute on each question and a minute reading, and
+the paper was cut off after question **49** with half an hour still showing ("49 / 65 correct ·
+98 min · 16 to export"). A practice paper left in a background tab submitted itself overnight —
+the "2% — 872 min" entry in the history.
+
+**The rule now.**
+- `simTimeLeft()` is `simTotalLeft()*1000`. The paper ends when its questions are out of time, or
+  when it is submitted. In-app time off a question — an explanation, the review grid, a break,
+  a practice pause — is not answering time and costs nothing.
+- A simulation still pays for time AWAY from the app in full: the question you were on runs
+  down, and the overflow comes off the end, unanswered questions last-first (`simChargeEnd`),
+  the way a real exam's clock leaves you short at the end rather than draining the question you
+  come back to. That applies to a closed tab (`simResume`) and to a background tab (`simBack`,
+  which remembers the open question's seconds in `simAwayQ`).
+- A practice paper is never charged for time away — closing the app is how you stop on a phone.
+- The result's minutes are `(simTotalFull() - simTotalLeft())/60`: time spent answering.
+- `sim.endAt` is still written because brkEnd and a few old readers touch it. Nothing ends on it.
+
+**Finishing later.** Submitting keeps `P.lastPaper` (questions, answers, flags, per-question
+clocks) while anything is unanswered with time left. `simContinue()` reopens it from the result
+screen (`#simCont`) or the paper's row (↩ N). Earlier answers are **locked** (`sim.locked`),
+because the result screen and the CSV show correct answers for missed questions; for the same
+reason the continuation runs as practice and its score is recorded as practice, as the same
+attempt (`recordPaper(..., continued)`). The accounting counts only what is new: the first submit
+already counted every blank as attempted and wrong, so a continuation credits only blanks now
+answered right, pays coins/XP for those alone, is not another exam in the counters, and pays a
+pass bonus only if it is the sitting that crosses 72%. Papers submitted before this build cannot
+be reopened — that build kept no per-question answers after submitting.
+
+`oneClockChecks()` and `continueChecks()` hold all of it. The negative control is the old build
+itself: the same run stops at question 49.
 
 ## The clock is a deadline, not a count of ticks
 
@@ -586,10 +620,8 @@ how many questions it covers, and a track ticked once per question (`--tick` set
 `100/simLen()`, floored at 1.6% so the ticks never collapse into a solid block) so "65 × 90
 seconds" is something you can see rather than work out.
 
-**The amber state means the paper's wall clock will bite first** — `simTimeLeft() < simTotalLeft()`
-— which is the only way you get cut off with question time still on the board. The first version
-compared against `questionsLeft × 90`, which goes amber the moment you spend a single second and
-therefore said nothing.
+**The amber state is the last five minutes** with something still unanswered. It used to mean
+"the hidden wall clock will bite first" — the exact way papers were being cut off.
 
 ## Resuming a paper
 
@@ -917,6 +949,25 @@ which is exactly why the first two attempts were wrong.
 `Object.defineProperty` and forgetting to restore it poisons the page: `ttsStop()` then reads a
 frozen value and fifteen unrelated exam-clock assertions fail in a way that looks like a real
 regression. Reload before believing a failing run that follows a manual probe.
+
+## The review loop (branch `review-loop`)
+
+Eight review-then-fix rounds, each committed separately so any one can be reverted:
+
+1. Exam cues were off-topic 23% of the time (scored on generic stem words) — now must name the
+   service the answer uses; 2%. Cue lookup 18 ms → 0.1 ms (patterns compiled once).
+2. The sheets were dialogs to the eye only — role/aria-modal, focus in and back, Escape, Tab kept.
+3. In a simulation, switching tabs was a free break (the question deadline was pushed out).
+4. An answer given just before the page closed was lost (250 ms save debounce, no flush).
+5. A tap past the limit on "Select 2" did nothing — now shakes and explains.
+6. The exam countdown was a day short west of UTC (`new Date('YYYY-MM-DD')` is UTC midnight).
+7. Performance reviewed and clean; supabase-js pinned to 2.117.0 with an SRI hash.
+8. An imported progress file could run script: several renderers wrote profile fields into
+   innerHTML raw. Fixed at render and at the load door (`normaliseProfile` now types nearly
+   everything). A crash on an unknown difficulty had been hiding half of these.
+
+**Test-profile hygiene:** the fuzz in `xssChecks()` restores and flushes the profile when done.
+Manual fuzzing without that polluted the preview browser's stored profile for several runs.
 
 ## Known gaps / next up
 

@@ -55,6 +55,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .pill.pop{animation:pillPop .4s ease}
 @keyframes nope{0%,100%{transform:none}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
 .opt.nope{animation:nope .32s ease}
+.opt.locked{opacity:.62;cursor:default}
+.opt.locked.sel{opacity:.9}
 @media (prefers-reduced-motion:reduce){.opt.nope{animation:none;outline:2px solid var(--red)}}
 @keyframes pillPop{0%{transform:scale(1)}40%{transform:scale(1.22)}100%{transform:scale(1)}}
 
@@ -1565,6 +1567,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <div class="ch-t" id="simVerdict"></div>
       <div class="ch-note" id="simMeta"></div>
       <div class="ch-note simheb" id="simHeb"></div>
+      <button class="btn wide hidden" id="simCont" style="margin:14px auto 0;max-width:420px"></button>
       <div class="sechead">Domain breakdown</div>
       <div class="card" id="simDomList"></div>
       <div class="sechead">History</div>
@@ -2253,7 +2256,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 05:51 UTC';
+const BUILD='2026-09-23 06:50 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -2399,7 +2402,8 @@ const P_COLLECTIONS={
 };
 const P_NUMBERS=['xp','coins','answered','correct','streak','bestStreak','gamesPlayed',
                  'charge','bossesBeaten','gamesSinceBoss','skill','playMs','mocks',
-                 'mocksPassed','bestMock','sims','simsPassed','bestSim','nextChest'];
+                 'mocksPassed','bestMock','sims','simsPassed','bestSim','nextChest',
+                 'exams','examsPassed','reviewCleared','studyOpened','dailyStreak'];
 function normaliseProfile(p){
   p=p||P;
   P_COLLECTIONS.obj.forEach(k=>{
@@ -2432,6 +2436,28 @@ function normaliseProfile(p){
     Object.keys(p.inv).forEach(k=>{ const n=Number(p.inv[k]);
       if(!/^[a-z0-9_-]{1,24}$/i.test(k)||!isFinite(n)||n<=0) delete p.inv[k]; else p.inv[k]=Math.floor(n); });
   }
+  // the subject Resume points at, and the exam date: both drawn, both only meaningful if real
+  if(p.lastSec!==undefined){ const n=Number(p.lastSec);
+    if(!Number.isInteger(n)||n<0||(typeof SECTIONS!=='undefined'&&n>=SECTIONS.length)) delete p.lastSec; else p.lastSec=n; }
+  if(p.examDate!=null&&!localDate(p.examDate)) p.examDate=null;
+  // The login streak is drawn on the home screen and feeds the daily bonus; a string there read
+  // "Come back tomorrow for +NaN coins — day <img ...>".
+  if(p.login&&typeof p.login==='object'){
+    const L=p.login;
+    L.last=Math.max(0,Number(L.last)||0);
+    L.streak=Math.max(0,Number(L.streak)|0);
+    L.claimed=L.claimed?1:0;
+  }
+  if(Array.isArray(p.badges)) p.badges=[...new Set(p.badges.filter(x=>typeof x==='string'&&/^[a-z0-9_-]{1,40}$/i.test(x)))];
+  if(Array.isArray(p.known)) p.known=[...new Set(p.known.map(Number).filter(n=>Number.isInteger(n)&&n>=0))];
+  if(Array.isArray(p.rHist)) p.rHist=p.rHist.filter(r=>r&&typeof r==='object').slice(-30).map(r=>
+    Object.assign({},r,{d:/^\d{4}-\d{1,2}-\d{1,2}$/.test(String(r.d||''))?String(r.d):'',
+                        p:Math.max(0,Math.min(100,Number(r.p)||0))}));
+  if(p.lastTimer&&typeof p.lastTimer==='object'){
+    const T0=p.lastTimer;
+    ['work','rest','rounds'].forEach(k=>{ if(T0[k]!==undefined){ const n=Number(T0[k]); T0[k]=isFinite(n)&&n>0?n:0; } });
+    ['mode','nm'].forEach(k=>{ if(T0[k]!==undefined) T0[k]=String(T0[k]).replace(/[<>]/g,'').slice(0,40); });
+  }
   // Score records: numbers when the app writes them, anything at all in an imported file.
   const n1=v=>{ const n=Number(v); return isFinite(n)?n:0; };
   const MODE=v=>v==='practice'?'practice':'exam';
@@ -2452,6 +2478,11 @@ function normaliseProfile(p){
       if(!r||typeof r!=='object'){ delete p.courses[k]; return; }
       if(r.best!==undefined) r.best=Math.max(0,Math.min(100,n1(r.best)));
       if(r.runs!==undefined) r.runs=Math.max(0,n1(r.runs)|0);
+      if(r.last!==undefined) r.last=Math.max(0,Math.min(100,n1(r.last)));
+      if(r.mins!==undefined) r.mins=Math.max(0,n1(r.mins));
+      // module ids only: one stray entry makes "every part passed" a count that never matches
+      if(r.mods!==undefined) r.mods=[...new Set((Array.isArray(r.mods)?r.mods:[])
+        .filter(x=>typeof x==='string'&&/^[a-z0-9-]{1,40}$/i.test(x)))];
     });
   }
   // Log entries are rebuilt from typed fields. A string where a number belongs is how the
@@ -2459,7 +2490,7 @@ function normaliseProfile(p){
   const n0=v=>{ const n=Number(v); return isFinite(n)?n:0; };
   const dstr=v=>/^\d{4}-\d{1,2}-\d{1,2}$/.test(String(v||''))?String(v):'';
   if(Array.isArray(p.simLog)) p.simLog=p.simLog.filter(m=>m&&typeof m==='object').slice(0,12).map(m=>({
-    d:dstr(m.d), p:n0(m.p), pass:m.pass?1:0, mins:n0(m.mins), pr:m.pr?1:0,
+    d:dstr(m.d), p:n0(m.p), pass:m.pass?1:0, mins:n0(m.mins), pr:m.pr?1:0, ct:m.ct?1:0,
     dom:(Array.isArray(m.dom)?m.dom:[]).slice(0,8).map(n0)}));
   if(Array.isArray(p.examLog)) p.examLog=p.examLog.filter(e=>e&&typeof e==='object').slice(0,20).map(e=>
     Object.assign({},e,{d:dstr(e.d)||String(e.d||'').replace(/[<>&"']/g,'').slice(0,40),
@@ -2479,6 +2510,7 @@ async function loadProfile(){
   // stored an index, so those fields start over while progress is kept
   if(P.bank!==BANKV){
     P.bank=BANKV; P.seen={}; P.wrong=[]; P.marks=[]; P.sr={};
+    delete P.lastPaper;        // it stores question indices too
   }
   loaded=true; muted=!!P.muted;
   refreshTop(); renderHome();
@@ -5780,7 +5812,11 @@ function startSim(mode){
   renderClock();          // switch to the exam countdown immediately, not on the next tick
   simLoad();
 }
-function simTimeLeft(){ return sim?Math.max(0,sim.endAt-Date.now()):0; }
+// The paper ends when its questions are out of time — the number on screen. It used to end on
+// a separate wall clock that kept running whenever no question clock was (an explanation, the
+// review grid, a practice paper in a background tab), hit zero with question time still
+// showing, and submitted the paper under you.
+function simTimeLeft(){ return sim?simTotalLeft()*1000:0; }
 function simCheckTime(){
   if(brkOn()) return;                       // a paused paper cannot expire
   if(sim&&sim.running&&simTimeLeft()<=0){ toast('⏳ Time expired — submitting'); simSubmit(true); }
@@ -5839,8 +5875,8 @@ function simQTick(by){
 }
 // Time spent in the background or on the review screen is not spent on the question, so the
 // deadline is pushed forward by however long that lasted instead of the ticks being skipped.
-let simAwayAt=0;
-function simAway(){ if(!simAwayAt) simAwayAt=Date.now(); }
+let simAwayAt=0, simAwayQ=0;
+function simAway(){ if(!simAwayAt){ simAwayAt=Date.now(); simAwayQ=Math.max(0,simQLeft|0); } }
 function simBack(){
   if(!simAwayAt) return;
   const gone=Date.now()-simAwayAt; simAwayAt=0;
@@ -5848,6 +5884,15 @@ function simBack(){
   // closed tab is charged, leaving through the app costs one of two breaks, and pushing the
   // deadline here made the browser's tab bar the one exit that cost nothing.
   if(sim&&sim.running&&sim.qEndAt&&gone>0&&isPractice()) sim.qEndAt+=gone;
+  // A simulation pays for the whole absence: the question you were on ran down (its deadline
+  // was not moved), and whatever is beyond what it had comes off the end of the paper.
+  if(sim&&sim.running&&!isPractice()&&!brkOn()){
+    // on a question, it ran down first and only the overflow is left to charge; left from the
+    // review grid, no question clock was running, so all of it comes off the end
+    const onQ=route==='quizScreen';
+    const over=Math.round(gone/1000)-(onQ?simAwayQ:0);
+    if(over>0) simChargeEnd(over,onQ?sim.i:-1);
+  }
   if(sim&&sim.running) simQSync();
 }
 if(typeof document!=='undefined'){
@@ -5897,27 +5942,18 @@ function renderSimTotal(){
   const box=$('simTotal'); if(!box) return;
   if(!sim||!sim.running){ box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  const byQuestion=simTotalLeft(), full=simTotalFull(), qs=simQsLeft();
-  const wms=(typeof simTimeLeft==='function')?simTimeLeft():Infinity;
-  const byWall=isFinite(wms)?Math.floor(wms/1000):Infinity;
-  // Two true numbers: what the questions still hold, and what the paper's own clock has left.
-  // The headline has to be whichever runs out first, or it contradicts its own subtitle —
-  // "1:36:00" sitting above "the paper clock runs out first, 1:16:12".
-  const left=Math.min(byQuestion,byWall);
+  const left=simTotalLeft(), full=simTotalFull(), qs=simQsLeft();
+  // One clock. This number is the one the paper ends on.
   $('simTotalVal').textContent=fmtClock(left*1000);
   $('simTotalFill').style.width=pctW(left/Math.max(1,full)*100);
-  $('simTotalSub').textContent=(byWall<byQuestion)
-    ? ('the paper\u2019s own clock is what runs out \u2014 the questions still hold '+
-       fmtClock(byQuestion*1000))
-    : (plural(qs,'question')+' still open \u00b7 '+SIM_QSEC+'s each \u00b7 '+
-       fmtClock(full*1000)+' for the paper');
+  $('simTotalSub').textContent=plural(qs,'question')+' still open \u00b7 '+SIM_QSEC+'s each \u00b7 '+
+       fmtClock(full*1000)+' for the paper';
   // ticked once per question, capped so the ticks do not turn into a solid block
   const tick=Math.max(1.6,100/Math.max(1,simLen()));
   $('simTotal').style.setProperty('--tick',tick.toFixed(2)+'%');
-  // Amber when the PAPER's wall clock, not the per-question budget, becomes the binding
-  // constraint — that is the only way you can be cut off with question time still on the
-  // board. Comparing against qs*90 was useless: it goes amber the moment you spend a second.
-  box.classList.toggle('tight',byWall<byQuestion);
+  // Amber in the last five minutes, while there is still something unanswered to spend it on.
+  // (It used to mark the second, hidden clock taking over — the thing that is gone now.)
+  box.classList.toggle('tight',left<300&&simAnsweredCount()<simLen());
 }
 function renderSimQ(){
   const wrap=$('qTimerWrap'), fill=$('qTimerFill');
@@ -5950,6 +5986,7 @@ function simLoad(){
     b.className='opt'+(chosen.has(ltr)?' sel':''); b.dataset.ltr=ltr;
     b.innerHTML='<span class="ltr">'+ltr+'</span><span>'+esc(txt)+'</span>';
     b.onclick=()=>simPick(ltr);
+    if(sim.locked&&sim.locked[sim.i]){ b.classList.add('locked'); b.setAttribute('aria-disabled','true'); }
     box.appendChild(b);
   });
   $('simBar').classList.add('show');
@@ -5981,6 +6018,7 @@ function simPick(ltr){
   if(!sim) return;
   if(brkOn()) return;                        // a paused paper is paused for answering too
   if(sim.rev&&sim.rev[sim.i]) return;        // a revealed question is settled
+  if(sim.locked&&sim.locked[sim.i]){ toast('Answered in the first sitting \u2014 locked'); return; }
   const need=QS[sim.qs[sim.i]].a.length;
   const cur=new Set(sim.ans[sim.i]||[]);
   if(cur.has(ltr)) cur.delete(ltr);
@@ -6111,7 +6149,8 @@ function simSubmit(auto){
   brkAskClose();
   ttsStop(); hideExplain(); simClearSave();
   const paper=sim.paper||0;
-  let correct=0; const byDom={0:[0,0],1:[0,0],2:[0,0],3:[0,0]}; const missed=[];
+  const cont=!!sim.cont, base=sim.base||{blank:{},pct:0,passed:0};
+  let correct=0, gain=0; const byDom={0:[0,0],1:[0,0],2:[0,0],3:[0,0]}; const missed=[];
   const csv=[];
   sim.qs.forEach((qi,i)=>{
     const q=QS[qi], picked=new Set(sim.ans[i]||[]);
@@ -6122,36 +6161,63 @@ function simSubmit(auto){
     // exam and shows up in the review export later
     if(sim.flag[i]&&(P.marks||[]).indexOf(qi)<0) (P.marks=P.marks||[]).push(qi);
     if(sim.flag[i]||!ok) csv.push({i:qi,why:sim.flag[i]&&!ok?'Flagged + missed':sim.flag[i]?'Flagged':'Missed'});
-    P.seen[qi]=1;
     const st=P.secStats[q.s]=P.secStats[q.s]||{a:0,c:0};
+    if(cont){
+      // The first sitting already counted this question — a blank as attempted and wrong. Only
+      // a blank answered right now changes anything.
+      if(base.blank&&base.blank[i]&&ok){
+        gain++; st.c++;
+        P.wrong=(P.wrong||[]).filter(x=>x!==qi);
+        srSchedule(qi,true);
+      }
+      return;
+    }
+    P.seen[qi]=1;
     st.a++; if(ok) st.c++; else if((P.wrong||[]).indexOf(qi)<0) (P.wrong=P.wrong||[]).push(qi);
     srSchedule(qi,ok);
   });
+  // Keep the paper while anything on it is still answerable, so it can be finished later.
+  { const snap={paper, qs:sim.qs.slice(), ans:Object.assign({},sim.ans), flag:Object.assign({},sim.flag),
+                rev:Object.assign({},sim.rev||{}),
+                qt:Object.assign({},sim.qt||{},{[sim.i]:Math.max(0,simQLeft)}),
+                mins:sim.mins, d:dayKey()};
+    P.lastPaper=snap; }
   const len=simLen();
   const pct=Math.round(correct/len*100);
   const passed=pct>=SIM_PASS;
-  const mins=Math.round((Date.now()-sim.startAt)/60000);
-  P.sims=(P.sims||0)+1; if(passed) P.simsPassed=(P.simsPassed||0)+1;
+  if(P.lastPaper){ P.lastPaper.pct=pct; P.lastPaper.passed=passed?1:0;
+                   if(!lastOpen(P.lastPaper).length) delete P.lastPaper; }
+  // a continuation pays the pass bonus only if this is the sitting that crosses the line
+  const newPass=passed&&!(cont&&base.passed);
+  // Minutes actually spent on questions. Wall time since the start counted every pause —
+  // a practice paper left overnight reported 872 minutes.
+  const mins=Math.max(0,Math.round((simTotalFull()-simTotalLeft())/60));
+  if(!cont){ P.sims=(P.sims||0)+1; }
+  if(newPass) P.simsPassed=(P.simsPassed||0)+1;
   P.bestSim=Math.max(P.bestSim||0,pct);
   P.simLog=(P.simLog||[]);
-  P.simLog.unshift({d:dayKey(),p:pct,pass:passed?1:0,mins,pr:isPractice()?1:0,
+  P.simLog.unshift({d:dayKey(),p:pct,pass:passed?1:0,mins,pr:isPractice()?1:0,ct:cont?1:0,
     dom:DOMAINS.map(x=>byDom[x.id][1]?Math.round(byDom[x.id][0]/byDom[x.id][1]*100):0)});
   P.simLog=P.simLog.slice(0,12);
-  P.answered+=len; P.correct+=correct;
+  if(cont){ P.correct+=gain; }
+  else { P.answered+=len; P.correct+=correct; }
   // the papers are the exams now, so the exam badges, quest and history track them
-  P.exams=(P.exams||0)+1; if(passed) P.examsPassed=(P.examsPassed||0)+1;
+  if(!cont) P.exams=(P.exams||0)+1;
+  if(newPass) P.examsPassed=(P.examsPassed||0)+1;
   logExam(correct,len,passed);
-  if(passed) questProgress('exam',1);
-  if(paper) recordPaper(paper,pct,isPractice());
+  if(newPass) questProgress('exam',1);
+  if(paper) recordPaper(paper,pct,isPractice(),cont);
   lastExamCsv={paper,name:(paper?'neon-grid-exam-'+paper:'neon-grid-sim')+'-'+dayKey()+'.csv',list:csv};
-  const coins=correct+(passed?90:0);
-  addCoins(coins); addXP(correct*6+(passed?200:0));
+  const earned=cont?gain:correct;
+  const coins=earned+(newPass?90:0);
+  addCoins(coins); addXP(earned*6+(newPass?200:0));
   $('simDone').classList.remove('hidden');
   $('simScore').textContent=pct+'%';
   $('simScore').style.color=passed?'var(--lime)':'var(--red)';
   $('simVerdict').textContent=(paper?'Exam '+paper+' — ':'')+
     (passed?'PASS — above the 72% line':'BELOW PASS — 72% needed');
   $('simMeta').textContent=correct+' / '+len+' correct · '+mins+' min · +'+coins+' 🪙'+
+    (cont?' · finished later':'')+
     (csv.length?' · '+csv.length+' to export':'');
   $('simHeb').innerHTML=hebHTML(passed?'pass':'fail');
   $('simAgain').textContent=paper?(paper<PAPER_COUNT?'Exam '+(paper+1)+' ›':'Back to exams'):'Run another';
@@ -6166,8 +6232,59 @@ function simSubmit(auto){
   });
   sim=null; saveProfile(); logReadiness(); checkBadges(); renderReadiness(); renderClock();
   renderSimLog();          // the History block on this screen was always rendering empty
+  renderSimCont();
   if(passed) celebrate();
   go('simDoneScreen');
+}
+// ---------- finish the last exam ----------
+// What is still answerable in a snapshot: unanswered, and with time left on its own clock.
+function lastOpen(lp){
+  lp=lp||P.lastPaper;
+  if(!lp||!Array.isArray(lp.qs)||lp.qs.some(i=>!QS[i])) return [];
+  const out=[];
+  lp.qs.forEach((qi,i)=>{
+    const blank=!((lp.ans||{})[i]||[]).length;
+    const v=(lp.qt||{})[i], t=(typeof v==='number')?v:SIM_QSEC;
+    if(blank&&t>0) out.push(i);
+  });
+  return out;
+}
+function lastLabel(lp){ return lp&&lp.paper?('Exam '+lp.paper):'the mock exam'; }
+function simContinue(){
+  const lp=P.lastPaper, open=lastOpen(lp);
+  if(!open.length){ toast('Nothing left to answer on that paper'); return; }
+  ensureAudio(); exitStudyMode();
+  reviewMode=false; markMode=false; mock=null;
+  simClearSave();
+  const locked={}, blank={};
+  lp.qs.forEach((qi,i)=>{ if(((lp.ans||{})[i]||[]).length) locked[i]=1; else blank[i]=1; });
+  sim={qs:lp.qs, i:open[0], ans:Object.assign({},lp.ans||{}), flag:Object.assign({},lp.flag||{}),
+       rev:Object.assign({},lp.rev||{}), qt:Object.assign({},lp.qt||{}),
+       // the correct answers have been on screen since, so this is practice, not an exam
+       mode:'practice', running:true, paper:lp.paper||0, mins:lp.mins||SIM_MIN,
+       locked, cont:1, base:{blank, pct:lp.pct||0, passed:lp.passed?1:0},
+       startAt:Date.now(), endAt:Date.now()};
+  sim.endAt=Date.now()+simTotalLeft()*1000;
+  saveProfile(); renderClock(); simLoad(); simClaim(); simPersist();
+  toast('\u21a9 '+lastLabel(lp)+' \u2014 '+plural(open.length,'question')+' left to answer. '+
+        'Earlier answers are locked.');
+}
+// Starting it over the top of another paper in progress loses that one, so say so first —
+// the same guard Start uses.
+function simContinueAsk(btn){
+  const open=simSaved();
+  if(open&&!(sim&&sim.cont)){
+    const what=(open.paper?'Exam '+open.paper:'the mock exam')+' \u2014 question '+((open.i||0)+1)+' of '+open.qs.length;
+    armed(btn,'Delete your progress on '+what+'?',simContinue);
+    return;
+  }
+  simContinue();
+}
+function renderSimCont(){
+  const b=$('simCont'); if(!b) return;
+  const n=lastOpen().length;
+  b.classList.toggle('hidden',!n);
+  if(n) b.textContent='\u21a9 Finish the questions you did not reach ('+n+' left)';
 }
 function simAbandon(){
   if(!sim) return;
@@ -6258,10 +6375,11 @@ function simPersist(){
   P.simSave={paper:sim.paper||0, qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
              qt:Object.assign({},sim.qt||{},{[sim.i]:Math.max(0,simQLeft)}),
              mode:sim.mode||'exam', brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
+             locked:sim.locked||{}, cont:sim.cont?1:0, base:sim.base||null,
              brkOpen:sim.brkOpen?1:0, brkFrom:sim.brkFrom||0,
              dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
              claimAt:sim.claimAt||0,
-             left:Math.max(0,sim.endAt-Date.now()), mins:sim.mins||SIM_MIN, at:Date.now(),
+             left:simTotalLeft()*1000, mins:sim.mins||SIM_MIN, at:Date.now(),
              paused:0};   // a running paper; Quit overwrites this with 1
   saveProfile();
 }
@@ -6280,15 +6398,32 @@ function simAwayCost(sv){
   const now=Date.now(), at=Number(sv.at||0);
   if(!at||now<=at) return 0;
   if(sv.brkOpen) return 0;   // an open-ended pause covers all of it, however long it ran
+  // Practice is where you are allowed to stop, and closing the app is the natural way to.
+  if(sv.mode==='practice') return 0;
   const cover=Math.max(0,Math.min(now,Number(sv.brkUntil||0))-at);
   return Math.max(0,Math.round(((now-at)-cover)/1000));
+}
+// Time away from a simulation is charged in full. The question you were on ran while you were
+// gone; anything beyond it comes off the END of the paper — unanswered questions, last first —
+// the way a real exam's clock leaves you short at the end instead of draining the question you
+// come back to. Answered questions give up their leftover only once nothing unanswered is left.
+function simChargeEnd(sec,except){
+  if(!sim||!(sec>0)) return 0;
+  sim.qt=sim.qt||{};
+  let owe=sec;
+  const has=i=>(typeof sim.qt[i]==='number')?Math.max(0,sim.qt[i]):SIM_QSEC;
+  const take=i=>{ const v=has(i), d=Math.min(v,owe); sim.qt[i]=v-d; owe-=d; };
+  const blank=i=>!(sim.ans[i]||[]).length;
+  for(let i=simLen()-1;i>=0&&owe>0;i--) if(i!==except&&blank(i)) take(i);
+  for(let i=simLen()-1;i>=0&&owe>0;i--) if(i!==except) take(i);
+  return sec-owe;
 }
 function simClearSave(){ if(P.simSave){ delete P.simSave; saveProfile(); } }
 function simSaved(){
   const sv=P.simSave;
-  if(!sv||!sv.qs||!sv.qs.length||sv.left<=0) return null;
-  // a paper left running is still burning time; do not offer one whose budget is already gone
-  if(typeof simAwayCost==='function'&&(sv.left-simAwayCost(sv)*1000)<=0) return null;
+  // A paper whose time ran out while it sat here used to be dropped, answers and all. Resuming
+  // it scores what was answered, so it stays on offer.
+  if(!sv||!sv.qs||!sv.qs.length) return null;
   if(sv.qs.some(i=>!QS[i])) return null;          // the bank changed under it
   return sv;
 }
@@ -6300,13 +6435,12 @@ function simResume(){
   // is charged against the paper and against the question that was open, so shutting the page
   // is not a free freeze — which is what it used to be.
   const away=simAwayCost(sv);
-  const left=Math.max(0,Number(sv.left||0)-away*1000);
   const qt=Object.assign({},sv.qt||{});
   const at=Math.min(sv.i||0,sv.qs.length-1);
-  if(away>0){
-    const had=(typeof qt[at]==='number')?qt[at]:SIM_QSEC;
-    qt[at]=Math.max(0,had-away);
-  }
+  // the question you were on ran while you were gone; the rest is charged after sim exists
+  const had=(typeof qt[at]==='number')?qt[at]:SIM_QSEC;
+  const onThis=Math.min(had,away);
+  if(away>0) qt[at]=had-onThis;
   sim={qs:sv.qs, i:at, ans:sv.ans||{}, flag:sv.flag||{},
        rev:sv.rev||{}, qt:qt, mode:sv.mode==='practice'?'practice':'exam',
        brkUsed:sv.brkUsed||0, brkUntil:sv.brkUntil||0,
@@ -6315,8 +6449,11 @@ function simResume(){
        // a second time — thirty minutes away came back as thirty minutes gained.
        brkOpen:0, brkFrom:0,
        running:true, paper:sv.paper||0, mins:sv.mins,
+       locked:sv.locked||{}, cont:sv.cont?1:0, base:sv.base||null,
        dev:sv.dev||DEVICE_ID, devKind:sv.devKind||DEVICE_KIND, claimAt:sv.claimAt||0,
-       startAt:Date.now()-((sv.mins*60000)-left), endAt:Date.now()+left};
+       startAt:Date.now(), endAt:Date.now()};
+  if(away>onThis) simChargeEnd(away-onThis,at);
+  sim.endAt=Date.now()+simTotalLeft()*1000;   // kept only for anything still reading it
   if(away>30) toast('\u23f1 '+fmtClock(away*1000)+' passed while the paper was open elsewhere');
   // Being away can drain the question you were on. Landing back on it means a dead 0:00
   // clock and no way forward but Next — and unlike opening a spent question from the
@@ -6336,7 +6473,7 @@ function simResume(){
   renderClock(); simLoad(); simClaim();
   // If that emptied the paper it is not lost — simCheckTime() submits within the second, so
   // the score for whatever was answered still lands.
-  if(left<=0) simCheckTime();
+  simCheckTime();
 }
 function simAnsweredIn(sv){ return Object.keys(sv.ans||{}).filter(k=>(sv.ans[k]||[]).length).length; }
 
@@ -6741,6 +6878,17 @@ function renderPapers(){
         ()=>{ simClearSave(); modeAsk('Exam '+n,m=>startPaper(n,m)); });
       row.appendChild(again);
     }
+    // the last paper, if it still has questions nobody got to, can be finished from its row
+    const lp=P.lastPaper, lpOpen=(lp&&(lp.paper||0)===n&&!savedHere)?lastOpen(lp).length:0;
+    if(lpOpen){
+      const fin=document.createElement('button');
+      fin.className='buy pstart';
+      fin.textContent='\u21a9 '+lpOpen;
+      fin.title='Finish Exam '+n+' \u2014 '+plural(lpOpen,'question')+' you did not reach';
+      fin.setAttribute('aria-label',fin.title);
+      fin.onclick=()=>simContinueAsk(fin);
+      row.appendChild(fin);
+    }
     const b=document.createElement('button');
     b.className='buy';
     b.textContent=savedHere?'Resume':(rec?'Retake':'Start');
@@ -6786,9 +6934,15 @@ function simResumeHere(sv){
     simResume(); simClaim();
   });
 }
-function recordPaper(n,pct,practice){
+function recordPaper(n,pct,practice,continued){
   P.papers=P.papers||{};
   const r=P.papers[n]||{best:0,tries:0,last:''};
+  // Finishing a paper later is the same attempt, and it happened after the answers were shown.
+  if(continued){
+    if(pct>=r.best){ r.best=pct; r.bestMode='practice'; }
+    r.last=pct+'%'; r.lastMode='practice'; r.d=dayKey();
+    P.papers[n]=r; return;
+  }
   // Which conditions a best score was set under is the thing worth keeping. A score you
   // paused your way through and one you sat straight through are not the same evidence.
   if(pct>=r.best){ r.best=pct; r.bestMode=practice?'practice':'exam'; }
@@ -6858,7 +7012,7 @@ function renderSimLog(){
     const num=v=>{ const n=Number(v); return isFinite(n)?Math.round(n):0; };
     const dom=Array.isArray(m.dom)?m.dom:[];
     row.innerHTML='<div class="em">'+(m.pass?'🎓':'📝')+'</div><div style="flex:1">'+
-      '<div class="nm">'+num(m.p)+'% '+(m.pass?'— pass':'— below 72%')+(m.pr?' · practice':'')+'</div>'+
+      '<div class="nm">'+num(m.p)+'% '+(m.pass?'— pass':'— below 72%')+(m.ct?' · finished later':m.pr?' · practice':'')+'</div>'+
       '<div class="ds">'+esc(m.d)+' · '+num(m.mins)+' min · '+DOMAINS.map((d,i)=>esc(d.short)+' '+num(dom[i])+'%').join(' · ')+'</div></div>';
     L.appendChild(row);
   });
@@ -7248,6 +7402,7 @@ $('simAgain').onclick=()=>{
   else startSim((sim&&sim.mode)||'exam');
 };
 $('simCsv').onclick=exportLastExam;
+$('simCont').onclick=()=>simContinueAsk($('simCont'));
 $('simTts').onclick=ttsToggle;
 $('exBrief').ontoggle=()=>{ P.briefOpen=$('exBrief').open?1:0; saveProfile(); };
 $('simHome').onclick=()=>{ go('homeScreen'); renderHome(); };
@@ -9784,7 +9939,7 @@ if(TEST){
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
-    isPractice, brkOpen, brkElapsed, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
+    isPractice, brkOpen, brkElapsed, simContinue, lastOpen, renderSimCont, simChargeEnd, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
     simAwayCost, simPauseSave, resumeOnBoot, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,
