@@ -862,8 +862,50 @@ SQL files, run in this order in the SQL editor:
 2. `supabase_casino.sql` — wallets, blackjack, cash-out
 3. `supabase_casino_v2.sql` — shared roulette, chip buy-in, retention sweeps
 4. `supabase_duel.sql` — duels + the server-side answer key (~47 KB)
+5. `supabase_duel_v2.sql` — exam choice, per-question history, a rebuilt key, the roulette fix
+6. `supabase_exam_history.sql` — the exam list behind the Redo tab
 
 All are idempotent. Never put the `sb_secret_` key in the page.
+
+## The casino duel (and the wheel that never landed)
+
+Reported with a screenshot: Roulette selected, the Question duel underneath it. `#casDuel` was
+the one casino panel without `hidden` in the markup, so both showed until a tab was tapped.
+
+- **Exam questions.** The duel always drew from the bank; now a player picks *Any exam* or
+  *Exam 1–19* and every question says where it lives ("Exam 7 · Q23"). The exams are the bank
+  in 65s, so the server needs no list: exam n is ids `(n-1)*65 .. n*65-1`. `duel_find(stake,
+  exam default 0)` sits "any" down with a specific exam and the exam wins; different exams do
+  not meet. The one-argument `duel_find(bigint)` is **dropped**, not overloaded — PostgREST
+  picks by argument names and two candidates for `{stake}` would make every call ambiguous. A
+  database still on v1 answers `{stake, exam}` with "function not found"; the client
+  (`casRpc(..., {missingOk:true})`) falls back to `{stake}` and says what to run.
+- **The answer key drifted.** It was generated once by hand; questions 862 and 1046 were
+  corrected in the bank afterwards, so a duel marked the right answer wrong. `gen_duel_v2.py`
+  writes `supabase_duel_v2.sql` from the page, and `duelChecks` compares the key to `QS` — a
+  bank edit without re-running it fails QA_BANK.
+- **The answer after each question.** `duels.hist` gets one entry per finished question (the
+  answer, both picks, both verdicts) via `duel_log_turn`, guarded so it is written once.
+  `duel_view` returns it from the caller's side. Nothing about the question in play is
+  revealed. The client draws the reveal card, the pips and the result recap from it; "Why" is
+  the question's own write-up (`q.w`), which covers every option.
+- **`duel_next` takes the row first.** Both players poll `duel_state`; two polls that saw the
+  same clock run out used to advance the duel twice, skipping a question.
+- **The practice bot** ("Byte", 62%, answers in 6–36 s, hurries once you have answered) plays
+  the server's rules entirely in the page, with no chips. `P.botW/L/D` are in `MAX_KEYS`.
+- **A duel survives the screen.** Leaving the casino stopped polling and a reload lost
+  `duelId`, so the clock ran out unseen. Entering the casino calls `duelResume()`, which finds
+  an open duel through the `duels` RLS read policy.
+- **Roulette spun forever.** Found testing signed in: `supabase_duel.sql` defined
+  `roulette_mark()` to write down a finished round nobody bet on, but nothing called it — with
+  no bets there were no rounds (and the sweep deletes old ones), `last` stayed null and every
+  client spun indefinitely. v2's `roulette_table()` marks `cur - 1`; the client also gives up
+  a spin after 7 s with no result.
+
+`sql_tests/duel_v2_suite.sql` (run by `run.sh`, which also installs v2 twice to prove it is
+re-runnable). `suite.sql` now starts outside roulette's closing window: `now()` is fixed for a
+whole `do` block, and a run that began in the last 3 s of a round failed "a roulette bet is
+accepted" at random.
 
 ## Older content pipeline
 

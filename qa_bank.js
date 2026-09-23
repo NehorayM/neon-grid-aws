@@ -1494,6 +1494,137 @@ function mergeLossChecks(){
   eq(ph.simLog.length,2,'after the reset, both devices merge normally again');
   eq(t.mergeProfiles({at:1,sims:3},{at:2,sims:5}).resetAt,undefined,'and a profile never reset carries no reset time');
 }
+// The casino showed Roulette and the Question duel stacked; the duel now plays on the
+// practice exams, reveals each answer once a question is over, and has a practice bot.
+async function duelChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const vis=id=>!$(id).classList.contains('hidden');
+  // ---- one panel at a time, from the first paint
+  const fresh=new DOMParser().parseFromString(await (await fetch('/index.html?'+Date.now())).text(),'text/html');
+  ok(fresh.getElementById('casDuel').classList.contains('hidden'),'the duel panel starts hidden in the markup');
+  ok(fresh.getElementById('casBj').classList.contains('hidden'),'as does blackjack');
+  ['Roul','Bj','Duel'].forEach(w=>{
+    t.casTab(w);
+    eq(['casRoul','casBj','casDuel'].filter(vis).join(),'cas'+w,'tab '+w+' shows exactly its own panel');
+  });
+  eq(fresh.getElementById('duelCount').textContent,'75s','the clock label matches the 75-second question');
+
+  // ---- where a question lives
+  eq(t.duelWhere(0),'Exam 1 · Q1','question 0 is Exam 1, Q1');
+  eq(t.duelWhere(130),'Exam 3 · Q1','question 130 opens Exam 3');
+  eq(t.duelWhere(1200),'Exam 19 · Q31','the last question is the last of Exam 19');
+  const opts=[...$('duelExam').options];
+  eq(opts.length,t.PAPER_COUNT+1,'the exam picker offers any exam and every exam');
+  eq(opts[0].value,'0','any exam first');
+
+  // ---- the server's answer key is the bank's (it drifted once: 862 and 1046)
+  const sql=await (await fetch('/supabase_duel_v2.sql?'+Date.now())).text();
+  const key=JSON.parse(/values \(1, '(\{.*?\})'::jsonb\)/.exec(sql)[1]);
+  const drift=t.QS.map((q,i)=>(key[i]||[]).slice().sort().join()===q.a.slice().sort().join()?null:i).filter(x=>x!==null);
+  eq(drift.length,0,'the duel answer key matches the bank — re-run gen_duel_v2.py after a bank change'+(drift.length?' (off: '+drift.slice(0,5)+')':''));
+  eq(Object.keys(key).length,t.QS.length,'and covers every question');
+
+  // ---- the bot: exam 3, you right and the bot wrong ends it at once
+  const rnd=Math.random, saveW=t.P.botW||0, saveL=t.P.botL||0, saveD=t.P.botD||0;
+  try{
+    t.duelExam=3; t.botStart(); await sleep(20);
+    const b=t.bot;
+    ok(b.qs.length===5&&b.qs.every(i=>i>=130&&i<=194),'a bot duel on Exam 3 draws all five from it');
+    eq(new Set(b.qs).size,5,'with no question twice');
+    ok(vis('duelPlay')&&vis('casDuel'),'and opens on the board');
+    ok(/^Exam 3 · Q\d+/.test($('duelSrc').textContent),'the question says which exam it is from');
+    eq($('duelMePips').children.length,5,'five pips a side');
+    ok($('duelMePips').children[0].classList.contains('now'),'the first marked as the one in play');
+    b.botAt=1e9;
+    const q0=t.QS[b.qs[0]];
+    t.botPlayerAnswer(q0.a.slice());
+    Math.random=()=>0.99;                       // the bot misses
+    b.botAt=0; t.botTick(); await sleep(10);
+    eq(b.status,'done','right against a wrong bot ends it');
+    eq(b.winner,'you','and you win');
+    ok(vis('duelDone'),'the result screen shows');
+    eq($('duelResult').textContent,'YOU WIN','saying so');
+    eq($('duelRecap').children.length,1,'with the one question that decided it');
+    ok(/Exam 3 · Q/.test($('duelRecap').textContent),'recapped with where it is from');
+    eq(t.P.botW,saveW+1,'a bot win is recorded');
+    ok(/Play the bot again/.test($('duelAgain').textContent),'and the rematch is another bot game');
+
+    // ---- both right moves on, and the reveal says what the answer was
+    t.duelExam=0; t.botStart(); await sleep(10);
+    const c=t.bot; c.botAt=1e9;
+    const q1=t.QS[c.qs[0]];
+    t.botPlayerAnswer(q1.a.slice());
+    Math.random=()=>0;                          // the bot gets it
+    c.botAt=0; t.botTick(); await sleep(10);
+    eq(c.status,'active','both right keeps it going');
+    eq(c.turn,1,'on to question 2');
+    eq(c.hist.length,1,'the first in the history');
+    ok(vis('duelLast'),'the answer to question 1 is shown');
+    ok($('duelLast').textContent.indexOf(q1.a.slice().sort().join(' + '))>=0,'naming the right letters');
+    ok($('duelMePips').children[0].classList.contains('ok')&&$('duelThemPips').children[0].classList.contains('ok'),
+       'both pips for question 1 go green');
+    eq($('duelScore').textContent,'1 — 1','and the score');
+    // ---- neither answers in time: skipped, not lost
+    Math.random=rnd;
+    c.botAt=1e9; c.start=Date.now()-76000; t.botTick(); await sleep(10);
+    eq(c.turn,2,'a question nobody answered in time is skipped');
+    ok($('duelMePips').children[1].classList.contains('skip'),'and its pip says so');
+    // ---- the bot answers and the clock runs out on you
+    c.them.pick=t.QS[c.qs[2]].a.slice(); c.them.ok=true; c.them.score++;
+    c.start=Date.now()-76000; t.botTick(); await sleep(10);
+    eq(c.status,'done','running out the clock after the bot answered loses');
+    eq(c.winner,'them','to the bot');
+    eq(t.P.botL,saveL+1,'recorded as a loss');
+    eq($('duelResult').textContent,'YOU LOSE','and shown as one');
+
+    // ---- leaving a bot duel concedes after a confirm
+    t.botStart(); await sleep(10);
+    $('duelLeave').click();
+    eq(t.bot.status,'active','the first tap only asks');
+    ok(/Tap again/.test($('duelLeave').textContent),'by relabelling the button');
+    t.botTick(); await sleep(10);
+    ok(/Tap again/.test($('duelLeave').textContent),'which a repaint does not undo');
+    $('duelLeave').click(); await sleep(10);
+    eq(t.bot.status,'done','the second tap leaves');
+    eq(t.bot.winner,'them','and the bot takes it');
+  } finally {
+    Math.random=rnd; t.P.botW=saveW; t.P.botL=saveL; t.P.botD=saveD; t.duelExam=0;
+  }
+
+  // ---- a server duel, as v2 sends it: the reveal and pips come from hist
+  const qa=t.QS[140], qb=t.QS[141];
+  const view={id:'srv1', status:'active', stake:50, turn:1, exam:3, count:5, question:141,
+    you:{name:'me', score:1, answered:false}, them:{name:'rival', score:0, answered:true},
+    hist:[{q:140, answer:qa.a, you:qa.a, them:['Z'], youOk:true, themOk:false}],
+    secondsTotal:75, secondsLeft:40};
+  t.paintDuel(view);
+  ok(vis('duelPlay'),'a server duel paints the board');
+  eq($('duelPot').textContent,'POT 100','with the pot');
+  ok($('duelMePips').children[0].classList.contains('ok')&&$('duelThemPips').children[0].classList.contains('no'),
+     'question 1: you right, them wrong');
+  ok($('duelMePips').children[1].classList.contains('now'),'question 2 in play');
+  ok(/rival has answered/.test($('duelStatus').textContent),'and says the other side has answered');
+  eq($('duelSrc').textContent.indexOf('Exam 3 · Q12'),0,'question 141 is Exam 3, Q12');
+  const optsBefore=$('duelOpts').firstChild;
+  t.paintDuel(Object.assign({},view,{secondsLeft:38}));
+  eq($('duelOpts').firstChild,optsBefore,'a repaint of the same question keeps the options (no rebuild under a finger)');
+  // a v1 database sends no hist: nothing breaks
+  t.paintDuel({id:'srv2', status:'active', stake:25, turn:0, question:5,
+    you:{name:'me',score:0,answered:false}, them:{name:'x',score:0,answered:false}});
+  ok(vis('duelPlay')&&$('duelMePips').children.length===5,'a v1 duel (no history) still paints');
+  ok(!vis('duelLast'),'with nothing to reveal');
+  t.duelShow('Lobby'); t.casTab('Roul'); t.rouStop();
+
+  // ---- roulette: a spin with nothing to land on stops instead of going on forever
+  t.rouSetPhase('spinning'); t.rouSpinningFor=Date.now()-2000;
+  t.paintRouTable({round:7,open:true,secondsLeft:20,bets:[],mine:[],last:null});
+  eq(t.rouPhase,'spinning','a spin a couple of seconds old keeps waiting for its result');
+  t.rouSpinningFor=Date.now()-8000;
+  t.paintRouTable({round:7,open:true,secondsLeft:20,bets:[],mine:[],last:null});
+  eq(t.rouPhase,'betting','one with no result after seven seconds stops');
+  eq($('rouResult').textContent,'Waiting for the table…','and says what it is waiting for');
+  t.rouStop();
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -3033,7 +3164,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); mergeLossChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

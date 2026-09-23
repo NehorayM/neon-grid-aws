@@ -29,6 +29,12 @@ insert into public.profiles (id, username) values
   ('22222222-2222-4222-8222-222222222222','bob')
 on conflict (id) do update set username = excluded.username;
 
+-- Roulette refuses bets in the last 3 seconds of each 25-second round, and now() is fixed for
+-- the whole block below, so a run that happened to start in that window failed "a roulette
+-- bet is accepted" at random. Start the block outside it.
+select pg_sleep(25 - mod(extract(epoch from clock_timestamp())::numeric, 25) + 0.3)
+ where mod(extract(epoch from clock_timestamp())::numeric, 25) > 20;
+
 do $$
 declare
   A uuid := '11111111-1111-4111-8111-111111111111';
