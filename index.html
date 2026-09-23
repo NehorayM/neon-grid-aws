@@ -2274,7 +2274,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 12:01 UTC';
+const BUILD='2026-09-23 13:02 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -5967,13 +5967,9 @@ function simBack(){
   if(sim&&sim.running&&sim.qEndAt&&gone>0&&isPractice()) sim.qEndAt+=gone;
   // A simulation pays for the whole absence: the question you were on ran down (its deadline
   // was not moved), and whatever is beyond what it had comes off the end of the paper.
-  if(sim&&sim.running&&!isPractice()&&!brkOn()){
-    // on a question, it ran down first and only the overflow is left to charge; left from the
-    // review grid, no question clock was running, so all of it comes off the end
-    const onQ=route==='quizScreen';
-    const over=Math.round(gone/1000)-(onQ?simAwayQ:0);
-    if(over>0) simChargeEnd(over,onQ?sim.i:-1);
-  }
+  // (A simulation's question you were on has already run down — its deadline was not moved.
+  // Nothing more is charged: taking the rest off the end of the paper let a long absence drain
+  // every question and submit the paper while you were gone.)
   if(sim&&sim.running) simQSync();
 }
 if(typeof document!=='undefined'){
@@ -6368,8 +6364,9 @@ function lastOpen(lp){
   const out=[];
   lp.qs.forEach((qi,i)=>{
     const blank=!((lp.ans||{})[i]||[]).length;
-    const v=(lp.qt||{})[i], t=(typeof v==='number')?v:SIM_QSEC;
-    if(blank&&t>0) out.push(i);
+    // unanswered, and its answer not yet shown to you — whatever its clock says
+    const shown=!!((lp.rev||{})[i]);
+    if(blank&&!shown) out.push(i);
   });
   return out;
 }
@@ -6382,8 +6379,10 @@ function simContinue(){
   simClearSave();
   const locked={}, blank={};
   lp.qs.forEach((qi,i)=>{ if(((lp.ans||{})[i]||[]).length) locked[i]=1; else blank[i]=1; });
+  const qt=Object.assign({},lp.qt||{});
+  open.forEach(i=>{ if(!(Number(qt[i])>0)) qt[i]=SIM_QSEC; });
   sim={qs:lp.qs, i:open[0], ans:Object.assign({},lp.ans||{}), flag:Object.assign({},lp.flag||{}),
-       rev:Object.assign({},lp.rev||{}), qt:Object.assign({},lp.qt||{}),
+       rev:Object.assign({},lp.rev||{}), qt,
        // the correct answers have been on screen since, so this is practice, not an exam
        mode:'practice', running:true, paper:lp.paper||0, mins:lp.mins||SIM_MIN, rid:newRid(),
        locked, cont:1, base:{blank, pct:lp.pct||0, passed:lp.passed?1:0},
@@ -6633,7 +6632,8 @@ function simResume(){
        locked:sv.locked||{}, cont:sv.cont?1:0, base:sv.base||null, tout:sv.tout||{},
        dev:sv.dev||DEVICE_ID, devKind:sv.devKind||DEVICE_KIND, claimAt:sv.claimAt||0,
        startAt:Date.now(), endAt:Date.now()};
-  if(away>onThis) simChargeEnd(away-onThis,at);
+  // Only the question you were on pays for the time away. Taking the rest off the end of the
+  // paper meant a few hours away drained everything and the paper submitted itself.
   sim.endAt=Date.now()+simTotalLeft()*1000;   // kept only for anything still reading it
   if(away>30) toast('\u23f1 '+fmtClock(away*1000)+' passed while the paper was open elsewhere');
   // Being away can drain the question you were on. Landing back on it means a dead 0:00
@@ -6641,8 +6641,12 @@ function simResume(){
   // review list, this is not somewhere you chose to be. Go to one that still has time.
   const spent=k=>{ const v=sim.qt[k]; return (typeof v==='number')&&v<=0; };
   if(spent(sim.i)){
+    // the next UNANSWERED question with time, after the one you were on — not the first
+    // question with any time, which was usually question 1, long since answered
+    const blank=k=>!((sim.ans[k]||[]).length);
     let nx=-1;
-    for(let k=0;k<simLen();k++){ if(!spent(k)){ nx=k; break; } }
+    for(let d=1;d<=simLen()&&nx<0;d++){ const k=(sim.i+d)%simLen(); if(!spent(k)&&blank(k)) nx=k; }
+    for(let k=0;k<simLen()&&nx<0;k++){ if(!spent(k)) nx=k; }
     if(nx>=0){
       sim.i=nx;
       if(away>30) toast('\u{1f4cd} Moved to question '+(nx+1)+

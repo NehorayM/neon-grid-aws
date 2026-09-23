@@ -622,7 +622,7 @@ the "2% — 872 min" entry in the history.
 - `simTimeLeft()` is `simTotalLeft()*1000`. The paper ends when its questions are out of time, or
   when it is submitted. In-app time off a question — an explanation, the review grid, a break,
   a practice pause — is not answering time and costs nothing.
-- A simulation still pays for time AWAY from the app in full: the question you were on runs
+- (Superseded: time away used to be charged in full, overflow off the end of the paper; a few hours away drained every question and the paper submitted itself. Now only the question you were on pays for time away, and a paper never submits because you were gone.) Previously: a simulation paid for time AWAY from the app in full: the question you were on runs
   down, and the overflow comes off the end, unanswered questions last-first (`simChargeEnd`),
   the way a real exam's clock leaves you short at the end rather than draining the question you
   come back to. That applies to a closed tab (`simResume`) and to a background tab (`simBack`,

@@ -898,7 +898,8 @@ async function refreshChecks(){
   ok(t.sim.i>0,'so the resume moves past it rather than stranding you on a 0:00 clock');
   eq(t.simQLeft,t.SIM_QSEC,'landing on one that still has its full ninety');
   const charged=w0-Math.round(t.simTimeLeft()/1000);
-  ok(Math.abs(charged-600)<5,'and the paper is charged the ten minutes ('+charged+'s)');
+  // only the question you were on pays for time away — the rest of the paper waits
+  ok(Math.abs(charged-q0)<3,'the paper loses only what that question had ('+charged+'s of '+q0+')');
   t.simAbandon(); await sleep(30); t.simClearSave();
 
   // quitting is a decision and still pauses
@@ -921,15 +922,26 @@ async function refreshChecks(){
   eq(t.simAwayCost(sv),360,'four of the ten minutes were a break, so six are charged');
   t.simResume(); await sleep(40);
   const c2=w2-Math.round(t.simTimeLeft()/1000);
-  ok(Math.abs(c2-360)<5,'and that is what the paper loses ('+c2+'s)');
+  ok(c2<=t.SIM_QSEC,'and the paper loses no more than the open question held ('+c2+'s)');
   t.simAbandon(); await sleep(30); t.simClearSave();
 
-  // away long enough and the paper is over — but it is scored, not thrown away with its answers
+  // Away for hours: the paper is NOT over. It used to drain every question and submit itself,
+  // so coming back found "you finished" and no way back in.
   await setup();
   t.P.simSave.paused=0; t.P.simSave.at-=3*60*60*1000;
-  ok(!!t.simSaved(),'a paper whose time ran out while away is still there');
+  ok(!!t.simSaved(),'a paper left for three hours is still there');
   t.simResume(); await sleep(60);
-  eq(t.route,'simDoneScreen','and resuming it scores it');
+  eq(t.route,'quizScreen','and resuming it goes back into the paper, not to a result');
+  ok(t.sim&&t.sim.running,'still running');
+  eq(t.sim.i,1,'on the next unanswered question, not back at question 1');
+  // and "finish later" reopens any unanswered question whose answer was never shown, even with
+  // an empty clock
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  t.P.lastPaper={paper:4,qs:t.paperQs(4),ans:{0:['A']},flag:{},rev:{1:1},qt:{0:50,1:0,2:0},mins:114};
+  const open=t.lastOpen();
+  ok(open.indexOf(2)>=0,'an unanswered question with an empty clock can still be finished');
+  ok(open.indexOf(1)<0,'but not one whose answer was shown when it timed out');
+  delete t.P.lastPaper;
   t.simAbandon&&t.simAbandon(); await sleep(30); t.simClearSave(); delete t.P.lastPaper;
 
   // the row must advertise what a resume would really hand back, not the saved figure
@@ -1085,18 +1097,20 @@ async function oneClockChecks(){
   const full0=t.simTotalLeft();
   t.P.simSave.at-=10*60*1000;
   t.simResume(); await sleep(30);
-  ok(Math.abs((full0-t.simTotalLeft())-600)<5,'ten minutes away from a simulation costs it ten minutes');
-  eq(t.sim.qt[t.sim.qs.length-1],0,'taken from the end of the paper');
-  ok(t.simQLeft===t.SIM_QSEC,'not from the question you come back to');
+  ok(full0-t.simTotalLeft()<=t.SIM_QSEC,'ten minutes away costs a simulation only the question it was on');
+  ok(t.sim.qt[t.sim.qs.length-1]===undefined,'nothing is taken off the end of the paper');
+  ok(t.simQLeft===t.SIM_QSEC,'and you come back to a question with its full time');
   t.simAbandon(); await sleep(20); t.simClearSave();
   // a spent save is scored, not dropped
   t.startPaper(8,'exam'); await sleep(30);
   t.QS[t.sim.qs[0]].a.forEach(l=>t.simPick(l));
   t.simPersist();
   t.P.simSave.at-=10*3600*1000;
-  ok(!!t.simSaved(),'a simulation whose time ran out while saved is still there to resume');
+  ok(!!t.simSaved(),'a simulation left for ten hours is still there to resume');
   t.simResume(); await sleep(60);
-  eq(t.route,'simDoneScreen','and resuming it scores what was answered');
+  eq(t.route,'quizScreen','and resuming it goes back in rather than submitting it');
+  eq(t.simAnsweredIn(t.sim),1,'with its answers');
+  t.simAbandon(); await sleep(20);
   t.simClearSave(); delete t.P.lastPaper;
 }
 // Finishing a paper later: the questions nobody reached are answerable, the earlier answers
@@ -1266,7 +1280,7 @@ async function hunt9Checks(){
     const total0=t.simTotalLeft();
     t.brkStart(); t.go('homeScreen'); t.simAway();
     skew+=20*60000; t.brkTick(); t.simBack(); await sleep(20);
-    eq(Math.round((total0-t.simTotalLeft())/60),14,'twenty minutes away, six of them a break, costs fourteen');
+    ok(total0-t.simTotalLeft()<=t.SIM_QSEC,'twenty minutes away across a break costs no more than one question');
   } finally { Date.now=realNow; }
   t.simAbandon(); await sleep(20); t.simClearSave();
   // 3
