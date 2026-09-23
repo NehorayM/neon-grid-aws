@@ -1729,9 +1729,6 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <span id="paperStatsTitle">What is in these papers</span><span class="chev">›</span></summary>
       <div class="bb" id="paperStatsBody"></div></details>
     <div class="statstrip" id="paperStats" style="margin-bottom:14px"></div>
-    <div class="chiprow" style="justify-content:center;margin-bottom:14px">
-      <button class="minichip" id="paperCsv">⬇ Export flagged &amp; missed (CSV)</button>
-    </div>
     <div id="runBox" class="hidden">
       <div class="sechead">Running exams</div>
       <p class="sub" style="margin:-4px 0 8px">Every exam you have open, on any of your devices. Continue any of them here.</p>
@@ -1743,6 +1740,9 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <div class="list hidden" id="histList"></div>
     </div>
     <div class="list" id="paperList"></div>
+    <div class="chiprow" style="justify-content:center;margin:14px 0 4px">
+      <button class="minichip" id="paperCsv">⬇ Export flagged &amp; missed (CSV)</button>
+    </div>
   </div>
 
   <!-- CASINO -->
@@ -7379,15 +7379,13 @@ function renderExamBrief(qi){
 }
 function renderPapers(){
   const L=$('paperList'); if(!L) return;
-  renderRuns(); renderHist();
+  renderRuns();
   L.innerHTML='';
   const done=Object.keys(P.papers||{}).length;
   const recs=Object.values(P.papers||{});
   const best=recs.length?Math.max(...recs.map(r=>r.best)):0;
   const passedN=recs.filter(r=>r.best>=SIM_PASS).length;
-  $('paperSub').textContent=QS.length+' questions cut into '+plural(PAPER_COUNT,'paper')+' — '+
-    PAPER_LEN+' questions each, '+SIM_QSEC+' seconds a question, nothing repeated inside a paper '+
-    'and nothing shared between papers.';
+  $('paperSub').textContent=PAPER_COUNT+' exams \u00b7 '+PAPER_LEN+' questions \u00b7 '+SIM_QSEC+' s a question';
   const sv=simSaved(), rbtn=$('exResume');
   // sv.left is what was left when the save was written; a running paper has been spending
   // since. Show what a resume would actually hand back.
@@ -7412,7 +7410,7 @@ function renderPapers(){
   $('paperStats').innerHTML=
     '<div class="stat"><b>'+done+' / '+PAPER_COUNT+'</b><span>Attempted</span></div>'+
     '<div class="stat"><b>'+passedN+'</b><span>Passed</span></div>'+
-    '<div class="stat"><b>'+(best?best+'%':'—')+'</b><span>Best</span></div>';
+    '<div class="stat"><b>'+(best?saaScaled(best/100):'—')+'</b><span>Best / 1000</span></div>';
   for(let n=1;n<=PAPER_COUNT;n++){
     const qs=paperQs(n), rec=paperRec(n);
     const row=document.createElement('div'); row.className='item paperrow';
@@ -7424,7 +7422,7 @@ function renderPapers(){
          plural(simAnsweredIn(sv),'answer')+' \u00b7 '+fmtClock(svLeft)+' left')
       : rec
       ? rec.tries+' attempt'+(rec.tries>1?'s':'')+' \u00b7 last '+saaScaled((parseInt(rec.last,10)||0)/100)
-      : len+' questions \u00b7 '+SIM_QSEC+'s each \u00b7 '+simBudget(len)+' min';
+      : (len<PAPER_LEN?plural(len,'question')+' \u00b7 ':'')+'Not started';
     const col=(sv&&(sv.paper||0)===n)?'var(--cyan)'
       :rec?(rec.best>=SIM_PASS?'var(--lime)':'var(--gold)'):'var(--line2)';
     row.style.setProperty('--dcol',col);
