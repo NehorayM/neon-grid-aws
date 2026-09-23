@@ -2379,7 +2379,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 18:06 UTC';
+const BUILD='2026-09-23 18:51 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -4445,7 +4445,8 @@ async function resetProfile(){
   Object.assign(P,{xp:0,coins:40,answered:0,correct:0,streak:0,bestStreak:0,gamesPlayed:0,
     seen:{},wrong:[],secStats:{},upgrades:{},badges:[],
     highs:{breaker:0,dash:0,firewall:0,signal:0,sort:0,orbit:0,boss:0,match:0,scenario:0,defend:0},
-    diff:'easy',charge:0,bossesBeaten:0,gamesSinceBoss:0,inv:{},marks:[],known:[]});
+    diff:'easy',charge:0,bossesBeaten:0,gamesSinceBoss:0,inv:{},marks:[],known:[],
+    resetAt:Date.now()});            // so a signed-in sync drops the old copies instead of uniting them back
   saveProfile(); refreshTop(); renderHome(); renderDaily(); renderInv(); renderCharge(); renderDiff();
   toast('Progress reset'); go('homeScreen');
 }
@@ -8844,11 +8845,71 @@ function simSaveNewer(x,y){
   if(cx!==cy) return cy>cx?y:x;
   return Number(y.at||0)>=Number(x.at||0)?y:x;
 }
-function mergeProfiles(a,b){
-  a=a||{}; b=b||{};
-  const aNewer=Number(a.at||0)>Number(b.at||0);
+function mergeProfiles(a,b,opts){
+  a=a||{}; b=b||{}; opts=opts||{};
+  // "Reset all progress": a copy saved before the reset (on any device) is dropped, not merged —
+  // uniting it back in would undo the reset on the next sync. Settings survive; progress does not.
+  const ra=Number(a.resetAt)||0, rb=Number(b.resetAt)||0, reset=Math.max(ra,rb);
+  const stale=p=>reset>0&&(Number(p.resetAt)||0)<reset&&Number(p.at||0)<reset;
+  if(stale(a)!==stale(b)){
+    const keep=stale(a)?b:a, drop=stale(a)?a:b, out=Object.assign({},keep);
+    Object.keys(drop).forEach(k=>{ if(k in out) return; const v=drop[k];
+      out[k]=Array.isArray(v)?[]:(v&&typeof v==='object')?{}:(typeof v==='number')?0:v; });
+    return out;
+  }
+  // The first sync of an account on this device takes the cloud's settings: a fresh guest
+  // profile is always the "later" save, and letting it win handed its defaults to the account.
+  const aNewer=opts.cloudFirst?true:Number(a.at||0)>Number(b.at||0);
   const out=aNewer?Object.assign({},b,a):Object.assign({},a,b);
   out.at=Math.max(Number(a.at||0),Number(b.at||0));
+  // ---- collections are combined, never replaced ----
+  // Taking them from the later save let a fresh browser's EMPTY lists wipe the account's
+  // history, review schedule and streak on sign-in. An empty side can no longer win.
+  const newer=aNewer?a:b, older=aNewer?b:a;
+  const uniteLog=(k,cap,desc)=>{
+    const seen=new Set(), all=[];
+    [...(Array.isArray(newer[k])?newer[k]:[]),...(Array.isArray(older[k])?older[k]:[])].forEach(e=>{
+      if(!e||typeof e!=='object') return;
+      const key=JSON.stringify(e); if(seen.has(key)) return; seen.add(key); all.push(e); });
+    all.sort((x,y)=>{ const c=dayNorm(x.d).localeCompare(dayNorm(y.d)); return desc?-c:c; });
+    out[k]=desc?all.slice(0,cap):all.slice(-cap);
+  };
+  uniteLog('simLog',12,true);
+  uniteLog('examLog',20,true);
+  uniteLog('mockLog',15,true);
+  { // readiness history: one point per day, ascending
+    const byDay={};
+    [...(Array.isArray(older.rHist)?older.rHist:[]),...(Array.isArray(newer.rHist)?newer.rHist:[])]
+      .forEach(r=>{ if(r&&r.d) byDay[dayNorm(r.d)]=r; });
+    out.rHist=Object.values(byDay).sort((x,y)=>dayNorm(x.d).localeCompare(dayNorm(y.d))).slice(-30);
+  }
+  out.known=[...new Set([...(a.known||[]),...(b.known||[])])];
+  { // spaced repetition: every scheduled question from either side, the later due point wins
+    const sr=Object.assign({},older.sr||{});
+    Object.entries(newer.sr||{}).forEach(([k,v])=>{ const o=sr[k];
+      sr[k]=(!o||(Number(v&&v.due)||0)>=(Number(o.due)||0))?v:o; });
+    out.sr=sr;
+  }
+  { // study chapters: read on either device, the better score
+    const st={};
+    new Set([...Object.keys(a.study||{}),...Object.keys(b.study||{})]).forEach(k=>{
+      const x=(a.study||{})[k], y=(b.study||{})[k];
+      if(!x||!y){ st[k]=x||y; return; }
+      st[k]=Object.assign({},x,y,{read:(x.read||y.read)?1:0, best:Math.max(x.best||0,y.best||0),
+                                  at:(dayNorm(x.at)>dayNorm(y.at))?x.at:y.at});
+    });
+    out.study=st;
+  }
+  { // the login streak belongs to the later login, not the later save
+    const x=a.login||{}, y=b.login||{};
+    const lx=Number(x.last)||0, ly=Number(y.last)||0;
+    out.login=(lx!==ly)?(lx>ly?x:y):((Number(x.streak)||0)>=(Number(y.streak)||0)?x:y);
+  }
+  { // inventory counts go down as items are used, so the later save is right — unless it is empty
+    const ni=newer.inv||{}, oi=older.inv||{};
+    out.inv=Object.keys(ni).length?ni:oi;
+  }
+  if(!newer.lastPaper&&older.lastPaper) out.lastPaper=older.lastPaper;
   // the exam in progress belongs to whichever device touched it last, not to us
   const sv=simSaveNewer(a.simSave,b.simSave);
   if(sv) out.simSave=sv; else delete out.simSave;
@@ -8963,15 +9024,18 @@ async function saveUsername(next){
   refreshTop(); renderAuth();
   return true;
 }
+// Set by a sign-in on this device: its first merge takes the account's settings from the cloud.
+let freshSignIn=false;
 async function syncNow(silent){
   if(!sb||!sbUser||syncing) return;
   syncing=true; renderAuth();
   if(!silent) authMsg('Syncing…','busy');
   try{
     const remote=await pullCloud();
+    const cloudFirst=freshSignIn; freshSignIn=false;
     if(remote&&remote.username) myName=remote.username;
     if(remote&&remote.profile&&Object.keys(remote.profile).length){
-      const merged=mergeProfiles(remote.profile,P);
+      const merged=mergeProfiles(remote.profile,P,{cloudFirst});
       Object.assign(P,merged);
       normaliseProfile(P);        // the other device may be on an older shape
       try{ await window.storage.set('academy_profile',JSON.stringify(P),false); }catch(e){}
@@ -9044,6 +9108,7 @@ async function doSignIn(){
   sbUser=data.user; $('authPass').value='';
   myName=(data.user.user_metadata&&data.user.user_metadata.username)||null;
   authMsg('Signed in. Merging your progress…','busy');
+  freshSignIn=true;
   await syncNow(false);
   renderAuth();
 }

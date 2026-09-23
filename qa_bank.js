@@ -1425,6 +1425,75 @@ async function pauseBarChecks(){
   ok($('brkBar').classList.contains('hidden'),'and the bar goes with it, instead of staying over the question');
   t.simAbandon(); await sleep(20); t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
 }
+// Signing in on a fresh browser wiped the account: the blank guest profile was the LATER save,
+// so its empty history, review schedule and streak replaced the cloud's, and went back up.
+function mergeLossChecks(){
+  const t=T(), J=o=>JSON.parse(JSON.stringify(o));
+  const cloud={at:1000, sims:11, diff:'hard', theme:'mono',
+    simLog:[{d:'2026-09-20',p:81,sc:790,pass:1},{d:'2026-9-2',p:64,sc:610,pass:0}],
+    examLog:[{d:'2026-09-19',c:40,t:50,p:1}],
+    rHist:[{d:'2026-9-1',p:40},{d:'2026-09-18',p:66}],
+    sr:{12:{box:2,due:300},40:{box:1,due:210}},
+    study:{3:{read:1,best:90,at:'2026-09-10'}},
+    known:[5,6], inv:{shield:2}, login:{last:1790000000000,streak:9,claimed:1}, lastPaper:7};
+  const guest={at:5000, sims:0, diff:'easy', theme:'neon', simLog:[], examLog:[], rHist:[{d:'2026-09-23',p:0}],
+    sr:{}, study:{}, known:[], inv:{}, login:{last:1790100000000,streak:1,claimed:0}};
+  const m=t.mergeProfiles(J(cloud),J(guest));
+  eq(m.simLog.length,2,'a blank browser signing in keeps the account\'s exam history');
+  eq((m.simLog[0]||{}).sc,790,'newest first');
+  eq(m.examLog.length,1,'and the exam log');
+  eq(t.mergeProfiles({at:1,mockLog:[{d:'2026-09-01',p:70,pass:0}]},{at:2,mockLog:[]}).mockLog.length,1,'and the mock log');
+  eq(m.rHist.length,3,'and the readiness history, one point a day');
+  eq((m.rHist[0]||{}).d,'2026-9-1','in date order, including dates written before zero-padding');
+  eq(Object.keys(m.sr).length,2,'and the spaced-repetition schedule');
+  eq(m.study[3]&&m.study[3].best,90,'and the study records');
+  eq(m.known.length,2,'and the known list');
+  eq((m.inv||{}).shield,2,'an empty inventory does not wipe a full one');
+  eq(m.lastPaper,7,'and the last paper is still remembered');
+  eq(m.login.streak,1,'the login streak follows the LATER login (a day apart here)');
+  const same=t.mergeProfiles(J(cloud),J(Object.assign({},guest,{login:{last:cloud.login.last,streak:1}})));
+  eq(same.login.streak,9,'and on the same day, the longer streak');
+  eq(m.diff,'easy','without a sign-in, the later save still wins plain settings');
+  const f=t.mergeProfiles(J(cloud),J(guest),{cloudFirst:true});
+  eq(f.diff,'hard','on a sign-in, the account\'s settings win over the blank guest');
+  eq(f.theme,'mono','all of them');
+  eq(f.sims,11,'counters still take the higher');
+  eq(f.simLog.length,2,'and the history is still united');
+
+  // the damaged cloud copy meets a device that still has everything: it comes back
+  const damaged=Object.assign(J(guest),{at:9000,sims:11});
+  const r=t.mergeProfiles(damaged,J(cloud));
+  eq(r.simLog.length,2,'a device with the full data restores the history to a damaged cloud copy');
+  eq(Object.keys(r.sr).length,2,'and the review schedule');
+  eq(r.known.length,2,'and the known list');
+
+  // both sides have work: nothing is lost, duplicates are not doubled, caps hold
+  const a={at:1,simLog:Array.from({length:10},(_,i)=>({d:'2026-08-'+(10+i),p:i}))};
+  const b={at:2,simLog:[a.simLog[0],{d:'2026-09-01',p:99}].concat(Array.from({length:5},(_,i)=>({d:'2026-07-0'+(i+1),p:50+i})))};
+  const u=t.mergeProfiles(J(a),J(b));
+  eq(u.simLog.length,12,'the history is capped at twelve, as the writer caps it');
+  eq((u.simLog[0]||{}).p,99,'keeping the newest');
+  eq(u.simLog.filter(e=>e.d==='2026-08-10').length,1,'and one entry seen on both is not counted twice');
+  const s2=t.mergeProfiles({at:1,sr:{7:{box:3,due:900}}},{at:2,sr:{7:{box:1,due:400}}});
+  eq((s2.sr[7]||{}).due,900,'a question scheduled on both keeps the later due point');
+  const st=t.mergeProfiles({at:1,study:{2:{read:1,best:40,at:'2026-09-01'}}},{at:2,study:{2:{read:0,best:70,at:'2026-09-05'}}});
+  ok(!!st.study[2]&&st.study[2].read===1&&st.study[2].best===70,'a chapter keeps read-on-either and the better score');
+
+  // "Reset all progress" signed in: uniting would bring it all straight back from the cloud
+  const wiped={at:7000, resetAt:7000, xp:0, sims:0, seen:{}, simLog:[], badges:[]};
+  const full=Object.assign(J(cloud),{at:6000, xp:900, seen:{4:1}, badges:['b1'], wrong:[3]});
+  const rs=t.mergeProfiles(J(full),J(wiped));
+  eq(rs.simLog.length,0,'a reset is not undone by the cloud copy saved before it');
+  eq(rs.sims,0,'counters too');
+  eq(Object.keys(rs.seen).length+rs.badges.length,0,'nor seen questions and badges');
+  ok(Array.isArray(rs.wrong)&&rs.wrong.length===0,'a list only the old copy had comes back empty, so assigning it clears it');
+  eq(t.mergeProfiles(J(wiped),J(full)).simLog.length,0,'the same when the reset arrives from the cloud');
+  eq(t.mergeProfiles(Object.assign(J(full),{examDate:'2026-10-01'}),J(wiped)).examDate,'2026-10-01','settings survive a reset');
+  const after=Object.assign(J(wiped),{at:8000, simLog:[{d:'2026-09-24',p:70}]});
+  const ph=t.mergeProfiles(J(after),Object.assign(J(wiped),{at:7500, simLog:[{d:'2026-09-23',p:60}]}));
+  eq(ph.simLog.length,2,'after the reset, both devices merge normally again');
+  eq(t.mergeProfiles({at:1,sims:3},{at:2,sims:5}).resetAt,undefined,'and a profile never reset carries no reset time');
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -2964,7 +3033,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); mergeLossChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

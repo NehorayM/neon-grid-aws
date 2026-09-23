@@ -816,6 +816,40 @@ out of the question they are on.
 real Supabase round trip with two signed-in browsers has not been exercised, because signing in
 is the user's to do.
 
+### Signing in on a fresh browser wiped the account (fixed 2026-09-23)
+
+Found the first time the app was tested signed in. "The later save wins the plain fields" was
+applied to **everything** outside `MAX_KEYS` and the hand-merged collections — including
+`simLog`, `examLog`, `mockLog`, `rHist`, `sr`, `study`, `known`, `inv` and `login`. A browser
+that has never been used holds a guest profile created seconds ago, so it is always the later
+save: its empty lists replaced the account's, and `syncNow` pushed the result. The account read
+"sims: 11" over an empty history, an empty review schedule and a one-day streak.
+
+- **Collections are combined, never replaced.** Logs are united (dedupe by content, newest
+  first, the writer's own cap), `rHist` one point per day, `sr` keeps each question's later
+  `due`, `study` read-on-either and best-of, `known` union, `login` follows the later *login*
+  (same day: longer streak), `inv` takes the later side unless it is empty. Dates are compared
+  through `dayNorm`, since older entries were written without zero-padding.
+- **A sign-in takes the cloud's settings.** `doSignIn` sets `freshSignIn`; the next `syncNow`
+  passes `{cloudFirst:true}`. Deliberately *not* a "first time this device saw the account"
+  flag in localStorage: every device signed in before the fix would lack it too, and would
+  then hand its own settings to the cloud's.
+- **Recovery comes from the other devices.** The damage reached the cloud, but each device that
+  was not opened since still holds the full data locally; with the union merge its next sync
+  puts the history back. A device running the OLD code would instead take the cloud's empty
+  lists — so it must load the new build first (open a fresh URL, e.g. `?v=<anything>`, rather
+  than switching to an old tab, whose focus handler syncs before any reload).
+- `mergeLossChecks` in `qa_bank.js` replays it: blank guest + full cloud, the damaged cloud +
+  a full device, caps, dedupe, `cloudFirst`, and a reset on either side. Against the old merge
+  the sign-in part fails 20 of 25.
+
+**Reset all progress, signed in.** Uniting collections would have made the reset undo itself
+at the next sync (it already half-did, for `seen`, `badges` and the counters). `resetProfile()`
+now stamps `P.resetAt`; a copy whose `at` and `resetAt` are both older than the newest reset is
+dropped rather than merged — its lists come back empty, its numbers 0, its settings kept — so
+the reset reaches the cloud and every device that syncs after it. The separate `exam_history`
+table is not touched by a reset; `histCloudPull` brings those rows back, by design.
+
 ## Supabase
 
 Project `rlbgbxgtaqvxwvskpblg`. The publishable key is in the `SUPA` block in `index.html` —
