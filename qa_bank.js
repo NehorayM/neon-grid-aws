@@ -1284,6 +1284,20 @@ async function hunt9Checks(){
   ok(t.P.nextChest>900&&t.P.coins-c0<=3*200,'an old backlog is stepped over, not paid out as a heap');
   Object.assign(t.P,{answered:was.answered,nextChest:was.next,coins:was.coins});
 }
+// The read-aloud button thins out as the papers go on: every question on 1-7, odd questions
+// on 8-10, once every three on 11-12, none from 13.
+async function readTaperChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const want={1:'1,2,3,4,5,6',7:'1,2,3,4,5,6',8:'1,3,5',10:'1,3,5',11:'1,4',12:'1,4',13:'',19:''};
+  for(const n of Object.keys(want)){
+    t.simClearSave(); t.startPaper(+n,'exam'); await sleep(20);
+    const shown=[];
+    for(let i=0;i<6;i++){ t.simJump(i); await sleep(2); if(!$('simTts').classList.contains('hidden')) shown.push(i+1); }
+    eq(shown.join(','),want[n],'Exam '+n+' offers read-aloud on questions '+(want[n]||'none'));
+    t.simAbandon(); await sleep(10); t.simClearSave();
+  }
+  t.P.runs={}; t.P.runsDone=[];
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -2239,7 +2253,7 @@ async function ttsChecks(){
   t.ttsSend('One. Two. Three. '+('padding words here. '.repeat(20)),999,false);
   ok(spoken.length>nChunked+1,'while the normal path chunks');
 
-  t.startPaper(8); await sleep(20);
+  t.startPaper(2); await sleep(20);   // an early paper: every question keeps read-aloud
   eq($('simTts').textContent,'🔊 Read','the button offers a read');
   const n0=spoken.length;
   $('simTts').click(); await sleep(30);   // ttsSpeak yields a tick before speaking
@@ -2689,7 +2703,7 @@ async function integrationChecks(){
   const realU=window.SpeechSynthesisUtterance;
   window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };
 
-  t.startPaper(11); await sleep(30);
+  t.startPaper(2); await sleep(30);   // an early paper: every question keeps read-aloud
   $('simTts').click(); await sleep(30);
   eq($('simTts').textContent,'\u23f9 Stop','reading aloud mid-exam');
   ok(spoken.length>=1,'it spoke');
@@ -2809,7 +2823,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
