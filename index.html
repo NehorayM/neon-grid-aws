@@ -5738,7 +5738,10 @@ function simAway(){ if(!simAwayAt) simAwayAt=Date.now(); }
 function simBack(){
   if(!simAwayAt) return;
   const gone=Date.now()-simAwayAt; simAwayAt=0;
-  if(sim&&sim.running&&sim.qEndAt&&gone>0) sim.qEndAt+=gone;
+  // Only practice gets the time back. In a simulation another tab is not a free break: a
+  // closed tab is charged, leaving through the app costs one of two breaks, and pushing the
+  // deadline here made the browser's tab bar the one exit that cost nothing.
+  if(sim&&sim.running&&sim.qEndAt&&gone>0&&isPractice()) sim.qEndAt+=gone;
   if(sim&&sim.running) simQSync();
 }
 if(typeof document!=='undefined'){

@@ -1721,12 +1721,22 @@ async function qClockChecks(){
   eq(t.simQLeft,70,'ticking by hand still works for the harness');
   ok(t.sim.qEndAt<dl,'and the deadline moves with it, so the two cannot disagree');
   ok(Math.abs((t.sim.qEndAt-Date.now())/1000-70)<2,'the deadline agrees with the counter');
-  // time away is not spent on the question
+  // In a simulation, time in another tab IS spent on the question. It used to be pushed out,
+  // which made the tab bar a free break: three minutes away gave the question 180 seconds
+  // back while the paper was charged.
   t.simAway();
   const deadlineWhenAway=t.sim.qEndAt;
   await sleep(120);
   t.simBack();
-  ok(t.sim.qEndAt>deadlineWhenAway,'coming back pushes the deadline out by the time away');
+  eq(t.sim.qEndAt,deadlineWhenAway,'in a simulation, another tab does not push the deadline');
+  // in practice it does, because practice pauses whenever you leave
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  t.startPaper(1,'practice'); await sleep(30);
+  t.simAway();
+  const practiceDl=t.sim.qEndAt;
+  await sleep(120);
+  t.simBack();
+  ok(t.sim.qEndAt>practiceDl,'in practice, coming back pushes the deadline out by the time away');
   ok(typeof t.clockEnsure==='function','there is a way to revive a dead clock');
   t.clockEnsure();
   ok(true,'and calling it under TEST does nothing rather than throwing');
