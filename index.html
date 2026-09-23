@@ -7343,10 +7343,13 @@ function exFind(text,limit){
   for(const term of EX_TERMS){
     if(hits.length>=limit) break;
     if(EX_STOP.has(term.t.toLowerCase())) continue;
-    const hit=term.parts.some(pp=>{
+    // Compiled once per term and kept. Building a RegExp per part on every call cost ~18 ms
+    // per explanation, because exCue runs this for each of 216 cues.
+    if(!term._re) term._re=term.parts.map(pp=>{
       const esc=pp.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-      return new RegExp('(?<![a-z0-9])'+esc+'(?![a-z0-9])').test(low);
+      return new RegExp('(?<![a-z0-9])'+esc+'(?![a-z0-9])');
     });
+    const hit=term._re.some(re=>re.test(low));
     if(hit&&!hits.some(x=>x.t.toLowerCase().indexOf(term.t.toLowerCase())>=0)) hits.push(term);
   }
   return hits;
@@ -7357,11 +7360,28 @@ function exCue(q){
   const stem=q.q.toLowerCase();
   let best=null,bestScore=0;
   (EXPLAIN.cues||[]).forEach(c=>{
-    const terms=exFind(c.a,3);
-    if(!terms.length) return;
-    let score=terms.reduce((s,t)=>s+(correct.indexOf(t.t.toLowerCase())>=0?2:0),0);
-    const cueWords=(c.c||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>4&&!EX_STOP.has(w));
-    score+=cueWords.filter(w=>stem.indexOf(w)>=0).length;
+    if(!c._terms){
+      c._terms=exFind(c.a,3);
+      // The service the cue RECOMMENDS is the one it names first; the rest qualify it —
+      // "Global Accelerator (not CloudFront)", "Lambda in VPC (+ NAT Gateway)". exFind hands
+      // terms back in glossary order, so the leading one is found by where it sits in the text.
+      const low=String(c.a||'').toLowerCase();
+      let at=1e9; c._lead=null;
+      c._terms.forEach(t=>{
+        t.parts.forEach(pp=>{ const k=low.indexOf(pp.toLowerCase()); if(k>=0&&k<at){ at=k; c._lead=t; } });
+      });
+    }
+    const terms=c._terms;
+    if(!terms.length||!c._lead) return;
+    // A cue is a claim about the ANSWER — "if it says X, think Y". Stem words alone cleared
+    // the old threshold, and matching ANY named service let "Global Accelerator (not
+    // CloudFront)" qualify under a CloudFront answer. The recommended service must be there.
+    if(!c._lead._re.some(re=>re.test(' '+correct+' '))) return;
+    const answerHits=terms.filter(t=>correct.indexOf(t.t.toLowerCase())>=0).length;
+    let score=answerHits*2;
+    if(!c._words) c._words=(c.c||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/)
+      .filter(w=>w.length>4&&!EX_STOP.has(w));
+    score+=c._words.filter(w=>stem.indexOf(w)>=0).length;
     if(score>bestScore){ bestScore=score; best=c; }
   });
   return bestScore>=3?best:null;

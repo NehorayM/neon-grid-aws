@@ -641,6 +641,27 @@ function whyQualityChecks(){
   ok(blank<200,'most options get a line from the write-up itself ('+blank+' without)');
   ok(ocr<20,'the OCR damage in the option text is repaired ('+ocr+' left)');
 }
+// The exam cue under an answer must be about that answer. It used to clear its threshold on
+// generic stem words alone, so a Site-to-Site VPN question was cued with CloudFront Signed
+// Cookies, and "Global Accelerator (not CloudFront)" qualified under a CloudFront answer.
+function cueChecks(){
+  const t=T();
+  const t0=performance.now();
+  let shown=0, wrongLead=0; const bad=[];
+  t.QS.forEach((q,i)=>{
+    const c=t.exCue(q); if(!c) return;
+    shown++;
+    const correct=' '+q.o.filter(x=>q.a.includes(x[0])).map(x=>x[1]).join(' ').toLowerCase()+' ';
+    const lead=c._lead;
+    if(!lead||!lead._re.some(re=>re.test(correct))){ wrongLead++; if(bad.length<3) bad.push('q'+i+' '+c.a); }
+  });
+  const ms=performance.now()-t0;
+  ok(shown>500,'most questions still get a cue ('+shown+')');
+  eq(wrongLead,0,'every cue shown names a service the correct answer actually uses '+bad.join('; '));
+  ok(ms<t.QS.length*2,'picking cues for the whole bank is fast ('+Math.round(ms)+' ms)');
+  const vpn=t.exCue(t.QS[226]);
+  ok(!vpn||!/Signed Cookies/.test(vpn.a),'the VPN question is not cued with CloudFront Signed Cookies');
+}
 function whyChecks(){
   const t=T(), $=id=>document.getElementById(id);
   const withW=t.QS.filter(q=>q.w).length;
@@ -2383,7 +2404,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
