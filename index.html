@@ -53,6 +53,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   color:var(--dim)}
 .pill.coin{color:var(--gold)} .pill.streak{color:var(--dim)}
 .pill.pop{animation:pillPop .4s ease}
+@keyframes nope{0%,100%{transform:none}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+.opt.nope{animation:nope .32s ease}
+@media (prefers-reduced-motion:reduce){.opt.nope{animation:none;outline:2px solid var(--red)}}
 @keyframes pillPop{0%{transform:scale(1)}40%{transform:scale(1.22)}100%{transform:scale(1)}}
 
 /* ---------- screens ---------- */
@@ -2514,6 +2517,7 @@ const sfx={
   rank:()=>[523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.16,'triangle',.13),i*95)),
   hit:()=>beep(520,.06,'triangle',.1),
   bad:()=>beep(160,.18,'square',.1,-60),
+  nope:()=>{ beep(300,.05,'triangle',.07); setTimeout(()=>beep(240,.06,'triangle',.07),60); },  // soft: a refusal, not a wrong answer
   end:()=>[784,659,523].forEach((f,i)=>setTimeout(()=>beep(f,.2,'sine',.12),i*110))
 };
 
@@ -2675,12 +2679,22 @@ function loadQuestionInto(qi){
   $('qSector').innerHTML=esc($('qSector').textContent)+(studyMode?'<span class="studytag">STUDY</span>':'');
   go('quizScreen');
 }
+// At the limit on a multi-answer question, a further tap used to vanish without a trace.
+function pickFull(need,el){
+  if(el){ el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope'); }
+  if(typeof sfx!=='undefined'&&sfx.nope) sfx.nope();
+  toast('This one takes '+need+' \u2014 tap a picked answer to drop it first');
+}
 function toggleOpt(ltr,btn){
   if(answeredThis||eliminated.has(ltr)) return;
   if(curQ<0||!QS[curQ]) return;
   const need=QS[curQ].a.length;
   if(chosen.has(ltr)) chosen.delete(ltr);
-  else { if(need===1) chosen.clear(); if(chosen.size>=need) return; chosen.add(ltr); }
+  else {
+    if(need===1) chosen.clear();
+    if(chosen.size>=need){ pickFull(need,btn||[...$('qOpts').children].find(e=>e.dataset.ltr===ltr)); return; }
+    chosen.add(ltr);
+  }
   sfx.tap();
   [...$('qOpts').children].forEach(el=>el.classList.toggle('sel',chosen.has(el.dataset.ltr)));
 }
@@ -5904,7 +5918,11 @@ function simPick(ltr){
   const need=QS[sim.qs[sim.i]].a.length;
   const cur=new Set(sim.ans[sim.i]||[]);
   if(cur.has(ltr)) cur.delete(ltr);
-  else { if(need===1) cur.clear(); if(cur.size>=need) return; cur.add(ltr); }
+  else {
+    if(need===1) cur.clear();
+    if(cur.size>=need){ pickFull(need,[...$('qOpts').children].find(e=>e.dataset.ltr===ltr)); return; }
+    cur.add(ltr);
+  }
   sim.ans[sim.i]=[...cur];
   chosen.clear(); cur.forEach(l=>chosen.add(l));
   [...$('qOpts').children].forEach(el=>el.classList.toggle('sel',cur.has(el.dataset.ltr)));
@@ -8457,7 +8475,11 @@ function renderDuelQuestion(d){
     b.onclick=()=>{
       if(d.you.answered) return;
       if(duelPicked.has(ltr)) duelPicked.delete(ltr);
-      else { if(need===1) duelPicked.clear(); if(duelPicked.size>=need) return; duelPicked.add(ltr); }
+      else {
+        if(need===1) duelPicked.clear();
+        if(duelPicked.size>=need){ pickFull(need,b); return; }
+        duelPicked.add(ltr);
+      }
       [...box.children].forEach(el=>el.classList.toggle('sel',duelPicked.has(el.dataset.ltr)));
       $('duelLock').classList.toggle('hidden',duelPicked.size!==need);
     };

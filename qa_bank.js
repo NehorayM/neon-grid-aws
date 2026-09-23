@@ -949,6 +949,29 @@ async function refreshChecks(){
 // The sheets are dialogs for a keyboard and a screen reader too, not just to the eye.
 // An answer given just before the page closed used to be lost: saves wait 250 ms and
 // nothing flushed them. And a browser refusing every write was never mentioned.
+// A tap past the limit on a multi-answer question used to vanish without a trace.
+async function pickCapChecks(){
+  const t=T();
+  let k=-1;
+  for(let n=t.EXPLAIN_PAPERS+1;n<=t.PAPER_COUNT&&k<0;n++){
+    t.simClearSave(); t.startPaper(n,'exam'); await sleep(30);
+    k=t.sim.qs.findIndex(qi=>t.QS[qi].a.length===2);
+    if(k<0){ t.simAbandon(); await sleep(20); }
+  }
+  ok(k>=0,'there is a two-answer question on a paper that does not teach');
+  t.simJump(k); await sleep(30);
+  const opts=[...document.querySelectorAll('#qOpts .opt')];
+  opts[0].click(); opts[1].click(); await sleep(20);
+  const before=t.sim.ans[k].join();
+  opts[2].click(); await sleep(30);
+  eq(t.sim.ans[k].join(),before,'a third pick on a two-answer question is refused');
+  ok(opts[2].classList.contains('nope'),'and the option tapped shows it was refused');
+  ok([...document.querySelectorAll('#toasts .toast')].some(x=>/takes 2/.test(x.textContent)),
+     'and says how many the question takes');
+  opts[0].click(); opts[2].click(); await sleep(20);
+  ok(t.sim.ans[k].includes(opts[2].dataset.ltr),'dropping one first lets the new one in');
+  t.simAbandon(); await sleep(30); t.simClearSave();
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -2456,7 +2479,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
