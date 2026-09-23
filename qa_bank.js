@@ -97,6 +97,14 @@ async function runPaper(n,{answerAll=true,rightRatio=0.6,flagEvery=7}={}){
   hittable(btn,'Start button on exam '+n);
   btn.click(); await sleep(40);
 
+  // Start raises the mode sheet rather than starting anything, so the walk-through answers
+  // it. These two are now the real way into a paper, so they are hit-tested like any other
+  // primary button — a sheet button that does not take taps is a paper you cannot begin.
+  ok(!$('modeAsk').classList.contains('hidden'),'Start asks which kind of run this is');
+  hittable($('modeAskExam'),'the Simulation choice');
+  hittable($('modeAskPractice'),'the Practice choice');
+  $('modeAskExam').click(); await sleep(40);
+
   const sim=t.sim;
   ok(!!sim,'an exam is running');
   eq(sim.paper,n,'the running exam is paper '+n);
@@ -915,6 +923,139 @@ async function refreshChecks(){
 }
 
 // ---------- two six-minute breaks per paper ----------
+// A paper is sat either under exam conditions or as practice, and the difference is entirely
+// in the breaks. Everything below is a rule the picker introduced or a bug found building it.
+async function modeChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+
+  // the picker asks, and asks before anything starts
+  t.simClearSave();
+  let picked=null;
+  t.modeAsk('Exam 1',m=>{ picked=m; });
+  ok(!$('modeAsk').classList.contains('hidden'),'starting a paper asks which kind it is');
+  ok(/Exam 1/.test($('modeAskTitle').textContent),'and names the paper being started');
+  t.modePick('practice');
+  eq(picked,'practice','the choice reaches the caller');
+  ok($('modeAsk').classList.contains('hidden'),'and the sheet closes behind it');
+  t.modeAsk('Exam 1',()=>{}); t.modeAskClose();
+  ok($('modeAsk').classList.contains('hidden'),'backing out closes it without starting anything');
+
+  // ---- practice: stop as often as you like, for as long as you like ----
+  t.simClearSave(); t.startPaper(1,'practice'); await sleep(30);
+  ok(t.isPractice(),'a practice paper knows it is one');
+  eq(t.brkLeft(),Infinity,'and is not rationed to two breaks');
+  eq($('qSector').textContent.indexOf('PRACTICE')>0,true,'the header says so, so you cannot forget');
+
+  t.simQTick(20);
+  const qBefore=t.simQLeft, paperBefore=t.sim.endAt-Date.now();
+  $('navHome').click(); await sleep(20);
+  ok($('brkAsk').classList.contains('hidden'),'leaving practice does not ask \u2014 the pause is free');
+  eq(t.route,'homeScreen','and it lets you go');
+  ok(t.brkOn()&&t.brkOpen(),'the paper is paused, open-endedly');
+
+  t.sim.brkFrom-=20*60*1000;                       // twenty minutes away
+  t.go('quizScreen'); await sleep(20);
+  eq(t.route,'quizScreen','coming back to the paper is how the pause ends');
+  ok(!t.brkOn(),'and it does end');
+  eq(t.simQLeft,qBefore,'the question keeps the seconds it had');
+  const gained=(t.sim.endAt-Date.now())-paperBefore;
+  ok(Math.abs(gained-20*60*1000)<5000,
+     'and the paper gets back what the pause ran, not a fixed six minutes');
+
+  // the paused bar is the way back in, and it has to actually take a tap
+  t.go('homeScreen'); await sleep(20);
+  const bar=$('brkBar');
+  ok(!bar.classList.contains('hidden'),'a paused practice paper shows the bar');
+  ok(bar.classList.contains('tappable'),'and the bar is a button, not a status line');
+  eq(bar.getAttribute('role'),'button','labelled as one');
+  hittable(bar,'the paused bar');
+  bar.click(); await sleep(30);
+  eq(t.route,'quizScreen','tapping it goes back to the paper');
+  ok(!t.brkOn(),'and ends the pause');
+
+  // as many as you like
+  for(let k=0;k<4;k++){ t.go('homeScreen'); await sleep(5); t.go('quizScreen'); await sleep(5); }
+  ok(t.sim.brkUsed>=5,'five pauses is not a problem in practice');
+  eq(t.brkLeft(),Infinity,'and there are still no limits');
+
+  // ---- a refresh mid-pause pays the pause once, not twice ----
+  t.simClearSave(); t.startPaper(2,'practice'); await sleep(20);
+  t.simQTick(20);
+  t.go('homeScreen'); await sleep(10);
+  t.sim.brkFrom-=30*60*1000;
+  t.simPersist();
+  const sv=JSON.parse(JSON.stringify(t.P.simSave));
+  eq(sv.mode,'practice','the save remembers which kind of paper it is');
+  eq(sv.brkOpen,1,'and that it was paused when it was written');
+  eq(t.simAwayCost(sv),0,'time inside an open pause is not charged');
+  const savedMin=Math.round(sv.left/60000), savedQ=sv.qt[sv.i];
+  t.simResume(); await sleep(20);
+  ok(t.isPractice(),'a resumed practice paper is still practice');
+  ok(Math.abs(Math.round((t.sim.endAt-Date.now())/60000)-savedMin)<=1,
+     'and comes back on the clock it was saved with \u2014 not credited the pause a second time');
+  eq(t.simQLeft,savedQ,'with the question where it was left');
+
+  // ---- simulation: the old rules, unchanged ----
+  t.simClearSave(); t.startPaper(3,'exam'); await sleep(20);
+  ok(!t.isPractice(),'an exam paper is not practice');
+  eq(t.brkLeft(),2,'two breaks');
+  $('navHome').click(); await sleep(20);
+  ok(!$('brkAsk').classList.contains('hidden'),'and leaving one still asks, because it costs');
+  eq(t.route,'quizScreen','and does not leave until you say so');
+  $('brkAskGo').click(); await sleep(20);
+  ok(t.brkOn()&&!t.brkOpen(),'a simulation break is timed, not open-ended');
+  ok(t.brkRemain()>300,'and runs the full six minutes');
+  ok(!$('brkBar').classList.contains('tappable'),
+     'a timed break bar is a status line \u2014 there is nowhere to go until it ends');
+  t.go('quizScreen');
+  eq(t.route,'homeScreen','the paper is not somewhere you can be during a timed break');
+  t.brkEnd(true); await sleep(10);
+  $('navHome').click(); await sleep(20);
+  $('brkAskGo').click(); await sleep(20);
+  t.brkEnd(true); await sleep(10);
+  eq(t.brkLeft(),0,'two breaks is two');
+  $('navHome').click(); await sleep(20);
+  ok($('brkAsk').classList.contains('hidden'),'a third is not offered');
+  eq(t.route,'quizScreen','and the paper keeps you');
+
+  // ---- a closed tab still costs a simulation, which is the exploit that stays closed ----
+  t.simClearSave(); t.startPaper(4,'exam'); await sleep(20);
+  t.simPersist();
+  const sv2=JSON.parse(JSON.stringify(t.P.simSave));
+  sv2.at-=12*60*1000;
+  ok(t.simAwayCost(sv2)>700,'twelve minutes with the tab shut is twelve minutes charged');
+
+  // ---- the random mock exam starts at all ----
+  // startSim() read qs.length from inside the object literal that defines the qs property,
+  // so it threw "qs is not defined" before sim was ever assigned, and the button did nothing.
+  t.simClearSave(); t.go('homeScreen'); await sleep(20);
+  let threw=null;
+  try { t.startSim('practice'); } catch(e){ threw=String(e.message); }
+  await sleep(30);
+  eq(threw,null,'starting the mock exam does not throw');
+  ok(!!t.sim&&t.sim.running,'it actually starts one');
+  eq(t.sim.paper,0,'a mock has no paper number');
+  ok(t.sim.qs.length>0,'with questions in it');
+  ok(t.sim.mins>0,'and a budget, which is what qs.length was needed for');
+  eq(t.sim.mode,'practice','and it takes a mode like the numbered papers do');
+  t.simAbandon(); await sleep(30);
+
+  // ---- the record says which conditions a score was set under ----
+  t.P.papers={};
+  t.recordPaper(9,80,true);
+  eq((t.P.papers[9]||{}).bestMode,'practice','a practice best is marked as one');
+  t.recordPaper(9,85,false);
+  eq(t.P.papers[9].bestMode,'exam','and a better one sat properly replaces it');
+  eq(t.P.papers[9].ptries,1,'the practice attempts are counted separately');
+  t.P.papers={};
+  // Leave nothing running and nothing on top: a sheet left open covers the home screen and
+  // the next check reads as "something else is on top" of a tile that is perfectly fine.
+  t.modeAskClose(); t.brkAskClose();
+  if(t.sim&&t.sim.running) t.simAbandon();
+  await sleep(30);
+  t.simClearSave();
+  t.go('homeScreen'); await sleep(20);
+}
 async function breakChecks(){
   const t=T(), $=id=>document.getElementById(id);
   t.simClearSave(); t.startPaper(1); await sleep(30);
@@ -1111,7 +1252,11 @@ async function paperRowChecks(){
   eq(other.textContent.trim(),wasLabel,'an unanswered warning lapses');
   eq(t.simSaved().paper,4,'still untouched');
   other.click(); await sleep(20); other.click(); await sleep(40);
-  eq(t.sim.paper,6,'the second tap starts the other paper');
+  ok(!$('modeAsk').classList.contains('hidden'),
+     'confirming the discard asks which kind of run the new one is');
+  $('modeAskExam').click(); await sleep(40);
+  eq(t.sim.paper,6,'and answering it starts the other paper');
+  eq(t.sim.mode,'exam','in the mode that was picked');
   t.simAbandon(); await sleep(40);
 
   // the restart button warns too
@@ -1122,7 +1267,10 @@ async function paperRowChecks(){
   ok(/start again/.test(again.textContent),'restarting warns first');
   eq(t.simSaved().i,1,'and has not reset anything yet');
   again.click(); await sleep(40);
-  eq(t.sim.i,0,'the second tap starts it from question one');
+  ok(!$('modeAsk').classList.contains('hidden'),'restarting asks the same question');
+  $('modeAskPractice').click(); await sleep(40);
+  eq(t.sim.i,0,'and then starts it from question one');
+  eq(t.sim.mode,'practice','in the mode that was picked');
   t.simAbandon(); await sleep(40);
 
   // resuming from the row lands where it left off
@@ -1428,6 +1576,10 @@ async function deviceChecks(){
   ok(st.scrollWidth<=st.clientWidth+1,'and none of it is clipped');
   ok(document.documentElement.scrollWidth<=vw+1,'and it does not push the page sideways');
   st.click(); await sleep(40);
+  // taking over from another device still asks which kind of run this one is
+  ok(!document.getElementById('modeAsk').classList.contains('hidden'),
+     'and then asks which kind of run the new paper is');
+  document.getElementById('modeAskExam').click(); await sleep(40);
   eq(t.sim.paper,3,'the second tap starts the new paper');
   eq(t.P.simSave.dev,t.DEVICE_ID,'which this device now owns');
 
@@ -2231,7 +2383,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

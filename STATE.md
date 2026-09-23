@@ -438,6 +438,55 @@ If the charge empties the paper it is not silently lost: the run resumes with no
 back, and the resume rows quote what a resume would really hand you rather than the saved
 figure.
 
+## Simulation or practice, asked at the start
+
+Two breaks of exactly six minutes is the real exam's rule and the right default when the
+point is to find out whether you would pass. It is the wrong rule when the point is to learn,
+because stopping to read something costs one of two breaks and then the clock runs anyway.
+
+So every Start, Retake and restart raises `modeAsk()` and the paper carries a `sim.mode`:
+
+| | breaks | length | how one ends |
+|---|---|---|---|
+| `exam` (default) | two | exactly six minutes | on its own, and the paper is off-limits until then |
+| `practice` | unlimited | as long as you like | by going back into the paper |
+
+Resume never asks — a paper already under way was answered for when it began — and the
+"next paper" button inherits the mode you are already sitting in.
+
+An open-ended pause is a separate state from a timed one. `sim.brkOpen` marks it and
+`sim.brkFrom` records when it started, because the break machinery is built around
+`brkUntil` as a deadline and an open pause has no deadline to hold. `brkEnd()` pays the
+clocks back `brkElapsed()` rather than a fixed `BREAK_SECS`.
+
+Two things that are easy to get wrong here:
+
+- **Coming back is how a practice pause ends.** The guard that keeps you out of the paper
+  during a timed break would otherwise lock you out of your own paper forever. In practice
+  it calls `brkEnd()` and returns, because `simLoad()` has already navigated there — going
+  on to `_go(id)` as well just renders it twice.
+- **A refresh mid-pause must pay the pause once.** `simResume()` deliberately does NOT carry
+  `brkOpen`/`brkFrom` across. It did at first, and thirty minutes paused came back as thirty
+  minutes *gained*: `simAwayCost` correctly charges nothing for time inside an open pause,
+  and then walking into the paper ran `brkEnd` and credited the same thirty minutes again —
+  a 98-minute paper resumed with 128 minutes on it. The saved `left` already has the pause
+  excluded, so the resume is where the pause ends, and it ends free.
+
+A closed tab still costs a simulation its time. That is the exploit closed earlier and
+`modeChecks()` keeps a check on it, because "the clock does not run while I am away" is
+exactly what practice mode is allowed to do and a simulation is not.
+
+The mode is on screen in the paper header (`EXAM 3 · PRACTICE`) and a best score set in
+practice is marked as such on its row, because a 78% you paused your way through is not the
+same evidence as a 78% you sat straight through. Scores still count the same otherwise.
+
+**`startSim()` — the random mock exam — was dead until this went in.** It read `qs.length`
+while building the object literal that *defines* the `qs` property, which is a plain
+ReferenceError, thrown before `sim` was ever assigned. The handler is an inline arrow so
+nothing reported it: a 470x70 button that did nothing at all, on every tap. If you add
+another entry point, build the questions first and measure them after, the way `startPaper`
+does.
+
 ## Two six-minute breaks per paper
 
 Leaving the question screen mid-paper used to keep both clocks running, so a glance at Study

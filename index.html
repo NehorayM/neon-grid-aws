@@ -408,17 +408,39 @@ body[data-fs="s"] .opt{font-size:13.5px} body[data-fs="l"] .opt{font-size:16.5px
    allows for, so the nav simply goes away while a decision is on screen. Nothing under a modal
    should be competing for the same taps anyway. */
 body.asking #nav{opacity:0;pointer-events:none}
+.pscore .pmode{display:block;font-style:normal;font-family:var(--mono);font-size:8.5px;
+  letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin-top:1px}
 .brkfacts{display:flex;gap:10px;margin-top:12px}
 .brkfact{flex:1;text-align:center;padding:12px 8px;border-radius:12px;
   background:var(--surface);border:1px solid var(--line)}
 .brkfact b{display:block;font-family:var(--mono);font-size:20px;font-weight:700;color:var(--cyan)}
 .brkfact span{display:block;font-size:10.5px;color:var(--dim);margin-top:3px;letter-spacing:.3px}
+#modeAsk{position:absolute;inset:0;z-index:73;display:flex;flex-direction:column;
+  justify-content:flex-end;background:rgba(6,9,13,.72)}
+#modeAsk.hidden{display:none}
+/* Each choice is one big target with its consequence written on it, rather than a pair of
+   words that mean nothing until you have already picked wrong once. */
+.modepick{display:flex;gap:12px;width:100%;text-align:left;margin-top:10px;padding:14px;
+  border-radius:15px;background:var(--surface);border:1px solid var(--line);color:var(--txt);
+  cursor:pointer;transition:border-color .15s,background .15s}
+.modepick:hover,.modepick:focus-visible{border-color:color-mix(in srgb, var(--cyan) 55%, var(--line));
+  background:color-mix(in srgb, var(--cyan) 8%, var(--surface))}
+.modepick .mem{font-size:21px;flex:none;line-height:1.25}
+.modepick .mbody{flex:1;min-width:0}
+.modepick b{display:block;font-size:13.5px;font-weight:650;letter-spacing:.3px}
+.modepick i{display:block;font-style:normal;font-size:11.5px;line-height:1.5;color:var(--dim);
+  margin-top:3px}
+.modenote{margin-top:12px;font-size:11px}
 #brkBar{position:fixed;left:10px;right:10px;bottom:74px;z-index:60;display:flex;align-items:center;
   gap:10px;padding:11px 14px;border-radius:13px;
   background:color-mix(in srgb, var(--cyan) 14%, var(--bg2));
   border:1px solid color-mix(in srgb, var(--cyan) 45%, var(--line));
   box-shadow:0 8px 26px rgba(0,0,0,.42)}
 #brkBar.hidden{display:none}
+#brkBar.tappable{cursor:pointer}
+#brkBar.tappable:hover,#brkBar.tappable:focus-visible{
+  background:color-mix(in srgb, var(--cyan) 22%, var(--bg2));
+  border-color:color-mix(in srgb, var(--cyan) 70%, var(--line))}
 #brkBar .bem{font-size:17px;flex:none}
 #brkBar .btxt{flex:1;min-width:0;font-size:12.5px;color:var(--txt)}
 #brkBar .bclock{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--cyan);
@@ -2128,6 +2150,31 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <button class="btn ghost sm" id="brkAskNo" style="width:100%;margin-top:8px">Stay on the question</button>
     </div>
   </div>
+  <div id="modeAsk" class="hidden">
+    <div class="sheet">
+      <h3 id="modeAskTitle">How do you want to sit this paper?</h3>
+      <p class="sub" id="modeAskSub"></p>
+      <button class="modepick" id="modeAskExam">
+        <span class="mem">⏱</span>
+        <span class="mbody">
+          <b>Simulation</b>
+          <i>Exam conditions. Two breaks, six minutes each, and the paper waits for
+             them — after that, leaving is not offered and the clock keeps running.</i>
+        </span>
+      </button>
+      <button class="modepick" id="modeAskPractice">
+        <span class="mem">☕</span>
+        <span class="mbody">
+          <b>Practice</b>
+          <i>Stop as often as you like, for as long as you like. The paper pauses when
+             you leave and picks up where you left it.</i>
+        </span>
+      </button>
+      <p class="sub modenote">Both are the same 65 questions on the same clock. Only
+        the breaks differ, and a practice run is marked as one in your records.</p>
+      <button class="btn ghost sm" id="modeAskNo" style="width:100%;margin-top:10px">Not now</button>
+    </div>
+  </div>
   <div id="brkBar" class="hidden">
     <span class="bem">☕</span>
     <span class="btxt">Break — the paper is paused</span>
@@ -2201,7 +2248,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-22 14:18 UTC';
+const BUILD='2026-09-23 05:51 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -5246,38 +5293,52 @@ function sessionTime(){ return sessMs; }
 // Leaving the question screen used to cost exam time, so a glance at Study was expensive.
 // A paper now allows exactly two breaks of exactly six minutes, and both clocks stop for one.
 const BREAK_MAX=2, BREAK_SECS=360;
-const brkLeft=()=>sim?Math.max(0,BREAK_MAX-(sim.brkUsed||0)):0;
-const brkOn=()=>!!(sim&&sim.brkUntil&&sim.brkUntil>Date.now());
-const brkRemain=()=>brkOn()?Math.max(0,Math.ceil((sim.brkUntil-Date.now())/1000)):0;
+// A paper is sat one of two ways. 'exam' is the real thing and the default; 'practice' trades
+// the two-break rule for stopping whenever you like, because a paper you are learning from is
+// not a paper you are being timed on.
+const isPractice=()=>!!(sim&&sim.mode==='practice');
+const brkLeft=()=>!sim?0:isPractice()?Infinity:Math.max(0,BREAK_MAX-(sim.brkUsed||0));
+// A practice break has no end time — it lasts until you walk back into the paper.
+const brkOpen=()=>!!(sim&&sim.brkOpen);
+const brkOn=()=>!!(sim&&(brkOpen()||(sim.brkUntil&&sim.brkUntil>Date.now())));
+const brkRemain=()=>(brkOn()&&!brkOpen())?Math.max(0,Math.ceil((sim.brkUntil-Date.now())/1000)):0;
+// how long an open break has been running, for the bar
+const brkElapsed=()=>brkOpen()?Math.max(0,Date.now()-Number(sim.brkFrom||Date.now())):0;
 
 function brkStart(){
   if(!sim||!sim.running||brkOn()||!brkLeft()) return false;
   sim.brkUsed=(sim.brkUsed||0)+1;
-  sim.brkUntil=Date.now()+BREAK_SECS*1000;
+  if(isPractice()){ sim.brkOpen=1; sim.brkFrom=Date.now(); sim.brkUntil=0; }
+  else sim.brkUntil=Date.now()+BREAK_SECS*1000;
   simQStop();                       // the question's own countdown stops dead
   ttsStop();
   simPersist();
   renderBrk(); renderClock();
-  toast('\u2615 Break started \u2014 6 minutes, the paper is paused');
+  toast(isPractice()?'\u2615 Paper paused \u2014 come back whenever you are ready'
+                    :'\u2615 Break started \u2014 6 minutes, the paper is paused');
   return true;
 }
 // Both clocks are deadlines, so a break is paid for by pushing them out by its full length.
 function brkEnd(quiet){
-  if(!sim||!sim.brkUntil) return;
-  const over=BREAK_SECS*1000;
-  sim.brkUntil=0;
+  if(!sim||!brkOn()) return;
+  // A timed break always costs its full length; an open one costs however long it actually
+  // ran, which is the only number that can be right when it has no length of its own.
+  const over=brkOpen()?brkElapsed():BREAK_SECS*1000;
+  const wasOpen=brkOpen();
+  sim.brkUntil=0; sim.brkOpen=0; sim.brkFrom=0;
   if(sim.running){
     if(sim.endAt) sim.endAt+=over;                 // the paper's budget
     if(sim.qEndAt) sim.qEndAt+=over;               // and this question's
   }
   simPersist();
   renderBrk(); renderClock();
-  if(!quiet) toast('\u23f0 Break over \u2014 back to the paper');
+  if(!quiet) toast(wasOpen?'\u25b6 Back to the paper':'\u23f0 Break over \u2014 back to the paper');
   if(sim&&sim.running){ simLoad(); }        // brkUntil is already 0, so go() lets this through
 }
 function brkTick(){
-  if(!sim||!sim.brkUntil) return;
-  if(brkRemain()<=0){ brkEnd(false); return; }
+  if(!sim||!brkOn()) return;
+  // An open break never runs out. It ends when you come back, not when a clock says so.
+  if(!brkOpen()&&brkRemain()<=0){ brkEnd(false); return; }
   renderBrk(); renderClock();
 }
 function renderBrk(){
@@ -5285,8 +5346,16 @@ function renderBrk(){
   if(!brkOn()){ bar.classList.add('hidden'); return; }
   bar.classList.remove('hidden');
   const txt=bar.querySelector('.btxt');
-  if(txt) txt.textContent='Paper paused — it comes back on its own';
-  $('brkClock').textContent=fmtClock(brkRemain()*1000);
+  if(txt) txt.textContent=brkOpen()?'Paused — tap to pick the paper back up'
+                                   :'Paper paused — it comes back on its own';
+  // A timed break is a status line; an open one is the way back in.
+  bar.classList.toggle('tappable',brkOpen());
+  bar.setAttribute('role',brkOpen()?'button':'status');
+  if(brkOpen()) bar.setAttribute('tabindex','0'); else bar.removeAttribute('tabindex');
+  bar.setAttribute('aria-label',brkOpen()
+    ?'Paper paused. Activate to go back to question '+((sim&&sim.i||0)+1)
+    :'Paper paused, back in '+fmtClock(brkRemain()*1000));
+  $('brkClock').textContent=brkOpen()?fmtClock(brkElapsed()):fmtClock(brkRemain()*1000);
 }
 
 // Asking. This is the one place in the app with a real yes/no sheet, because it costs one of
@@ -5295,6 +5364,9 @@ let brkPending=null;
 function brkAsk(go2){
   if(!sim||!sim.running) return false;
   if(brkOn()) return false;
+  // Nothing to weigh up in practice: the pause is free and reversible, so asking would only
+  // be a dialog between you and the thing you already asked for.
+  if(isPractice()){ brkStart(); if(go2) go2(); return true; }
   if(!brkLeft()){
     toast('\u23f1 No breaks left \u2014 the clock keeps running');
     return false;
@@ -5311,6 +5383,27 @@ function brkAsk(go2){
   $('brkAsk').classList.remove('hidden');
   if(document.body) document.body.classList.add('asking');
   return true;
+}
+// Which kind of run this is, asked once at the start. Resume never asks: a paper already
+// under way was answered for when it began.
+let modePending=null;
+function modeAsk(label,then){
+  modePending=then||null;
+  $('modeAskTitle').textContent='How do you want to sit '+label+'?';
+  $('modeAskSub').textContent='Same 65 questions and the same clock either way. What changes '+
+    'is whether you can stop.';
+  $('modeAsk').classList.remove('hidden');
+  if(document.body) document.body.classList.add('asking');
+}
+function modeAskClose(){
+  $('modeAsk').classList.add('hidden');
+  if(document.body) document.body.classList.remove('asking');
+  modePending=null;
+}
+function modePick(m){
+  const then=modePending;
+  modeAskClose();
+  if(then) then(m);
 }
 function brkAskClose(){
   $('brkAsk').classList.add('hidden');
@@ -5565,12 +5658,18 @@ function simBuild(){
   while(qs.length<SIM_LEN){ const i=Math.floor(Math.random()*QS.length); if(qs.indexOf(i)<0) qs.push(i); }
   return qs.slice(0,SIM_LEN);
 }
-function startSim(){
+function startSim(mode){
   ensureAudio(); exitStudyMode();
   reviewMode=false; markMode=false; mock=null;
-  sim={qs:simBuild(),i:0,ans:{},flag:{},rev:{},running:true,
-       paper:0,mins:simBudget(qs.length),qt:{},
-       startAt:Date.now(),endAt:Date.now()+simBudget(qs.length)*60000};
+  // Built first, then measured. Reading qs.length from inside the object literal that defines
+  // the qs PROPERTY is a ReferenceError, and it threw before sim was ever assigned.
+  const qs=simBuild();
+  const budget=simBudget(qs.length);
+  simClearSave();
+  sim={qs,i:0,ans:{},flag:{},rev:{},running:true,
+       paper:0,mins:budget,qt:{},
+       mode:(mode==='practice'?'practice':'exam'),
+       startAt:Date.now(),endAt:Date.now()+budget*60000};
   saveProfile();
   renderClock();          // switch to the exam countdown immediately, not on the next tick
   simLoad();
@@ -5727,7 +5826,8 @@ function simLoad(){
   const qi=sim.qs[sim.i], q=QS[qi];
   curQ=qi; answeredThis=false; eliminated.clear();
   chosen.clear(); (sim.ans[sim.i]||[]).forEach(l=>chosen.add(l));
-  $('qSector').textContent=sim.paper?('EXAM '+sim.paper):'EXAM SIM';
+  $('qSector').textContent=(sim.paper?('EXAM '+sim.paper):'EXAM SIM')+
+    (isPractice()?' \u00b7 PRACTICE':'');
   $('qCount').textContent=(sim.i+1)+' / '+simLen();
   $('qBadge').textContent=DOMAINS[domainOf(q.s)].short;
   $('qBadge').style.color='var(--cyan)'; $('qBadge').style.borderColor='var(--cyan)';
@@ -5921,7 +6021,7 @@ function simSubmit(auto){
   P.sims=(P.sims||0)+1; if(passed) P.simsPassed=(P.simsPassed||0)+1;
   P.bestSim=Math.max(P.bestSim||0,pct);
   P.simLog=(P.simLog||[]);
-  P.simLog.unshift({d:dayKey(),p:pct,pass:passed?1:0,mins,
+  P.simLog.unshift({d:dayKey(),p:pct,pass:passed?1:0,mins,pr:isPractice()?1:0,
     dom:DOMAINS.map(x=>byDom[x.id][1]?Math.round(byDom[x.id][0]/byDom[x.id][1]*100):0)});
   P.simLog=P.simLog.slice(0,12);
   P.answered+=len; P.correct+=correct;
@@ -5929,7 +6029,7 @@ function simSubmit(auto){
   P.exams=(P.exams||0)+1; if(passed) P.examsPassed=(P.examsPassed||0)+1;
   logExam(correct,len,passed);
   if(passed) questProgress('exam',1);
-  if(paper) recordPaper(paper,pct);
+  if(paper) recordPaper(paper,pct,isPractice());
   lastExamCsv={paper,name:(paper?'neon-grid-exam-'+paper:'neon-grid-sim')+'-'+dayKey()+'.csv',list:csv};
   const coins=correct+(passed?90:0);
   addCoins(coins); addXP(correct*6+(passed?200:0));
@@ -5978,7 +6078,7 @@ function simAbandon(){
 // ---------- numbered practice exams ----------
 // Paper N is always the same 65 questions, cut from the bank in order, so the
 // set is covered exactly once across all papers and nothing repeats inside one.
-function startPaper(n){
+function startPaper(n,mode){
   if(n<1||n>PAPER_COUNT) return;
   ensureAudio(); exitStudyMode();
   reviewMode=false; markMode=false; mock=null;
@@ -5986,6 +6086,7 @@ function startPaper(n){
   simClearSave();
   const budget=simBudget(qs.length);
   sim={qs,i:0,ans:{},flag:{},rev:{},qt:{},running:true,paper:n,mins:budget,
+       mode:(mode==='practice'?'practice':'exam'),
        startAt:Date.now(),endAt:Date.now()+budget*60000};
   saveProfile();
   renderClock();
@@ -6043,7 +6144,8 @@ function simPersist(){
   // wrote a pair describing two different moments — and the resume charged the gap twice.
   P.simSave={paper:sim.paper||0, qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
              qt:Object.assign({},sim.qt||{},{[sim.i]:Math.max(0,simQLeft)}),
-             brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
+             mode:sim.mode||'exam', brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
+             brkOpen:sim.brkOpen?1:0, brkFrom:sim.brkFrom||0,
              dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
              claimAt:sim.claimAt||0,
              left:Math.max(0,sim.endAt-Date.now()), mins:sim.mins||SIM_MIN, at:Date.now(),
@@ -6064,6 +6166,7 @@ function simAwayCost(sv){
   if(!sv||sv.paused) return 0;
   const now=Date.now(), at=Number(sv.at||0);
   if(!at||now<=at) return 0;
+  if(sv.brkOpen) return 0;   // an open-ended pause covers all of it, however long it ran
   const cover=Math.max(0,Math.min(now,Number(sv.brkUntil||0))-at);
   return Math.max(0,Math.round(((now-at)-cover)/1000));
 }
@@ -6092,7 +6195,12 @@ function simResume(){
     qt[at]=Math.max(0,had-away);
   }
   sim={qs:sv.qs, i:at, ans:sv.ans||{}, flag:sv.flag||{},
-       rev:sv.rev||{}, qt:qt, brkUsed:sv.brkUsed||0, brkUntil:sv.brkUntil||0,
+       rev:sv.rev||{}, qt:qt, mode:sv.mode==='practice'?'practice':'exam',
+       brkUsed:sv.brkUsed||0, brkUntil:sv.brkUntil||0,
+       // An open-ended pause ends here, and it ends free. `left` was written with the pause
+       // already excluded, so carrying brkFrom across would have brkEnd credit the same time
+       // a second time — thirty minutes away came back as thirty minutes gained.
+       brkOpen:0, brkFrom:0,
        running:true, paper:sv.paper||0, mins:sv.mins,
        dev:sv.dev||DEVICE_ID, devKind:sv.devKind||DEVICE_KIND, claimAt:sv.claimAt||0,
        startAt:Date.now()-((sv.mins*60000)-left), endAt:Date.now()+left};
@@ -6501,7 +6609,8 @@ function renderPapers(){
       '<div class="ds">'+esc(meta)+'</div>'+
       (rec?'<div class="pbar"><i style="width:'+pctW(rec.best)+';background:'+col+'"></i></div>':'')+
       '</div>'+
-      ((rec&&!here)?'<div class="pscore" style="color:'+col+'">'+rec.best+'%</div>':'');
+      ((rec&&!here)?'<div class="pscore" style="color:'+col+'">'+rec.best+'%'+
+        (rec.bestMode==='practice'?'<i class="pmode">practice</i>':'')+'</div>':'');
     // The row for the paper you are part way through offers to continue it, rather than
     // making you find the bar at the top — and rather than saying "Retake" over a run you
     // have not finished, which is what used to quietly delete it.
@@ -6516,12 +6625,13 @@ function renderPapers(){
         'discarding question '+((sv.i||0)+1)+' of '+sv.qs.length);
       again.onclick=()=>armed(again,
         'Delete your progress on Exam '+n+' and start again?',
-        ()=>{ simClearSave(); startPaper(n); });
+        ()=>{ simClearSave(); modeAsk('Exam '+n,m=>startPaper(n,m)); });
       row.appendChild(again);
     }
     const b=document.createElement('button');
     b.className='buy';
     b.textContent=savedHere?'Resume':(rec?'Retake':'Start');
+    if(savedHere&&sv.mode==='practice') b.title='Resume \u2014 practice run, pauses freely';
     if(savedHere) b.setAttribute('aria-label',
       'Resume Exam '+n+' at question '+((sv.i||0)+1)+' of '+sv.qs.length);
     b.onclick=()=>{
@@ -6533,10 +6643,11 @@ function renderPapers(){
         const where=simOwns(open)?'':(' on '+otherDevice(open));
         const what=(open.paper?'Exam '+open.paper:'the mock exam')+where+
           ' \u2014 question '+((open.i||0)+1)+' of '+open.qs.length;
-        armed(b,'Delete your progress on '+what+'?',()=>startPaper(n));
+        armed(b,'Delete your progress on '+what+'?',
+          ()=>modeAsk('Exam '+n,m=>startPaper(n,m)));
         return;
       }
-      startPaper(n);
+      modeAsk('Exam '+n,m=>startPaper(n,m));
     };
     row.appendChild(b); L.appendChild(row);
   }
@@ -6562,10 +6673,14 @@ function simResumeHere(sv){
     simResume(); simClaim();
   });
 }
-function recordPaper(n,pct){
+function recordPaper(n,pct,practice){
   P.papers=P.papers||{};
   const r=P.papers[n]||{best:0,tries:0,last:''};
-  r.best=Math.max(r.best,pct); r.tries++; r.last=pct+'%'; r.d=dayKey();
+  // Which conditions a best score was set under is the thing worth keeping. A score you
+  // paused your way through and one you sat straight through are not the same evidence.
+  if(pct>=r.best){ r.best=pct; r.bestMode=practice?'practice':'exam'; }
+  r.tries++; r.last=pct+'%'; r.lastMode=practice?'practice':'exam'; r.d=dayKey();
+  if(practice) r.ptries=(r.ptries||0)+1;
   P.papers[n]=r;
 }
 
@@ -7001,7 +7116,7 @@ $('bankOpen').onclick=()=>{ renderBank(); go('bankScreen'); };
 $('bankBack').onclick=()=>{ go('homeScreen'); renderHome(); };
 $('adaptBtn').onclick=toggleAdaptive;
 $('playClockWrap').onclick=toggleClockView;
-$('simOpen').onclick=()=>{ startSim(); };
+$('simOpen').onclick=()=>modeAsk('the mock exam',m=>startSim(m));
 $('simPrev').onclick=()=>simGo(-1);
 $('simNext').onclick=()=>simGo(1);
 $('simFlag').onclick=simFlagToggle;
@@ -7011,9 +7126,9 @@ $('simRevSubmit').onclick=()=>simSubmit(true);
 $('simRevBack').onclick=()=>{ go('quizScreen'); };
 $('simAgain').onclick=()=>{
   const n=(lastExamCsv&&lastExamCsv.paper)||0;
-  if(n&&n<PAPER_COUNT) startPaper(n+1);
+  if(n&&n<PAPER_COUNT) startPaper(n+1,(sim&&sim.mode)||'exam');
   else if(n){ renderPapers(); go('paperScreen'); }
-  else startSim();
+  else startSim((sim&&sim.mode)||'exam');
 };
 $('simCsv').onclick=exportLastExam;
 $('simTts').onclick=ttsToggle;
@@ -7100,6 +7215,16 @@ $('brkAskGo').onclick=()=>{
   brkAskClose();
   if(brkStart()&&after) after();
 };
+$('modeAskExam').onclick=()=>modePick('exam');
+$('modeAskPractice').onclick=()=>modePick('practice');
+$('modeAskNo').onclick=()=>modeAskClose();
+$('modeAsk').onclick=e=>{ if(e.target&&e.target.id==='modeAsk') modeAskClose(); };
+// the paused bar is the way back into a practice paper
+$('brkBar').onclick=()=>{ if(brkOpen()) go('quizScreen'); };
+$('brkBar').onkeydown=e=>{
+  if(!brkOpen()) return;
+  if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go('quizScreen'); }
+};
 $('brkAskNo').onclick=()=>brkAskClose();
 $('brkAsk').onclick=e=>{ if(e.target&&e.target.id==='brkAsk') brkAskClose(); };
 const _go=go;
@@ -7110,8 +7235,15 @@ go=function(id){
   // countdown — which is exactly what "the timer isn't working" turned out to be. For those six
   // minutes the paper is not somewhere you can be, and it takes you back itself when they end.
   if(typeof brkOn==='function'&&brkOn()&&IN_PAPER[id]){
-    toast('☕ Break — the paper comes back in '+fmtClock(brkRemain()*1000));
-    return;
+    // A practice pause ends by coming back to the paper, so this is the way in, not a wall.
+    if(typeof brkOpen==='function'&&brkOpen()){
+      brkEnd(false);                       // ends the pause and loads the paper itself
+      if(sim&&sim.running) return;         // simLoad() has already taken us there
+    }
+    else {
+      toast('☕ Break — the paper comes back in '+fmtClock(brkRemain()*1000));
+      return;
+    }
   }
   // Walking out of a running paper is either a break or refused. A break in progress lets you
   // move freely, which is the whole point of it.
@@ -9467,6 +9599,7 @@ if(TEST){
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
+    isPractice, brkOpen, brkElapsed, modeAsk, modeAskClose, modePick, recordPaper, startSim,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
     simAwayCost, simPauseSave, resumeOnBoot, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,
