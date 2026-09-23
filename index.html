@@ -2274,7 +2274,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 11:41 UTC';
+const BUILD='2026-09-23 11:45 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -5991,6 +5991,17 @@ function simQTimeUp(){
   // are gone the paper moves on regardless — a blank question simply scores as wrong,
   // because an exam does not wait for you to get it right.
   const last=sim.i>=simLen()-1;
+  // Unanswered when the time ran out: stay, and show the answer and why, instead of moving on
+  // past a question you would otherwise learn nothing from. Answered ones move on as before.
+  const q=QS[sim.qs[sim.i]], picked=sim.ans[sim.i]||[];
+  if(picked.length<q.a.length&&!simRevealed()){
+    sim.rev=sim.rev||{}; sim.rev[sim.i]=1;
+    sim.tout=sim.tout||{}; sim.tout[sim.i]=1;
+    simPersist();
+    simLoad();
+    toast('\u23f1 Time ran out \u2014 here is the answer. Tap Next when you are ready');
+    return;
+  }
   toast(last?'⏳ Time — on to the review':'⏳ '+SIM_QSEC+' seconds — next question');
   simGo(1);
 }
@@ -6106,7 +6117,7 @@ function simLoad(){
     const picked=new Set(sim.ans[sim.i]||[]);
     const okNow=q.a.length===picked.size&&q.a.every(a=>picked.has(a));
     simPaintRevealed(q,picked);
-    renderExplain(q,picked,okNow);
+    renderExplain(q,picked,okNow,!!(sim.tout&&sim.tout[sim.i]));
   } else hideExplain();
   renderMarkBtn(); syncQBar();
   renderExamBrief(qi);
@@ -6546,7 +6557,7 @@ function simSnapshot(){
              qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
              qt:Object.assign({},sim.qt||{},{[sim.i]:Math.max(0,simQLeft)}),
              mode:sim.mode||'exam', brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
-             locked:sim.locked||{}, cont:sim.cont?1:0, base:sim.base||null,
+             locked:sim.locked||{}, cont:sim.cont?1:0, base:sim.base||null, tout:sim.tout||{},
              brkOpen:sim.brkOpen?1:0, brkFrom:sim.brkFrom||0,
              dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
              claimAt:sim.claimAt||0,
@@ -6619,7 +6630,7 @@ function simResume(){
        // a second time — thirty minutes away came back as thirty minutes gained.
        brkOpen:0, brkFrom:0,
        running:true, paper:sv.paper||0, mins:sv.mins,
-       locked:sv.locked||{}, cont:sv.cont?1:0, base:sv.base||null,
+       locked:sv.locked||{}, cont:sv.cont?1:0, base:sv.base||null, tout:sv.tout||{},
        dev:sv.dev||DEVICE_ID, devKind:sv.devKind||DEVICE_KIND, claimAt:sv.claimAt||0,
        startAt:Date.now(), endAt:Date.now()};
   if(away>onThis) simChargeEnd(away-onThis,at);
@@ -8203,11 +8214,11 @@ function optionLine(q,ltr,txt,line,pivot,shared){
   }
   return {text:line,dim:false};
 }
-function renderExplain(q,picked,ok){
+function renderExplain(q,picked,ok,timedOut){
   const e=buildExplain(q,picked,ok);
   const box=$('explain');
   const bits=[];
-  bits.push('<div class="exhead '+(ok?'ok':'no')+'">'+(ok?'✅ Correct':'❌ Not quite')+
+  bits.push('<div class="exhead '+(ok?'ok':'no')+'">'+(timedOut?'\u23f1 Time ran out \u2014 the answer':ok?'✅ Correct':'❌ Not quite')+
             '<span class="tag" style="margin-left:auto">'+esc(e.sector)+'</span></div>');
 
   if(!ok&&e.wrongPicked.length){
@@ -8289,6 +8300,13 @@ function renderExplain(q,picked,ok){
     if(sim) bits.push(cheerHTML(sim.i,sim.qs.length));
     bits.push('<div class="exfoot">Papers 1–'+EXPLAIN_PAPERS+' explain as you go. '+
               'From paper '+(EXPLAIN_PAPERS+1)+' on you will not see this until you submit.</div>');
+  } else if(sim&&sim.running){
+    // Inside an exam this panel only appears for a question whose time ran out. Its button has
+    // to move the PAPER on — the practice one below was wired to the practice quiz and did
+    // nothing here.
+    bits.push('<div class="exfoot">This question\u2019s time is spent, so reading costs the paper nothing.</div>');
+    bits.push('<button class="btn" id="exSimNext" style="width:100%;margin-top:2px">'+
+              (sim.i>=simLen()-1?'On to the review \u203a':'Next question \u203a')+'</button>');
   } else {
     bits.push('<div class="exfoot">Assembled from the study guide glossary and its scenario table — '+
               'open <b>'+esc(e.sector)+'</b> in Study for the full reasoning.</div>');
@@ -8298,6 +8316,8 @@ function renderExplain(q,picked,ok){
   box.classList.add('show');
   const nx=$('exNext');
   if(nx) nx.onclick=()=>{ if(pendingAdvance){ const go=pendingAdvance; pendingAdvance=null; go(); } };
+  const sn=$('exSimNext');
+  if(sn) sn.onclick=()=>{ if(sim&&sim.running) simGo(1); };
   return e;
 }
 function hideExplain(){ const b=$('explain'); if(b){ b.classList.remove('show'); b.innerHTML=''; } }

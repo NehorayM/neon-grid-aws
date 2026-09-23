@@ -2039,11 +2039,18 @@ async function qClockChecks(){
   ok($('playClock').classList.contains('crit'),'it goes critical at 9 seconds');
   ok($('qTimerFill').classList.contains('low'),'and the bar turns');
 
-  // running out moves to the next question, answered or not
+  // running out UNANSWERED stays on the question and shows the answer and why; Next moves on
   eq(t.sim.i,0,'still on the first question');
   const blank=(t.sim.ans[0]||[]).length;
   t.simQTick(9); await sleep(20);
-  eq(t.sim.i,1,'running out moves to the next question');
+  eq(t.sim.i,0,'running out unanswered stays on the question');
+  ok($('explain').classList.contains('show'),'and opens the explanation');
+  ok(/Time ran out/.test($('explain').querySelector('.exhead').textContent),'headed as a timeout');
+  eq([...$('qOpts').children].filter(e=>e.classList.contains('ok')).map(e=>e.dataset.ltr).join(''),
+     t.QS[t.sim.qs[0]].a.join(''),'with the correct answer marked');
+  ok(!!$('explain').querySelector('.exeach'),'and every option explained');
+  t.simGo(1); await sleep(20);
+  eq(t.sim.i,1,'Next moves on when you are ready');
   eq(t.simQLeft,t.SIM_QSEC,'which starts on a full 90 seconds');
   eq((t.sim.ans[0]||[]).length,blank,'the question it left stays blank');
   eq(t.simAnsweredCount(),0,'so it counts as unanswered, which scores as wrong');
@@ -2077,7 +2084,9 @@ async function qClockChecks(){
   // the last question runs out into the review, not into nothing
   t.simJump(t.simLen()-1); await sleep(20);
   t.simQTick(t.SIM_QSEC); await sleep(20);
-  eq(t.route,'simRevScreen','running out of the last question lands on the review');
+  eq(t.route,'quizScreen','the last question, run out unanswered, shows its answer first');
+  t.simGo(1); await sleep(20);
+  eq(t.route,'simRevScreen','and then goes on to the review');
 
   // and it survives walking away
   t.simJump(4); await sleep(20);
@@ -2133,6 +2142,7 @@ async function qClockChecks(){
   ok($('clockSub').textContent.indexOf(fmtMs(65*t.SIM_QSEC*1000)+' left')>=0,'the top clock carries it too');
 
   t.simQTick(t.SIM_QSEC); await sleep(20);
+  t.simGo(1); await sleep(20);            // it stayed to show the answer; move on
   eq(t.simTotalLeft(),64*t.SIM_QSEC,'one question spent leaves 64 of them');
   eq($('simTotalVal').textContent,fmtMs(64*t.SIM_QSEC*1000),'which reads that');
   eq(t.simQsLeft(),64,'and 64 questions still open');
@@ -2711,7 +2721,7 @@ async function integrationChecks(){
   ok(spoken.join(' ').indexOf('Option')<0,'and did not read the options');
   const c0=cancels;
   t.simQTick(t.SIM_QSEC); await sleep(30);
-  eq(t.sim.i,1,'the 90 seconds ran out and moved on');
+  eq(t.sim.i,0,'the time ran out, and the question stays to show its answer');
   ok(cancels>c0,'which stopped the voice');
   eq($('simTts').textContent,'\ud83d\udd0a Read','and put the button back');
 
