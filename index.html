@@ -56,6 +56,18 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes nope{0%,100%{transform:none}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
 .opt.nope{animation:nope .32s ease}
 .opt.locked{opacity:.62;cursor:default}
+/* the explanation, said once */
+.exbrief1{display:block;font-weight:600;opacity:.75;font-size:.92em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.expick{display:inline-block;font-style:normal;font-size:10px;font-family:var(--mono);letter-spacing:.5px;
+  text-transform:uppercase;color:var(--gold);border:1px solid color-mix(in srgb, var(--gold) 45%, transparent);
+  border-radius:6px;padding:0 5px;margin:3px 0 1px}
+.exopt.mine{box-shadow:inset 3px 0 0 var(--gold)}
+.exmore{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.exmore>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:12.5px;font-weight:600;color:var(--dim)}
+.exmore>summary::-webkit-details-marker{display:none}
+.exmore>summary::after{content:' \203a';opacity:.6}
+.exmore[open]>summary::after{content:' \2039'}
+.exmore>.exwhy,.exmore>.exsvc{display:block;padding:0 12px 10px}
 #runBox,#histBox{margin-bottom:14px}
 .histrow .ds{white-space:normal}
 /* ---- Exam Redo ---- */
@@ -568,6 +580,13 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .stval{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--cyan);
   font-variant-numeric:tabular-nums;letter-spacing:.5px}
 .simtotal.tight .stval{color:var(--gold)}
+/* one compact row: time left | live score, thin bar under both */
+.simtotal{display:grid;grid-template-columns:1fr auto;column-gap:12px;align-items:center;padding:7px 11px}
+.simtotal .stline{grid-column:1;grid-row:1}
+.simtotal .stlive{grid-column:2;grid-row:1;margin:0;padding:0;border:0}
+.simtotal .sttrack{grid-column:1 / -1;grid-row:2;margin:6px 0 0;height:4px}
+.simtotal .stsub{display:none}
+@media (max-width:480px){ .simtotal .stlivesub{display:none} .simtotal .stlbl{letter-spacing:.6px} }
 .stlive{display:flex;align-items:baseline;gap:8px;margin-top:7px;padding-top:7px;
   border-top:1px dashed color-mix(in srgb, var(--cyan) 22%, var(--line))}
 .stlive.hidden{display:none}
@@ -1458,13 +1477,13 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
         <div class="cells" id="chargeCells"></div>
         <button class="unlockbtn" id="unlockBtn">Unlock ▸</button>
       </div>
-      <details class="exbrief hidden" id="exBrief"><summary><span>📘</span>
-        <span id="exBriefTitle">Before you answer</span><span class="chev">›</span></summary>
-        <div class="bb" id="exBriefBody"></div></details>
       <div class="qcard">
         <div class="qtext" id="qText"></div>
         <div class="multi hidden" id="qMulti"></div>
       </div>
+      <details class="exbrief hidden" id="exBrief"><summary><span>📘</span>
+        <span id="exBriefTitle">Before you answer</span><span class="chev">›</span></summary>
+        <div class="bb" id="exBriefBody"></div></details>
       <div class="opts" id="qOpts"></div>
       <div class="explain" id="explain"></div>
       <div id="simBar">
@@ -7313,7 +7332,9 @@ function renderExamBrief(qi){
   if(!sim||!sim.paper||sim.paper>BRIEF_PAPERS){ box.classList.add('hidden'); return; }
   const b=buildBriefing(qi);
   box.classList.remove('hidden');
-  box.open=P.briefOpen!==0;
+  // Closed on every question: it is a thousand pixels when open, and remembering "open" put
+  // that wall between you and every question after the first time you looked.
+  box.open=false;
   $('exBriefTitle').textContent='Before you answer — '+b.sector;
   const body=$('exBriefBody'); body.innerHTML='';
   const label=t=>{ const d=document.createElement('div'); d.className='lbl'; d.textContent=t;
@@ -8537,15 +8558,21 @@ function renderExplain(q,picked,ok,timedOut){
   const e=buildExplain(q,picked,ok);
   const box=$('explain');
   const bits=[];
-  bits.push('<div class="exhead '+(ok?'ok':'no')+'">'+(timedOut?'\u23f1 Time ran out \u2014 the answer':ok?'✅ Correct':'❌ Not quite')+
+  const ansL=e.correct.map(x=>x[0]).join(' + ');
+  bits.push('<div class="exhead '+(ok?'ok':'no')+'">'+
+            (timedOut?'\u23f1 Time ran out \u2014 the answer is '+ansL:ok?'\u2705 Correct \u2014 '+ansL:'\u274c Not quite \u2014 the answer is '+ansL)+
             '<span class="tag" style="margin-left:auto">'+esc(e.sector)+'</span></div>');
 
-  if(!ok&&e.wrongPicked.length){
+  // With a written explanation below, these two boxes only repeated the options already marked
+  // right and wrong above; they stay for the few questions that have none.
+  if(!e.full&&!ok&&e.wrongPicked.length){
     bits.push('<div class="exlbl">You picked</div>');
     e.wrongPicked.forEach(x=>bits.push('<div class="exrow bad"><span class="exl">'+x[0]+'</span><span>'+esc(x[1])+'</span></div>'));
   }
-  bits.push('<div class="exlbl">'+(ok?'Your answer':'Correct answer')+'</div>');
-  e.correct.forEach(x=>bits.push('<div class="exrow good"><span class="exl">'+x[0]+'</span><span>'+esc(x[1])+'</span></div>'));
+  if(!e.full){
+    bits.push('<div class="exlbl">'+(ok?'Your answer':'Correct answer')+'</div>');
+    e.correct.forEach(x=>bits.push('<div class="exrow good"><span class="exl">'+x[0]+'</span><span>'+esc(x[1])+'</span></div>'));
+  }
 
   // the note written while this question's answer was verified beats anything derived
   if(e.note) bits.push('<div class="exnote"><b>Why</b> '+esc(e.note)+'</div>');
@@ -8563,6 +8590,16 @@ function renderExplain(q,picked,ok,timedOut){
     // so the reader is not handed the same sentence twice with nothing to tell them apart
     const lineCount={};
     q.o.forEach(([l])=>{ const v=e.why.byLetter[l]||''; if(v) lineCount[v]=(lineCount[v]||0)+1; });
+    const defs=[];                 // the Hebrew definitions, gathered into one folded block
+    // The reminder shows what sets each option apart. Options often open with the same words
+    // ("Migrate the database to Amazon RDS ..."), and a plain cut left three identical lines.
+    const ow=q.o.map(o=>String(o[1]).split(/\s+/));
+    let common=0;
+    while(common<ow[0].length&&ow.every(w=>w[common]===ow[0][common])) common++;
+    if(common<3) common=0;
+    const brief=txt=>{ const w=String(txt).split(/\s+/).slice(common);
+      const cut=w.length>9?w.slice(0,9).join(' ').replace(/[.,;:]+$/,'')+'\u2026':w.join(' ');
+      return (common?'\u2026 ':'')+cut; };
     bits.push('<div class="exwhy exeach">'+q.o.map(([ltr,txt])=>{
       const right=q.a.includes(ltr);
       const line=e.why.byLetter[ltr]||'';
@@ -8573,16 +8610,18 @@ function renderExplain(q,picked,ok,timedOut){
         if(seenTerm.has(k)) return false;
         seenTerm.add(k); return true;
       });
-      return '<div class="exitem exopt '+(right?'good':'bad')+'">'+
+      terms.forEach(t=>defs.push('<span class="svcline"><b>'+esc(asWritten(txt,t.t))+'</b><span dir="rtl">'+esc(t.d)+'</span></span>'));
+      const mine=picked&&picked.has&&picked.has(ltr);
+      return '<div class="exitem exopt '+(right?'good':'bad')+(mine?' mine':'')+'">'+
         '<span class="k">'+ltr+(right?' \u2713':' \u2717')+'</span>'+
-        '<span><b>'+esc(txt)+'</b>'+
+        '<span><b class="exbrief1" title="'+esc(txt)+'">'+esc(brief(txt))+'</b>'+
+        (mine?'<em class="expick">your pick</em>':'')+
         (function(){ const s=optionLine(q,ltr,txt,line,pivot,lineCount[line]>1);
           return '<i'+(s.dim?' class="dim"':'')+'>'+esc(s.text)+'</i>'; })()+
-        (terms.length?'<u class="exsvc">'+terms.map(t=>
-          '<span class="svcline"><b>'+esc(asWritten(txt,t.t))+'</b><span dir="rtl">'+esc(t.d)+'</span></span>'
-        ).join('')+'</u>':'')+
         '</span></div>';
     }).join('')+'</div>');
+    if(defs.length) bits.push('<details class="exmore"><summary>\u{1f4da} The services in this question</summary>'+
+      '<u class="exsvc">'+defs.join('')+'</u></details>');
     if(e.why.rest) bits.push('<div class="exnote exrest">'+esc(e.why.rest)+'</div>');
   }
 
@@ -8591,10 +8630,10 @@ function renderExplain(q,picked,ok,timedOut){
   // on the page and belong on every question.
   const rules=exFallback(e.sec);
   if(rules.length){
-    bits.push('<div class="exlbl">How to decide questions like this</div>');
-    bits.push('<div class="exwhy exrules">'+rules.map(r=>
+    bits.push('<details class="exmore"><summary>\u{1f9ed} How to decide questions like this</summary>'+
+      '<div class="exwhy exrules">'+rules.map(r=>
       '<div class="exitem exopt"><span class="k">\u2192</span><span><i>'+mdInline(r)+'</i></span></div>'
-    ).join('')+'</div>');
+    ).join('')+'</div></details>');
   }
 
   // The service definitions used to live in two blocks here. They now sit under the option

@@ -2456,7 +2456,7 @@ async function briefChecks(){
   for(const n of [1,5,10]){
     t.startPaper(n); await sleep(20);
     ok(!$('exBrief').classList.contains('hidden'),'exam '+n+' shows a briefing');
-    ok($('exBrief').open,'exam '+n+': it starts open');
+    ok(!$('exBrief').open,'exam '+n+': it starts closed, one line under the question');
     ok(/Before you answer/.test($('exBriefTitle').textContent),'exam '+n+': it is labelled');
     ok($('exBriefBody').children.length>0,'exam '+n+': the briefing has content');
     // Definitions say what the services are; these say how to pick between them, which is
@@ -2472,8 +2472,8 @@ async function briefChecks(){
     });
     // Measured across the ten briefed papers: median 1,286 characters, min 728 where the
     // sector has no recorded traps, max 1,798. Every one has its decision rules.
-    ok($('exBriefBody').innerText.length>600,
-       'exam '+n+': the briefing is substantial ('+$('exBriefBody').innerText.length+' chars)');
+    ok($('exBriefBody').textContent.length>600,
+       'exam '+n+': the briefing is substantial ('+$('exBriefBody').textContent.length+' chars)');
     const sec=t.SHORT[t.QS[t.sim.qs[0]].s];
     ok($('exBriefTitle').textContent.indexOf(sec)>0,'exam '+n+': it names the sector');
     // it follows the walk
@@ -2543,7 +2543,7 @@ async function feedbackChecks(){
     const el=[...$('qOpts').children].find(x=>x.dataset.ltr===l);
     ok(el.classList.contains('ok'),'the right option is marked');
   });
-  ok(/Correct answer|Your answer/.test($('explain').textContent),'it names the answer');
+  ok(/Correct \u2014 [A-F]|the answer is [A-F]/.test($('explain').querySelector('.exhead').textContent),'the heading names the answer');
   eq(t.simScore().right,1,'the tally counts it');
 
   // it is settled: further picks do nothing
@@ -2568,7 +2568,7 @@ async function feedbackChecks(){
     const el=[...$('qOpts').children].find(x=>x.dataset.ltr===l);
     ok(el.classList.contains('ok'),'and the right one is shown');
   });
-  ok(/You picked/.test($('explain').textContent),'it shows what was picked');
+  ok(!!$('explain').querySelector('.exopt.mine .expick'),'it marks what was picked');
   eq(t.simScore().done,2,'two settled');
   eq(t.simScore().right,1,'one of them right');
   ok(/right so far/.test($('simCount').textContent),'the strip reports the tally');
@@ -2784,8 +2784,10 @@ function hebrewChecks(){
     const box=$('explain');
     // The Hebrew definitions used to sit in two blocks of their own. They now live under the
     // option that names them, where they say what that option is actually proposing.
-    const svc=[...box.querySelectorAll('.exeach .svcline')];
-    ok(svc.length>0,'the options carry service definitions');
+    // They are folded into one "services in this question" block now, one tap away.
+    const svc=[...box.querySelectorAll('.exmore .svcline')];
+    ok(svc.length>0,'the service definitions are there, folded');
+    ok(!box.querySelector('.exmore').open,'and folded by default, so the panel is not a wall');
     svc.forEach((el,i)=>{
       const sp=el.querySelector('span');
       ok(HEB.test(sp.textContent),'service line '+i+' is in Hebrew');
