@@ -644,6 +644,13 @@ function whyQualityChecks(){
 // The exam cue under an answer must be about that answer. It used to clear its threshold on
 // generic stem words alone, so a Site-to-Site VPN question was cued with CloudFront Signed
 // Cookies, and "Global Accelerator (not CloudFront)" qualified under a CloudFront answer.
+// The auth library runs with access to the signed-in session, so it is pinned and hashed.
+function sriChecks(){
+  const src=document.documentElement.outerHTML;
+  ok(/supabase-js@2\.\d+\.\d+\//.test(src),'supabase-js is pinned to an exact version, not @2');
+  ok(/s\.integrity='sha384-[A-Za-z0-9+\/=]{64}'/.test(src),'and carries an integrity hash the browser checks');
+  ok(/s\.crossOrigin='anonymous'/.test(src),'with the CORS mode integrity checking needs');
+}
 function cueChecks(){
   const t=T();
   const t0=performance.now();
@@ -2493,7 +2500,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

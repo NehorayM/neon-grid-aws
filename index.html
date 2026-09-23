@@ -7956,7 +7956,12 @@ function loadSupabase(){
     };
     if(window.supabase&&window.supabase.createClient) return done();
     const s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+    // Pinned, and checked by the browser. `@2` meant whatever 2.x the CDN served that day,
+    // running unchecked with access to the signed-in session. A file that does not match the
+    // hash is refused, and onerror below turns that into offline play, same as no network.
+    s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.js';
+    s.integrity='sha384-xPW3QHswsICVC2mW6BFNwMbhpLkbZ133fKOhxNx3QGGgAOJfL3O9t8r2aWn1aez6';
+    s.crossOrigin='anonymous';
     s.onload=done;
     s.onerror=()=>{ authMsg('Could not reach the auth service — you are still playing offline.','bad'); resolve(null); };
     document.head.appendChild(s);
