@@ -580,6 +580,20 @@ desktop's 30-second owner check stopped and discarded question 34.
 and covers the list, the restore, the taken-away copy and a finished run. **Not yet exercised with
 two real signed-in devices against Supabase** — the merge is tested; the network round trip is not.
 
+## Exam history and redo
+
+Every submit calls `histWrite()`, keeping the exam in `P.examHist[hid]` (hid = the run id; 30
+most recent): paper, date, every answer, flags, SAA score, right/total. Finishing later carries
+the hid and updates the same entry. The Exam screen lists them (`renderHist`); **Redo**
+(`histOpen`) starts `sim.mode==='redo'`: no clock anywhere (simQStart/Sync/Tick, simCheckTime,
+the strip and the top clock all check `isRedo()`), answers editable (`simTeaches()` is false, so
+nothing locks), live score over the whole paper with blanks wrong, and a 💡 Answer button that
+shows the explanation without locking. Every edit also writes the entry, so it is current even
+if the redo never closes; the redo itself is a normal save (Running exams, resumes on reload).
+Save & close (`redoFinish`) updates the entry only — no coins, XP, stats or exam count. Redos are
+counted when one starts, not on save (a crash-resume counted twice). Merged per entry, later `at`
+wins. Exams from before this build are not listed: their answers were never kept.
+
 ## The SAA-C03 score
 
 From the official exam guide: a scaled score of 100–1,000, 720 to pass; four domains weighted

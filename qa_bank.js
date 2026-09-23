@@ -1308,6 +1308,55 @@ async function readTaperChecks(){
   }
   t.P.runs={}; t.P.runsDone=[];
 }
+// Exam history: every submitted exam is kept and can be redone with no timer, answers editable,
+// the score recomputed live, crash-safe, and a redo is review — no coins, not another exam.
+async function histChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.P.examHist={}; delete t.P.lastPaper;
+  t.startPaper(6,'exam'); await sleep(30);
+  for(let k=0;k<30;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+  t.simSubmit(true); await sleep(50);
+  const ks=Object.keys(t.P.examHist);
+  eq(ks.length,1,'a submitted exam goes into history');
+  const hid=ks[0], e0=t.P.examHist[hid];
+  eq(Object.keys(e0.ans).length,30,'with every answer');
+  ok(e0.sc>=100&&e0.sc<=1000,'and its score on the exam scale');
+  const coins0=t.P.coins, exams0=t.P.exams;
+  t.renderPapers(); t.go('paperScreen'); await sleep(20);
+  const row=document.querySelector('#histList .histrow');
+  ok(!!row&&/Exam 6/.test(row.textContent),'the Exam screen lists it');
+  hittable(row.querySelector('button'),'the Redo button');
+  row.querySelector('button').click(); await sleep(60);
+  ok(t.isRedo(),'Redo opens it');
+  ok(/REDO/.test($('qSector').textContent),'labelled as a redo');
+  eq(t.simAnsweredIn(t.sim),30,'with its answers filled in');
+  eq(t.sim.i,30,'on the first question left blank');
+  ok(!$('simAnsBtn').classList.contains('hidden'),'with a Show answer button');
+  t.simQTick(500); t.simCheckTime(); await sleep(10);
+  ok(t.sim&&t.sim.running,'there is no timer: nothing runs out and nothing submits');
+  const before=parseInt($('simLiveVal').textContent,10);
+  for(let k=30;k<40;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+  ok(parseInt($('simLiveVal').textContent,10)>before,'answering more raises the score live');
+  eq(t.P.examHist[hid].c,40,'and history is updated on every edit, not only on close');
+  t.simJump(0); await sleep(5);
+  const q0=t.QS[t.sim.qs[0]];
+  if(q0.a.length===1){ const alt=q0.o.map(x=>x[0]).find(l=>!q0.a.includes(l));
+    t.simPick(alt); ok(t.sim.ans[0].includes(alt),'an earlier answer can be changed'); t.simPick(q0.a[0]); }
+  t.simPersist(); t.simResume(); await sleep(50);   // the app crashes: all that is left is the save
+  ok(t.isRedo(),'a crash mid-redo comes back as the redo');
+  eq(t.simAnsweredIn(t.sim),40,'with every edit kept');
+  $('simSubmit').click(); await sleep(50);
+  eq(t.route,'paperScreen','Save & close returns to the exam list');
+  eq(t.P.examHist[hid].c,40,'the entry keeps the new answers');
+  eq(t.P.examHist[hid].redos,1,'counted as one redo, crash or not');
+  eq(t.P.coins,coins0,'a redo pays nothing');
+  eq(t.P.exams,exams0,'and is not another exam');
+  // history survives a merge from another device
+  const other={examHist:{x1:{hid:'x1',paper:3,qs:t.paperQs(3),ans:{},sc:300,c:0,n:65,at:1,d0:1}}};
+  const m=t.mergeProfiles(other,JSON.parse(JSON.stringify(t.P)));
+  ok(!!m.examHist.x1&&!!m.examHist[hid],'history from both devices is kept');
+  t.P.examHist={}; t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -1641,6 +1690,7 @@ async function paperRowChecks(){
   const rows=()=>[...document.querySelectorAll('#paperScreen .paperrow')];
   const btns=i=>[...rows()[i].querySelectorAll('button')].map(b=>b.textContent.trim());
 
+  delete t.P.lastPaper; t.P.runs={}; t.P.runsDone=[];   // start clean, whatever ran before
   t.simClearSave(); t.renderPapers(); await sleep(20);
   eq(btns(3).length,1,'with nothing saved a row has one button');
   eq(btns(3)[0]==='Resume',false,'and it is not Resume');
@@ -1665,7 +1715,8 @@ async function paperRowChecks(){
   ok(!rows()[4].classList.contains('resuming'),'no other row claims to be in progress');
 
   // Start on a different paper warns, and touches nothing on the first tap
-  const other=rows()[5].querySelector('button');
+  // Start is the row's LAST button — a finish-later or restart button can sit before it
+  const other=[...rows()[5].querySelectorAll('button')].pop();
   const wasLabel=other.textContent.trim();
   other.click(); await sleep(20);
   ok(/Delete your progress on Exam 4/.test(other.textContent),'starting elsewhere warns first');
@@ -2843,7 +2894,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -56,7 +56,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes nope{0%,100%{transform:none}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
 .opt.nope{animation:nope .32s ease}
 .opt.locked{opacity:.62;cursor:default}
-#runBox{margin-bottom:14px}
+#runBox,#histBox{margin-bottom:14px}
+.histrow .ds{white-space:normal}
 .runrow .ds{white-space:normal}
 .opt.locked.sel{opacity:.9}
 @media (prefers-reduced-motion:reduce){.opt.nope{animation:none;outline:2px solid var(--red)}}
@@ -1435,6 +1436,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
         <div class="simnav">
           <button class="simbtn" id="simPrev">‹ Prev</button>
           <button class="simbtn" id="simFlag">⚑ Flag</button>
+          <button class="simbtn hidden" id="simAnsBtn" title="Show the answer and why">💡 Answer</button>
         <button class="simbtn tts" id="simTts" title="Read the question aloud">🔊 Read</button>
           <button class="simbtn" id="simNext">Next ›</button>
           <button class="simbtn danger" id="simQuit">Quit</button>
@@ -1650,6 +1652,11 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <div class="sechead">Running exams</div>
       <p class="sub" style="margin:-4px 0 8px">Every exam you have open, on any of your devices. Continue any of them here.</p>
       <div class="list" id="runList"></div>
+    </div>
+    <div id="histBox" class="hidden">
+      <div class="sechead">Exam history</div>
+      <p class="sub" style="margin:-4px 0 8px">Every exam you have submitted. Redo any of them with no timer — change answers and watch the score move.</p>
+      <div class="list" id="histList"></div>
     </div>
     <div class="list" id="paperList"></div>
   </div>
@@ -2274,7 +2281,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 13:02 UTC';
+const BUILD='2026-09-23 13:11 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -2415,7 +2422,7 @@ let loaded=false;
 // records with a date in them.
 const P_COLLECTIONS={
   obj:['seen','secStats','upgrades','highs','inv','sr','study','papers','courses',
-       'login','day','quests','simSave','runs'],
+       'login','day','quests','simSave','runs','examHist'],
   arr:['wrong','badges','marks','examLog','mockLog','simLog','rHist','known','runsDone']
 };
 const P_NUMBERS=['xp','coins','answered','correct','streak','bestStreak','gamesPlayed',
@@ -2519,6 +2526,15 @@ function normaliseProfile(p){
       if(!r||typeof r!=='object'||!Array.isArray(r.qs)||!r.qs.every(i=>Number.isInteger(i))) delete p.runs[k]; });
   }
   if(Array.isArray(p.runsDone)) p.runsDone=p.runsDone.filter(x=>typeof x==='string').slice(-60);
+  if(p.examHist&&typeof p.examHist==='object'){
+    Object.keys(p.examHist).forEach(k=>{ const r=p.examHist[k];
+      if(!r||typeof r!=='object'||!Array.isArray(r.qs)||!r.qs.every(i=>Number.isInteger(i))){ delete p.examHist[k]; return; }
+      if(!r.ans||typeof r.ans!=='object') r.ans={};
+      ['sc','pct','c','n','redos','paper','at','d0'].forEach(f=>{ if(r[f]!==undefined){ const n=Number(r[f]); r[f]=isFinite(n)?n:0; } });
+      if(r.d!==undefined&&!/^\d{4}-\d{1,2}-\d{1,2}$/.test(String(r.d))) r.d='';
+      r.mode=r.mode==='practice'?'practice':'exam';
+    });
+  }
   // simSave starts life absent, not as an empty object the resume code would try to read
   if(p.simSave&&!Array.isArray(p.simSave.qs)) delete p.simSave;
   return p;
@@ -2535,7 +2551,7 @@ async function loadProfile(){
   if(P.bank!==BANKV){
     P.bank=BANKV; P.seen={}; P.wrong=[]; P.marks=[]; P.sr={};
     delete P.lastPaper;        // it stores question indices too
-    P.runs={}; P.runsDone=[];
+    P.runs={}; P.runsDone=[]; P.examHist={};
   }
   loaded=true; muted=!!P.muted;
   refreshTop(); renderHome();
@@ -5466,6 +5482,11 @@ if(typeof window!=='undefined') window.addEventListener('focus',clockEnsure);
 function renderClock(){
   const el=$('playClock'); if(!el) return;
   // an exam in progress owns the clock
+  if(sim&&sim.running&&isRedo()){
+    el.textContent='\u270e Redo'; el.classList.remove('warn','crit');
+    const sb=$('clockSub'); if(sb) sb.textContent='no timer';
+    return;
+  }
   if(sim&&sim.running){
     // A frozen countdown reads as a broken one, so during a break the clock says so and
     // counts the break down instead of sitting on a number that is not moving.
@@ -5512,7 +5533,9 @@ const BREAK_MAX=2, BREAK_SECS=360;
 // A paper is sat one of two ways. 'exam' is the real thing and the default; 'practice' trades
 // the two-break rule for stopping whenever you like, because a paper you are learning from is
 // not a paper you are being timed on.
-const isPractice=()=>!!(sim&&sim.mode==='practice');
+// A redo of a past exam: no clock at all, answers changeable, leaving is free.
+const isRedo=()=>!!(sim&&sim.mode==='redo');
+const isPractice=()=>!!(sim&&(sim.mode==='practice'||sim.mode==='redo'));
 const brkLeft=()=>!sim?0:isPractice()?Infinity:Math.max(0,BREAK_MAX-(sim.brkUsed||0));
 // A practice break has no end time — it lasts until you walk back into the paper.
 const brkOpen=()=>!!(sim&&sim.brkOpen);
@@ -5897,6 +5920,7 @@ function startSim(mode){
 function simTimeLeft(){ return sim?simTotalLeft()*1000:0; }
 function simCheckTime(){
   if(brkOn()) return;                       // a paused paper cannot expire
+  if(isRedo()) return;                      // nor one with no clock
   if(sim&&sim.running&&simTimeLeft()<=0){ toast('⏳ Time expired — submitting'); simSubmit(true); }
 }
 // ---------- ninety seconds a question ----------
@@ -5909,6 +5933,7 @@ function simQLeftFor(i){
 function simQStart(){
   simQStop();
   if(!sim||!sim.running) return;
+  if(isRedo()){ simQLeft=SIM_QSEC; sim.qEndAt=0; renderSimQ(); return; }   // no timer in a redo
   simQLeft=simQLeftFor(sim.i);
   sim.qEndAt=Date.now()+simQLeft*1000;    // the clock is a deadline, not a count of ticks
   renderSimQ();
@@ -5924,6 +5949,7 @@ function simQStart(){
 let simSaveTick=0;
 function simQSync(){
   if(!sim||!sim.running){ simQStop(); return; }
+  if(isRedo()) return;
   if(brkOn()) return;                                           // the paper is paused
   if(!sim.qEndAt) return;
   if(route!=='quizScreen') return;                              // not on the review screen
@@ -5942,6 +5968,7 @@ function simQSync(){
 // The harness drives the clock by hand. The deadline moves with it, so the two never disagree.
 function simQTick(by){
   if(!sim||!sim.running){ simQStop(); return; }
+  if(isRedo()) return;
   if(simQLeft<=0){ simQStop(); return; }                        // it only runs out once
   if(route!=='quizScreen') return;
   if(typeof document!=='undefined'&&document.hidden) return;
@@ -6030,6 +6057,14 @@ function renderSimTotal(){
   const box=$('simTotal'); if(!box) return;
   if(!sim||!sim.running){ box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
+  if(isRedo()){
+    $('simTotalVal').textContent='no timer';
+    $('simTotalFill').style.width='100%';
+    $('simTotalSub').textContent='Redo \u00b7 change any answer \u00b7 the score updates as you go';
+    box.classList.remove('tight');
+    renderSimLive();
+    return;
+  }
   const left=simTotalLeft(), full=simTotalFull(), qs=simQsLeft();
   // One clock. This number is the one the paper ends on.
   $('simTotalVal').textContent=fmtClock(left*1000);
@@ -6055,7 +6090,8 @@ function renderSimLive(){
   const pairs=[];
   sim.qs.forEach((qi,i)=>{
     const picked=sim.ans[i]||[];
-    if(!picked.length) return;
+    // a redo is scored like the exam it is: every question counts, blanks wrong
+    if(!picked.length){ if(isRedo()) pairs.push({qi,ok:false}); return; }
     if(simTeaches()&&!simRevealed(i)) return;
     const q=QS[qi], set=new Set(picked);
     pairs.push({qi, ok:q.a.length===set.size&&q.a.every(a=>set.has(a))});
@@ -6071,6 +6107,7 @@ function renderSimQ(){
   const wrap=$('qTimerWrap'), fill=$('qTimerFill');
   if(!wrap||!fill) return;
   if(!sim||!sim.running){ wrap.classList.add('hidden'); return; }
+  if(isRedo()){ wrap.classList.add('hidden'); renderSimTotal(); renderClock(); return; }
   wrap.classList.remove('hidden');
   const f=Math.max(0,Math.min(1,simQLeft/SIM_QSEC));
   fill.style.width=pctW(f*100);
@@ -6084,7 +6121,9 @@ function simLoad(){
   curQ=qi; answeredThis=false; eliminated.clear();
   chosen.clear(); (sim.ans[sim.i]||[]).forEach(l=>chosen.add(l));
   $('qSector').textContent=(sim.paper?('EXAM '+sim.paper):'EXAM SIM')+
-    (isPractice()?' \u00b7 PRACTICE':'');
+    (isRedo()?' \u00b7 REDO':isPractice()?' \u00b7 PRACTICE':'');
+  { const ab=$('simAnsBtn'); if(ab) ab.classList.toggle('hidden',!isRedo()); }
+  { const sb=$('simSubmit'); if(sb&&!sb.dataset.armed) sb.textContent=isRedo()?'Save & close':'Submit exam'; }
   $('qCount').textContent=(sim.i+1)+' / '+simLen();
   $('qBadge').textContent=DOMAINS[domainOf(q.s)].short;
   $('qBadge').style.color='var(--cyan)'; $('qBadge').style.borderColor='var(--cyan)';
@@ -6152,6 +6191,7 @@ function simPick(ltr){
     else toast('\u{1f680} '+examCheer(sim.i,sim.qs.length));
   }
   simPersist(); renderSimStrip(); renderSimLive();
+  if(isRedo()){ histWrite(); saveProfile(); }
 }
 // ---------- feedback during a teaching paper ----------
 function simRevealed(i){ return !!(sim&&sim.rev&&sim.rev[(i==null?sim.i:i)]); }
@@ -6248,6 +6288,7 @@ function simReview(){
 function simSubmit(auto){
   simQStop();
   if(!sim) return;
+  if(isRedo()){ redoFinish(); return; }
   if(!auto && simAnsweredCount()<simLen() &&
      !$('simSubmit').dataset.armed){
     $('simSubmit').dataset.armed='1';
@@ -6304,6 +6345,8 @@ function simSubmit(auto){
   const S=saaScore(scored)||{pct:0,scaled:100,passed:false,raw:0};
   const pct=S.pct;
   const passed=S.passed;
+  histWrite();                             // the exam goes into history, answers and all
+  if(P.lastPaper) P.lastPaper.hid=sim.hid;
   if(P.lastPaper){ P.lastPaper.pct=pct; P.lastPaper.passed=passed?1:0;
                    if(!lastOpen(P.lastPaper).length) delete P.lastPaper; }
   // a continuation pays the pass bonus only if this is the sitting that crosses the line
@@ -6356,6 +6399,96 @@ function simSubmit(auto){
   if(passed) celebrate();
   go('simDoneScreen');
 }
+// ---------- exam history ----------
+const HIST_KEEP=30;
+function histPrune(p){
+  p=p||P;
+  const h=p.examHist&&typeof p.examHist==='object'?p.examHist:{};
+  const ks=Object.keys(h).filter(k=>h[k]&&Array.isArray(h[k].qs)&&h[k].qs.length)
+    .sort((a,b)=>(Number(h[b].d0)||Number(h[b].at)||0)-(Number(h[a].d0)||Number(h[a].at)||0));
+  const out={}; ks.slice(0,HIST_KEEP).forEach(k=>{ out[k]=h[k]; });
+  p.examHist=out;
+}
+function histScoreOf(qs,ans){
+  const pairs=qs.map((qi,i)=>{ const q=QS[qi], set=new Set(ans[i]||[]);
+    return {qi, ok:!!q&&q.a.length===set.size&&q.a.every(a=>set.has(a))}; });
+  const S=saaScore(pairs)||{scaled:100,pct:0};
+  return {sc:S.scaled, pct:S.pct, c:pairs.filter(p=>p.ok).length, n:qs.length};
+}
+// write (or update) an exam's entry from the paper in front of us
+function histWrite(){
+  if(!sim||!sim.qs) return;
+  const hid=sim.hid||sim.rid||newRid();
+  sim.hid=hid;
+  P.examHist=P.examHist||{};
+  const prev=P.examHist[hid]||{};
+  const sc=histScoreOf(sim.qs,sim.ans||{});
+  P.examHist[hid]=Object.assign({}, prev, {hid, paper:sim.paper||0, qs:sim.qs.slice(),
+    ans:JSON.parse(JSON.stringify(sim.ans||{})), flag:Object.assign({},sim.flag||{}),
+    mode:prev.mode||(sim.mode==='redo'?'exam':sim.mode||'exam'),
+    d:prev.d||dayKey(), d0:prev.d0||Date.now(), at:Date.now(),
+    redos:prev.redos||0}, sc);
+  histPrune();
+}
+function histOpen(hid,btn){
+  const r=(P.examHist||{})[hid]; if(!r) return;
+  if(r.qs.some(i=>!QS[i])){ toast('That exam used questions this build no longer has'); return; }
+  const go2=()=>{
+    if(sim&&sim.running) simAbandon();          // an exam that was open is kept, paused, in Running exams
+    ensureAudio(); exitStudyMode();
+    reviewMode=false; markMode=false; mock=null;
+    sim={qs:r.qs.slice(), i:0, ans:JSON.parse(JSON.stringify(r.ans||{})), flag:Object.assign({},r.flag||{}),
+         rev:{}, qt:{}, running:true, paper:r.paper||0, mins:0, mode:'redo', hid, rid:newRid(),
+         startAt:Date.now(), endAt:Date.now()};
+    const k=sim.qs.findIndex((q,i)=>!((sim.ans[i]||[]).length));
+    sim.i=k>=0?k:0;
+    // counted when a redo starts — counting on save counted a crash-and-resume twice
+    r.redos=(Number(r.redos)||0)+1; r.at=Date.now();
+    saveProfile(); renderClock(); simLoad(); simClaim(); simPersist();
+    toast('\u270e Redo \u2014 no timer. Change any answer; the score updates as you go');
+  };
+  const open=simSaved();
+  if(open&&!(open.mode==='redo'&&open.hid===hid)){
+    armed(btn,'Put '+(open.paper?'Exam '+open.paper:'the mock exam')+' on hold and redo this one?',go2);
+    return;
+  }
+  go2();
+}
+// closing a redo: the entry keeps the new answers and score; no coins, no stats, not an attempt
+function redoFinish(){
+  if(!sim) return;
+  histWrite();
+  const e=P.examHist[sim.hid]||{};
+  simQStop(); ttsStop(); hideExplain();
+  { const stb=$('simTotal'); if(stb) stb.classList.add('hidden'); }
+  simClearSave();
+  sim=null; saveProfile(); renderClock();
+  renderPapers(); go('paperScreen');
+  toast('\u2714 '+(e.paper?'Exam '+e.paper:'Mock exam')+' saved \u2014 '+e.sc+' / 1000 ('+e.c+'/'+e.n+' right)');
+}
+function renderHist(){
+  const box=$('histBox'), L=$('histList'); if(!box||!L) return;
+  histPrune();
+  const h=P.examHist||{};
+  const ks=Object.keys(h).filter(k=>h[k].qs.every(i=>!!QS[i]))
+    .sort((a,b)=>(Number(h[b].d0)||0)-(Number(h[a].d0)||0));
+  box.classList.toggle('hidden',!ks.length);
+  L.innerHTML='';
+  ks.forEach(k=>{
+    const r=h[k], pass=(Number(r.sc)||0)>=SAA_PASS;
+    const row=document.createElement('div'); row.className='item histrow';
+    row.innerHTML='<div class="em">'+(pass?'\u{1f393}':'\u{1f4dd}')+'</div>'+
+      '<div style="flex:1;min-width:0"><div class="nm"></div><div class="ds"></div></div>';
+    row.querySelector('.nm').textContent=(r.paper?'Exam '+(Number(r.paper)|0):'Mock exam')+' \u00b7 '+(r.d||'');
+    row.querySelector('.ds').textContent=(Number(r.sc)||100)+' / 1000 \u00b7 '+(Number(r.c)|0)+'/'+(Number(r.n)|0)+
+      ' right'+(r.mode==='practice'?' \u00b7 practice':'')+(r.redos?' \u00b7 redone '+plural(Number(r.redos)|0,'time'):'');
+    const b=document.createElement('button'); b.className='buy';
+    b.textContent='\u25b6 Redo';
+    b.setAttribute('aria-label','Redo '+row.querySelector('.nm').textContent+' without a timer');
+    b.onclick=()=>histOpen(k,b);
+    row.appendChild(b); L.appendChild(row);
+  });
+}
 // ---------- finish the last exam ----------
 // What is still answerable in a snapshot: unanswered, and with time left on its own clock.
 function lastOpen(lp){
@@ -6384,7 +6517,7 @@ function simContinue(){
   sim={qs:lp.qs, i:open[0], ans:Object.assign({},lp.ans||{}), flag:Object.assign({},lp.flag||{}),
        rev:Object.assign({},lp.rev||{}), qt,
        // the correct answers have been on screen since, so this is practice, not an exam
-       mode:'practice', running:true, paper:lp.paper||0, mins:lp.mins||SIM_MIN, rid:newRid(),
+       mode:'practice', running:true, paper:lp.paper||0, mins:lp.mins||SIM_MIN, rid:newRid(), hid:lp.hid||null,
        locked, cont:1, base:{blank, pct:lp.pct||0, passed:lp.passed?1:0},
        startAt:Date.now(), endAt:Date.now()};
   sim.endAt=Date.now()+simTotalLeft()*1000;
@@ -6556,7 +6689,7 @@ function simSnapshot(){
              qs:sim.qs, i:sim.i, ans:sim.ans, flag:sim.flag, rev:sim.rev||{},
              qt:Object.assign({},sim.qt||{},{[sim.i]:Math.max(0,simQLeft)}),
              mode:sim.mode||'exam', brkUsed:sim.brkUsed||0, brkUntil:sim.brkUntil||0,
-             locked:sim.locked||{}, cont:sim.cont?1:0, base:sim.base||null, tout:sim.tout||{},
+             locked:sim.locked||{}, cont:sim.cont?1:0, base:sim.base||null, tout:sim.tout||{}, hid:sim.hid||null,
              brkOpen:sim.brkOpen?1:0, brkFrom:sim.brkFrom||0,
              dev:sim.dev||DEVICE_ID, devKind:sim.devKind||DEVICE_KIND,
              claimAt:sim.claimAt||0,
@@ -6579,7 +6712,7 @@ function simAwayCost(sv){
   if(!at||now<=at) return 0;
   if(sv.brkOpen) return 0;   // an open-ended pause covers all of it, however long it ran
   // Practice is where you are allowed to stop, and closing the app is the natural way to.
-  if(sv.mode==='practice') return 0;
+  if(sv.mode==='practice'||sv.mode==='redo') return 0;
   const cover=Math.max(0,Math.min(now,Number(sv.brkUntil||0))-at);
   return Math.max(0,Math.round(((now-at)-cover)/1000));
 }
@@ -6622,7 +6755,7 @@ function simResume(){
   const onThis=Math.min(had,away);
   if(away>0) qt[at]=had-onThis;
   sim={qs:sv.qs, i:at, ans:sv.ans||{}, flag:sv.flag||{}, rid:svRid(sv),
-       rev:sv.rev||{}, qt:qt, mode:sv.mode==='practice'?'practice':'exam',
+       rev:sv.rev||{}, qt:qt, mode:(sv.mode==='practice'||sv.mode==='redo')?sv.mode:'exam', hid:sv.hid||null,
        brkUsed:sv.brkUsed||0, brkUntil:sv.brkUntil||0,
        // An open-ended pause ends here, and it ends free. `left` was written with the pause
        // already excluded, so carrying brkFrom across would have brkEnd credit the same time
@@ -7006,7 +7139,7 @@ function cheerHTML(i,total){
 const BRIEF_PAPERS=10;
 const EXPLAIN_PAPERS=10;
 // Every exam gives feedback after each answer now — it used to be papers 1-10 only.
-const simTeaches=()=>!!sim;
+const simTeaches=()=>!!sim&&!isRedo();   // a redo lets you change answers, so it does not lock them
 function renderExamBrief(qi){
   const box=$('exBrief');
   if(!box) return;
@@ -7047,7 +7180,7 @@ function renderExamBrief(qi){
 }
 function renderPapers(){
   const L=$('paperList'); if(!L) return;
-  renderRuns();
+  renderRuns(); renderHist();
   L.innerHTML='';
   const done=Object.keys(P.papers||{}).length;
   const recs=Object.values(P.papers||{});
@@ -7646,6 +7779,15 @@ $('simAgain').onclick=()=>{
   else startSim((sim&&sim.mode)||'exam');
 };
 $('simCsv').onclick=exportLastExam;
+// In a redo, look at the answer and the reasoning without locking the question.
+$('simAnsBtn').onclick=()=>{
+  if(!sim||!isRedo()) return;
+  const ex=$('explain');
+  if(ex&&ex.classList.contains('show')){ hideExplain(); simLoad(); return; }
+  const q=QS[sim.qs[sim.i]], picked=new Set(sim.ans[sim.i]||[]);
+  const ok=q.a.length===picked.size&&q.a.every(a=>picked.has(a));
+  simPaintRevealed(q,picked); renderExplain(q,picked,ok);
+};
 $('simCont').onclick=()=>simContinueAsk($('simCont'));
 $('simTts').onclick=ttsToggle;
 $('exBrief').ontoggle=()=>{ P.briefOpen=$('exBrief').open?1:0; saveProfile(); };
@@ -8478,6 +8620,13 @@ function mergeProfiles(a,b){
     out.runs[k]=(!x||!y)?(x||y):((Number(y.at)||0)>=(Number(x.at)||0)?y:x);
   });
   runPrune(out);
+  // exam history: every exam from either device, the later version of each
+  out.examHist={};
+  new Set([...Object.keys(a.examHist||{}),...Object.keys(b.examHist||{})]).forEach(k=>{
+    const x=(a.examHist||{})[k], y=(b.examHist||{})[k];
+    out.examHist[k]=(!x||!y)?(x||y):((Number(y.at)||0)>=(Number(x.at)||0)?y:x);
+  });
+  histPrune(out);
   // a run finished elsewhere is not left open here
   if(out.simSave&&out.runsDone.includes(svRid(out.simSave))) delete out.simSave;
   // a paper passed on the phone used to disappear on the desktop
@@ -10223,7 +10372,7 @@ if(TEST){
     simAbandon, simTimeLeft, simCheckTime, simAnsweredCount, renderSimLog,
     SIM_QSEC, simBudget, simQStart, simQStop, simQTick, simQTimeUp, renderSimQ,
     BREAK_MAX, BREAK_SECS, brkLeft, brkOn, brkRemain, brkStart, brkEnd, brkTick, brkAsk,
-    isPractice, brkOpen, brkElapsed, readAllowed, simAnsweredIn, renderRuns, runRestore, runRecord, runDone, runPrune, svRid, simSnapshot, saaScore, saaScaled, qDom, examDomainOf, renderSimLive, SAA_PASS, simContinue, lastOpen, renderSimCont, simChargeEnd, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
+    isPractice, brkOpen, brkElapsed, isRedo, histOpen, histWrite, redoFinish, renderHist, readAllowed, simAnsweredIn, renderRuns, runRestore, runRecord, runDone, runPrune, svRid, simSnapshot, saaScore, saaScaled, qDom, examDomainOf, renderSimLive, SAA_PASS, simContinue, lastOpen, renderSimCont, simChargeEnd, localDate, saveProfile, flushProfile, modeAsk, modeAskClose, modePick, recordPaper, startSim,
     brkAskClose, renderBrk, get brkPending(){return brkPending;},
     simAwayCost, simPauseSave, resumeOnBoot, get simSaveTick(){return simSaveTick;},
     simTotalLeft, simTotalFull, simQsLeft, renderSimTotal, simQSync, simAway, simBack,
