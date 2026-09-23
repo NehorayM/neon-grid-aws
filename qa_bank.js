@@ -1034,23 +1034,19 @@ async function refreshChecks(){
 async function pickCapChecks(){
   const t=T();
   let k=-1;
-  for(let n=t.EXPLAIN_PAPERS+1;n<=t.PAPER_COUNT&&k<0;n++){
+  for(let n=11;n<=t.PAPER_COUNT&&k<0;n++){
     t.simClearSave(); t.startPaper(n,'exam'); await sleep(30);
     k=t.sim.qs.findIndex(qi=>t.QS[qi].a.length===2);
     if(k<0){ t.simAbandon(); await sleep(20); }
   }
-  ok(k>=0,'there is a two-answer question on a paper that does not teach');
+  ok(k>=0,'there is a two-answer question on a later paper');
   t.simJump(k); await sleep(30);
   const opts=[...document.querySelectorAll('#qOpts .opt')];
   opts[0].click(); opts[1].click(); await sleep(20);
   const before=t.sim.ans[k].join();
   opts[2].click(); await sleep(30);
-  eq(t.sim.ans[k].join(),before,'a third pick on a two-answer question is refused');
-  ok(opts[2].classList.contains('nope'),'and the option tapped shows it was refused');
-  ok([...document.querySelectorAll('#toasts .toast')].some(x=>/takes 2/.test(x.textContent)),
-     'and says how many the question takes');
-  opts[0].click(); opts[2].click(); await sleep(20);
-  ok(t.sim.ans[k].includes(opts[2].dataset.ltr),'dropping one first lets the new one in');
+  eq(t.sim.ans[k].join(),before,'a third pick on a two-answer question changes nothing');
+  ok(t.simRevealed(k),'because the second pick settled it and showed the answer');
   t.simAbandon(); await sleep(30); t.simClearSave();
 }
 // The paper ended on a hidden wall clock that kept running while no question clock did — an
@@ -1183,7 +1179,7 @@ async function saaChecks(){
   eq(live,t.saaScore(t.sim.qs.slice(0,4).map(qi=>({qi,ok:true}))).scaled,'and it is the SAA score of what has been answered');
   t.simAbandon(); await sleep(20); t.simClearSave();
   t.startPaper(12,'exam'); await sleep(30);
-  ok($('simLive').classList.contains('hidden'),'an exam-conditions paper hides it until you submit');
+  ok(!$('simLive').classList.contains('hidden'),'every paper gives feedback now, so every paper shows it');
   t.simAbandon(); await sleep(20); t.simClearSave();
   t.startPaper(12,'practice'); await sleep(30);
   ok(!$('simLive').classList.contains('hidden'),'practice shows it');
@@ -2463,18 +2459,18 @@ async function feedbackChecks(){
   t.simSubmit(true); await sleep(40);
   ok($('simMeta').textContent.indexOf(before.right+' / 65 correct')===0,'the final count matches the running tally');
 
-  // a later paper stays silent
+  // every exam gives feedback after answering now, not just papers 1-10
   t.startPaper(12); await sleep(20);
-  ok(!t.simTeaches(),'paper 12 does not teach');
+  ok(t.simTeaches(),'paper 12 gives feedback too');
   const q2=t.QS[t.sim.qs[0]];
   q2.a.forEach(l=>t.simPick(l)); await sleep(20);
-  ok(!t.simRevealed(),'answering does not reveal on paper 12');
-  ok(!$('explain').classList.contains('show'),'and nothing is explained');
-  ok($('exBrief').classList.contains('hidden'),'nor briefed');
-  // and the answer can still be changed, as in a real exam
+  ok(t.simRevealed(),'answering reveals on paper 12');
+  ok($('explain').classList.contains('show'),'and explains it');
+  ok($('exBrief').classList.contains('hidden'),'the before-you-answer briefing stays on papers 1-10');
+  // settled once revealed, as on the teaching papers
   const alt=q2.o.map(o=>o[0]).find(l=>!q2.a.includes(l));
   t.simPick(alt); await sleep(10);
-  ok((t.sim.ans[0]||[]).indexOf(alt)>=0,'an unrevealed answer can still be changed');
+  ok((t.sim.ans[0]||[]).indexOf(alt)<0,'a revealed answer is settled');
   t.simAbandon(); await sleep(20);
   t.simClearSave();
 

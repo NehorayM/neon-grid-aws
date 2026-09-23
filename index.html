@@ -2274,7 +2274,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 11:45 UTC';
+const BUILD='2026-09-23 12:01 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -7001,7 +7001,8 @@ function cheerHTML(i,total){
 // They brief you before the question and explain the moment you answer.
 const BRIEF_PAPERS=10;
 const EXPLAIN_PAPERS=10;
-const simTeaches=()=>!!(sim&&sim.paper&&sim.paper<=EXPLAIN_PAPERS);
+// Every exam gives feedback after each answer now — it used to be papers 1-10 only.
+const simTeaches=()=>!!sim;
 function renderExamBrief(qi){
   const box=$('exBrief');
   if(!box) return;
@@ -8298,8 +8299,7 @@ function renderExplain(q,picked,ok,timedOut){
 
   if(simTeaches()){
     if(sim) bits.push(cheerHTML(sim.i,sim.qs.length));
-    bits.push('<div class="exfoot">Papers 1–'+EXPLAIN_PAPERS+' explain as you go. '+
-              'From paper '+(EXPLAIN_PAPERS+1)+' on you will not see this until you submit.</div>');
+    bits.push('<div class="exfoot">Every exam explains each answer as you go.</div>');
   } else if(sim&&sim.running){
     // Inside an exam this panel only appears for a question whose time ran out. Its button has
     // to move the PAPER on — the practice one below was wired to the practice quiz and did
