@@ -2274,7 +2274,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-23 11:03 UTC';
+const BUILD='2026-09-23 11:26 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -4476,10 +4476,18 @@ function renderLogin(){
 }
 function checkChest(){
   P.nextChest=P.nextChest||25;
-  if(P.answered>=P.nextChest){
+  // Every threshold crossed pays — an exam adds 65 answers at once and crossed two or three.
+  // One exam crosses at most three; a backlog older than that (piled up while exams never
+  // called this) is stepped over rather than paid out as a sudden heap of chests.
+  let paid=0, total=0;
+  while(P.answered>=P.nextChest&&paid<3){
     const reward=35+Math.floor(P.nextChest/25)*5;
-    P.nextChest+=25; addCoins(reward); saveProfile();
-    toast('🎁 Milestone chest +'+reward); celebrate(); sfx.rank();
+    P.nextChest+=25; total+=reward; paid++;
+  }
+  if(P.answered>=P.nextChest) P.nextChest=(Math.floor(P.answered/25)+1)*25;
+  if(paid){
+    addCoins(total); saveProfile();
+    toast('🎁 '+(paid>1?paid+' milestone chests':'Milestone chest')+' +'+total); celebrate(); sfx.rank();
   }
 }
 function chestProgress(){
@@ -5945,11 +5953,14 @@ function simQTick(by){
 }
 // Time spent in the background or on the review screen is not spent on the question, so the
 // deadline is pushed forward by however long that lasted instead of the ticks being skipped.
-let simAwayAt=0, simAwayQ=0;
-function simAway(){ if(!simAwayAt){ simAwayAt=Date.now(); simAwayQ=Math.max(0,simQLeft|0); } }
+let simAwayAt=0, simAwayQ=0, simAwayBrk=0;
+function simAway(){ if(!simAwayAt){ simAwayAt=Date.now(); simAwayQ=Math.max(0,simQLeft|0);
+  // a timed break already running covers its own span, however long we are gone
+  simAwayBrk=(sim&&brkOn()&&!brkOpen())?Number(sim.brkUntil)||0:0; } }
 function simBack(){
   if(!simAwayAt) return;
-  const gone=Date.now()-simAwayAt; simAwayAt=0;
+  const now=Date.now(), cover=Math.max(0,Math.min(now,simAwayBrk)-simAwayAt);
+  const gone=Math.max(0,now-simAwayAt-cover); simAwayAt=0; simAwayBrk=0;
   // Only practice gets the time back. In a simulation another tab is not a free break: a
   // closed tab is charged, leaving through the app costs one of two breaks, and pushing the
   // deadline here made the browser's tab bar the one exit that cost nothing.
@@ -6113,6 +6124,9 @@ function simPick(ltr){
   if(brkOn()) return;                        // a paused paper is paused for answering too
   if(sim.rev&&sim.rev[sim.i]) return;        // a revealed question is settled
   if(sim.locked&&sim.locked[sim.i]){ toast('Answered in the first sitting \u2014 locked'); return; }
+  // Out of time is out of time. Going back from the review grid used to let you answer a
+  // question whose clock had already run out — the limit, sidestepped.
+  if(simQLeft<=0&&!brkOn()){ toast('\u23f1 Time ran out on this question \u2014 it can be read, not answered'); return; }
   const need=QS[sim.qs[sim.i]].a.length;
   const cur=new Set(sim.ans[sim.i]||[]);
   if(cur.has(ltr)) cur.delete(ltr);
@@ -6298,7 +6312,7 @@ function simSubmit(auto){
     dom:DOMAINS.map(x=>byDom[x.id][1]?Math.round(byDom[x.id][0]/byDom[x.id][1]*100):0)});
   P.simLog=P.simLog.slice(0,12);
   if(cont){ P.correct+=gain; }
-  else { P.answered+=len; P.correct+=correct; }
+  else { P.answered+=len; P.correct+=correct; checkChest(); renderChest(); }
   // the papers are the exams now, so the exam badges, quest and history track them
   if(!cont) P.exams=(P.exams||0)+1;
   if(newPass) P.examsPassed=(P.examsPassed||0)+1;

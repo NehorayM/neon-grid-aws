@@ -1250,6 +1250,40 @@ async function multiDeviceChecks(){
   eq(pm.papers[3].bestMode,'practice','a merge keeps how the best score was set');
   delete t.P.lastPaper; t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
 }
+// Bug-hunt round: a timed-out question could still be answered, a break that ran out in the
+// background was charged as time away, and chests never paid after an exam.
+async function hunt9Checks(){
+  const t=T();
+  // 1
+  t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; delete t.P.lastPaper;
+  t.startPaper(12,'exam'); await sleep(30);
+  t.simQTick(90); await sleep(20);
+  t.simJump(0); await sleep(20);
+  eq(t.simQLeft,0,'a question that ran out shows no time when you go back to it');
+  t.QS[t.sim.qs[0]].a.forEach(l=>t.simPick(l));
+  ok(!(t.sim.ans[0]||[]).length,'and cannot be answered after its time is up');
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  // 2
+  const realNow=Date.now; let skew=0; Date.now=()=>realNow()+skew;
+  try{
+    t.startPaper(12,'exam'); await sleep(30);
+    const total0=t.simTotalLeft();
+    t.brkStart(); t.go('homeScreen'); t.simAway();
+    skew+=20*60000; t.brkTick(); t.simBack(); await sleep(20);
+    eq(Math.round((total0-t.simTotalLeft())/60),14,'twenty minutes away, six of them a break, costs fourteen');
+  } finally { Date.now=realNow; }
+  t.simAbandon(); await sleep(20); t.simClearSave();
+  // 3
+  const was={answered:t.P.answered,next:t.P.nextChest,coins:t.P.coins};
+  t.P.answered=100; t.P.nextChest=50;           // an exam just crossed three thresholds
+  t.checkChest();
+  eq(t.P.nextChest,125,'every threshold an exam crosses is paid, and the next one is ahead');
+  ok(t.chestProgress().left>0,'so the home screen never sits on "0 questions"');
+  t.P.answered=900; t.P.nextChest=100;           // an old backlog
+  const c0=t.P.coins; t.checkChest();
+  ok(t.P.nextChest>900&&t.P.coins-c0<=3*200,'an old backlog is stepped over, not paid out as a heap');
+  Object.assign(t.P,{answered:was.answered,nextChest:was.next,coins:was.coins});
+}
 async function saveFlushChecks(){
   const t=T();
   t.simClearSave(); t.startPaper(1,'exam'); await sleep(400);
@@ -2015,7 +2049,9 @@ async function qClockChecks(){
   eq(t.sim.i,0,'and ticking it does not bounce you forward again');
   const opt=$('qOpts').firstChild.dataset.ltr;
   t.simPick(opt); await sleep(10);
-  eq((t.sim.ans[0]||[]).join(''),opt,'you can still answer it from the review list');
+  // It can be reopened and read, but its time is gone: answering it then was a way round the
+  // 90-second limit — let it run out, think elsewhere, come back and answer.
+  eq((t.sim.ans[0]||[]).join(''),'','but it cannot be answered once its time is up');
 
   // it does not burn seconds where you cannot see the question
   t.simJump(3); await sleep(20);
@@ -2773,7 +2809,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
