@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>NEON GRID — AWS Academy</title>
+<title>Cloudwright — AWS Solutions Architect prep</title>
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -1405,7 +1405,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
   <!-- HOME -->
   <div id="homeScreen" class="screen">
     <div class="hero">
-      <h1 class="logo">NEON <span>GRID</span></h1>
+      <h1 class="logo" aria-label="Cloudwright">CLOUD<span>WRIGHT</span></h1>
       <p class="tagline">AWS Solutions Architect training, wired into an arcade.</p>
     </div>
 
@@ -1825,7 +1825,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
   <div id="casinoScreen" class="screen hidden">
     <button class="backbtn" id="casinoBack" aria-label="Back from the casino">‹</button>
     <div style="text-align:center;margin-bottom:10px">
-      <h2 class="head">🎰 Neon Casino</h2>
+      <h2 class="head">🎰 Cloudwright Casino</h2>
       <p class="sub">Chips are separate from your study coins and live on the server — every spin
         and card is dealt there, not in your browser. Cash chips back into coins any time.</p>
     </div>
@@ -1986,7 +1986,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     <div class="card" id="authSignedOut">
       <div class="cardhead"><span class="ch-t">Sign in or create an account</span></div>
       <label class="authlbl" for="authName">Username <span style="text-transform:none;letter-spacing:0">— for new accounts; 3–20 letters, numbers or _</span></label>
-      <input class="authin" id="authName" type="text" autocomplete="username" maxlength="20" placeholder="neon_architect">
+      <input class="authin" id="authName" type="text" autocomplete="username" maxlength="20" placeholder="cloud_architect">
       <label class="authlbl" for="authEmail">Email</label>
       <input class="authin" id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
       <label class="authlbl" for="authPass">Password</label>
@@ -2463,7 +2463,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 08:39 UTC';
+const BUILD='2026-09-24 08:44 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -4493,7 +4493,7 @@ function exportProfile(){
     const d=new Date(), pad=n=>String(n).padStart(2,'0');
     const stamp=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
     const a=document.createElement('a');
-    a.href=url; a.download='neon-grid-progress-'+stamp+'.json';
+    a.href=url; a.download='cloudwright-progress-'+stamp+'.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
     toast('Progress exported');
@@ -6558,7 +6558,7 @@ function simSubmit(auto){
   logExam(correct,len,passed);
   if(newPass) questProgress('exam',1);
   if(paper) recordPaper(paper,pct,isPractice(),cont);
-  lastExamCsv={paper,name:(paper?'neon-grid-exam-'+paper:'neon-grid-sim')+'-'+dayKey()+'.csv',list:csv};
+  lastExamCsv={paper,name:(paper?'cloudwright-exam-'+paper:'cloudwright-sim')+'-'+dayKey()+'.csv',list:csv};
   const earned=cont?gain:correct;
   const coins=earned+(newPass?90:0);
   addCoins(coins); addXP(earned*6+(newPass?200:0));
@@ -7660,7 +7660,7 @@ function exportReview(){
   if(!all.length){ toast('Nothing to export yet — flag a question or miss one first'); return; }
   const list=all.map(i=>({i,why:flagged.has(i)&&missed.has(i)?'Flagged + missed'
                                 :flagged.has(i)?'Flagged':'Missed'}));
-  const ok=downloadCsv('neon-grid-review-'+dayKey()+'.csv',csvRows(list));
+  const ok=downloadCsv('cloudwright-review-'+dayKey()+'.csv',csvRows(list));
   toast(ok?'⬇ '+plural(list.length,'question')+' exported':'Export blocked by the browser');
 }
 function exportLastExam(){

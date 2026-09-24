@@ -1,5 +1,9 @@
 # Where this project stands
 
+The app is **Cloudwright** (renamed from Neon Grid in September 2026 — a *wright* is a maker, a
+cloudwright builds in the cloud). "Neon Grid" survives only as the name of the original colour
+theme, and in the repo name.
+
 Live: **https://nehoraym.github.io/neon-grid-aws/** · repo `NehorayM/neon-grid-aws` (public, GitHub Pages from `main`)
 
 `index.html` is the whole app — one self-contained file, ~2.9 MB (well under 1 MB gzipped over the wire),
