@@ -1614,6 +1614,49 @@ async function storyChecks(){
   eq($('explain').querySelectorAll('.exrest').length,0,'the leftover paragraph is not printed a second time at the bottom');
   t.simAbandon(); await sleep(20); t.simClearSave(); t.go('homeScreen'); await sleep(20);
 }
+// Asked for: a Read button on the explanation. It reads the block in order, on every exam —
+// including the ones where the question's own Read is tapered away, which used to stop any speech.
+async function exReadChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis'), realU=window.SpeechSynthesisUtterance;
+  const said=[]; let speaking=false;
+  Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
+    speak(u){ said.push(u.text); speaking=true; setTimeout(()=>u.onstart&&u.onstart(),5); },
+    cancel(){ speaking=false; }, addEventListener(){}, removeEventListener(){}, getVoices(){ return []; },
+    get speaking(){return speaking;}, get pending(){return false;}, get paused(){return false;}
+  }});
+  window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };
+  try{
+    // Exam 13: the question's Read is off on every question there
+    const qi=12*65+4, q=t.QS[qi];
+    t.simClearSave(); t.startPaper(13,'practice'); await sleep(200);
+    t.simJump(4); await sleep(50);
+    ok(!t.readAllowed(13,4),'(on Exam 13 the question itself cannot be read)');
+    t.simPick(q.o.map(o=>o[0]).find(l=>!q.a.includes(l))); await sleep(200);
+    const b=$('explain').querySelector('.exread');
+    ok(!!b,'the explanation has a Read button');
+    ok(b.getBoundingClientRect().height>=32,'big enough to tap');
+    const txt=t.exReadText();
+    ok(/answer is/i.test(txt)&&/What they asked for/i.test(txt)&&/is the answer/i.test(txt),'it reads the verdict, the ask and why');
+    ok(/your pick/i.test(txt),'and why your pick is not it');
+    ok(!/[—↑→✅❌]/.test(txt),'without reading out dashes, arrows or emoji');
+    b.click(); await sleep(120);
+    ok(said.join(' ').indexOf('What they asked for')>=0,'tapping Read speaks it');
+    ok(t.ttsOn&&t.exTts,'even on a question where the question\'s own Read is off');
+    eq($('explain').querySelector('.exread').textContent.trim(),'⏹ Stop','the button turns into Stop');
+    ok(!$('simTts').classList.contains('on'),'and the question\'s button does not claim it');
+    $('explain').querySelector('.exread').click(); await sleep(20);
+    ok(!t.ttsOn,'Stop stops it');
+    eq($('explain').querySelector('.exread').textContent.trim(),'\u{1f50a} Read','and the button says Read again');
+    $('explain').querySelector('.exread').click(); await sleep(60);
+    t.simJump(5); await sleep(60);
+    ok(!t.ttsOn,'moving to another question stops the explanation');
+  } finally {
+    if(real) Object.defineProperty(window,'speechSynthesis',real); else delete window.speechSynthesis;
+    window.SpeechSynthesisUtterance=realU;
+    if(t.sim) t.simAbandon(); await sleep(20); t.simClearSave(); t.go('homeScreen'); await sleep(20);
+  }
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3376,7 +3419,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -1052,7 +1052,10 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .exnote{font-size:12.8px;line-height:1.62;color:#d3d9e2}
 /* what happened in this question: the stem's own problem and ask, then why, then your pick */
 .exstory{margin:12px 0 4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:11px 13px 5px}
-.exstoryh{font-size:12.5px;font-weight:650;color:var(--dim);margin-bottom:6px}
+.exstoryh{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:650;color:var(--dim);margin-bottom:6px}
+.exread{flex:none;font-size:12px;font-weight:650;min-height:34px;padding:6px 12px;border-radius:9px;
+  border:1px solid color-mix(in srgb, var(--cyan) 40%, transparent);background:color-mix(in srgb, var(--cyan) 10%, transparent);color:var(--cyan)}
+.exread.on{border-color:var(--gold);color:var(--gold);background:color-mix(in srgb, var(--gold) 12%, transparent)}
 .exsrow{padding:8px 0;border-top:1px solid var(--line)}
 .exsrow:first-of-type{border-top:0}
 .exsk{font-family:var(--mono);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--cyan);margin-bottom:4px}
@@ -2484,7 +2487,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 11:32 UTC';
+const BUILD='2026-09-24 13:55 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -7262,6 +7265,7 @@ const ttsOk=()=>typeof window!=='undefined'&&'speechSynthesis' in window;
 // speechSynthesis.speaking lags behind cancel() in some browsers, so the button
 // follows our own flag and the utterance's own end event instead
 let ttsOn=false;
+let exTts=false;            // what is being read is the explanation, not the question
 let ttsSeq=0;
 function ttsStop(){
   ttsOn=false; ttsSeq++;              // anything still queued from before is now stale
@@ -7380,8 +7384,9 @@ function ttsSend(text,seq,plain){
   });
   return ()=>started||ss.speaking;
 }
-function ttsSpeak(text){
+function ttsSpeak(text,opts){
   if(!ttsOk()) { toast('This browser cannot read aloud'); return false; }
+  exTts=!!(opts&&opts.ex);
   const ss=window.speechSynthesis;
   const seq=++ttsSeq;                 // a later tap makes this batch's callbacks stale
   try{
@@ -7439,13 +7444,46 @@ function readAllowed(paper,i){
   return false;                                  // 13 on: never
 }
 function renderTtsBtn(){
+  if(!ttsOn) exTts=false;
+  renderExReadBtn();
   const b=$('simTts'); if(!b) return;
   const allowed=!sim||readAllowed(sim.paper,sim.i);
+  // the question's reading only: the explanation's is allowed on every question, and the
+  // question button neither stops it nor shows Stop for it
+  const mine=ttsOn&&!exTts;
   b.classList.toggle('hidden',!allowed);
-  if(!allowed&&ttsOn) ttsStop();
-  b.classList.toggle('on',ttsOn);
-  b.textContent=ttsOn?'⏹ Stop':'🔊 Read';
-  b.title=ttsOn?'Stop reading':'Read the question aloud';
+  if(!allowed&&mine) ttsStop();
+  b.classList.toggle('on',mine);
+  b.textContent=mine?'⏹ Stop':'🔊 Read';
+  b.title=mine?'Stop reading':'Read the question aloud';
+}
+// ---------- reading the explanation ----------
+function renderExReadBtn(){
+  const b=document.querySelector('#explain .exread'); if(!b) return;
+  const on=ttsOn&&exTts;
+  b.classList.toggle('on',on);
+  b.textContent=on?'\u23f9 Stop':'\u{1f50a} Read';
+  b.setAttribute('aria-label',on?'Stop reading the explanation':'Read the explanation aloud');
+}
+// what the block says, in reading order: the verdict, then each row as "heading. text."
+function exReadText(){
+  const box=$('explain'); if(!box) return '';
+  const parts=[];
+  const head=box.querySelector('.exhead');
+  if(head){ const h=head.cloneNode(true); h.querySelectorAll('.tag').forEach(x=>x.remove()); parts.push(h.textContent.trim().replace(/([^.!?])$/,'$1.')); }
+  box.querySelectorAll('.exstory .exsrow').forEach(r=>{
+    const k=(r.querySelector('.exsk')||{}).textContent||'';
+    const v=[...r.querySelectorAll('.exsask')].map(x=>x.textContent.trim()).join(' ')||((r.querySelector('.exsv')||{}).textContent||'');
+    parts.push(k.trim()+'. '+v.trim());
+  });
+  return parts.join(' ').replace(/\s*[\u2014\u2013]\s*/g,', ').replace(/[\u2705\u274c\u23f1\u2191\u2192]/g,'').replace(/\s+/g,' ').trim();
+}
+function exReadToggle(){
+  if(ttsOn&&exTts){ ttsStop(); renderTtsBtn(); return; }
+  const text=exReadText(); if(!text) return;
+  ensureAudio&&ensureAudio();
+  ttsSpeak(text,{ex:true});
+  renderExReadBtn();
 }
 
 const EXAM_CHEER=[
@@ -8825,7 +8863,8 @@ function renderStory(q,e,picked,ok){
       rows.push(['Half of it',esc('You had '+q.a.filter(l=>picked.has(l)).join(' + ')+' right; the answer also needs '+missed.join(' + ')+'.')]);
   }
   if(!rows.length){ renderStory.saidLead=false; renderStory.saidPick=new Set(); return ''; }
-  return '<div class="exstory"><div class="exstoryh">\u{1f50e} What happened in this question</div>'+
+  return '<div class="exstory"><div class="exstoryh"><span>\u{1f50e} What happened in this question</span>'+
+    (ttsOk()?'<button type="button" class="exread" aria-label="Read the explanation aloud">\u{1f50a} Read</button>':'')+'</div>'+
     rows.map(([k,v])=>'<div class="exsrow"><div class="exsk">'+k+'</div><div class="exsv">'+v+'</div></div>').join('')+'</div>';
 }
 function renderExplain(q,picked,ok,timedOut){
@@ -8953,6 +8992,7 @@ function renderExplain(q,picked,ok,timedOut){
     bits.push('<button class="btn" id="exNext" style="width:100%;margin-top:2px">Continue ▸</button>');
   }
   box.innerHTML=bits.join('');
+  { const rb=box.querySelector('.exread'); if(rb){ rb.onclick=exReadToggle; renderExReadBtn(); } }
   box.classList.add('show');
   const nx=$('exNext');
   if(nx) nx.onclick=()=>{ if(pendingAdvance){ const go=pendingAdvance; pendingAdvance=null; go(); } };
@@ -11238,7 +11278,7 @@ if(TEST){
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
     ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
-    qStory, hiQual, renderStory,
+    qStory, hiQual, renderStory, exReadText, exReadToggle, get exTts(){return exTts;}, get ttsOn(){return ttsOn;},
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
     voiceForPreset, voiceUsable,
     voiceTest, voiceProbe, renderVoice, voiceSay, voiceCheckAll, openVoice, VOICE_SAMPLE,
