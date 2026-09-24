@@ -1,8 +1,8 @@
 # Where this project stands
 
-The app is **Cloudwright** (renamed from Neon Grid in September 2026 — a *wright* is a maker, a
-cloudwright builds in the cloud). "Neon Grid" survives only as the name of the original colour
-theme, and in the repo name.
+The app is **Skyforge** (renamed from Neon Grid in September 2026 — the forge where cloud
+architects are made). "Neon Grid" survives only as the name of the original colour theme, and in
+the repo name.
 
 Live: **https://nehoraym.github.io/neon-grid-aws/** · repo `NehorayM/neon-grid-aws` (public, GitHub Pages from `main`)
 
