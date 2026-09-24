@@ -116,6 +116,12 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .rdcard.pass .rdbar i{background:var(--lime)}
 .rdbar::after{content:'';position:absolute;top:0;bottom:0;left:69%;width:2px;background:var(--gold)}
 .rdcard .buy{flex:none}
+.rdacts{flex:none;display:flex;flex-direction:column;gap:6px;align-items:stretch}
+.rdcsv{font-size:11.5px;font-weight:650;min-height:32px;padding:5px 10px;border-radius:9px;
+  background:transparent;border:1px solid var(--line2);color:var(--dim)}
+.rdcsv:hover{color:var(--txt);border-color:var(--cyan)}
+.rdtools{display:flex;justify-content:flex-end;margin:2px 0 8px}
+.rdtools .hidden{display:none}
 .rdempty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:34px 18px;
   color:var(--dim);font-size:12.5px}
 .rdempty.hidden{display:none}
@@ -1810,6 +1816,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <div class="rdcharthead"><span>Recent scores</span><span class="rdpass">720 to pass</span></div>
       <div class="rdchart-in" id="redoChart"></div>
     </div>
+    <div class="rdtools"><button class="btn ghost sm hidden" id="redoCsvAll">⬇ All exams (CSV)</button></div>
     <div class="list" id="redoList"></div>
     <div class="rdempty hidden" id="redoEmpty">
       <div class="rdempty-ic">📝</div>
@@ -2487,7 +2494,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 13:55 UTC';
+const BUILD='2026-09-24 15:14 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -6824,6 +6831,7 @@ function renderRedoScreen(){
     else { st.classList.add('ok'); st.textContent='\u25cf Synced to your account'+(histLastSync?' \u00b7 '+new Date(histLastSync).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):''); }
   }
   $('redoEmpty').classList.toggle('hidden',!!ks.length);
+  $('redoCsvAll').classList.toggle('hidden',!ks.length);
   const scs=ks.map(k=>Number(h[k].sc)||100);
   const passN=scs.filter(x=>x>=SAA_PASS).length;
   $('redoStats').innerHTML=ks.length?
@@ -6860,7 +6868,13 @@ function renderRedoScreen(){
     b.setAttribute('aria-label',(live?'Continue the redo of ':'Redo ')+card.querySelector('.nm').textContent+', '+v+' out of 1000');
     // resuming here still asks the account: the other device may have gone on with it
     b.onclick=()=>live?(simSaved()&&simResume(),histCloudPull()):histOpen(k,b);
-    card.appendChild(b); L.appendChild(card);
+    const c=document.createElement('button'); c.className='rdcsv';
+    c.textContent='\u2b07 CSV';
+    c.setAttribute('aria-label','Download '+card.querySelector('.nm').textContent+' as a CSV file');
+    c.onclick=()=>histCsv(k);
+    const acts=document.createElement('div'); acts.className='rdacts';
+    acts.appendChild(b); acts.appendChild(c);
+    card.appendChild(acts); L.appendChild(card);
   });
 }
 function renderHist(){
@@ -7778,6 +7792,45 @@ function csvRows(list){
   });
   return rows.join('\r\n');
 }
+// ---------- CSV of a kept exam: every question, how it went, and why ----------
+const HIST_CSV_HEAD=['Exam','#','Result','Flagged','Sector','Question','A','B','C','D','E','F',
+                     'Your answer','Correct answer','Explanation'];
+function histCsvLines(r){
+  const exam=r.paper?'Exam '+(Number(r.paper)|0):'Mock exam';
+  return (r.qs||[]).map((qi,i)=>{
+    const q=QS[qi]; if(!q) return null;
+    const byLtr={}; q.o.forEach(([l,t])=>{ byLtr[l]=t; });
+    const mine=((r.ans||{})[i]||[]).slice().sort();
+    const res=!mine.length?'Unanswered':(mine.length===q.a.length&&q.a.every(l=>mine.includes(l))?'Right':'Wrong');
+    const cells=[exam,i+1,res,(r.flag||{})[i]?'Yes':'',SHORT[q.s]||SECTIONS[q.s]||'',q.q];
+    ['A','B','C','D','E','F'].forEach(l=>cells.push(byLtr[l]||''));
+    cells.push(mine.map(l=>l+') '+(byLtr[l]||'')).join('  |  '));
+    cells.push(q.a.map(l=>l+') '+(byLtr[l]||'')).join('  |  '));
+    cells.push(q.w||q.x||'');
+    return cells.map(csvCell).join(',');
+  }).filter(Boolean);
+}
+function histCsvName(r){
+  return 'skyforge-'+(r.paper?'exam-'+(Number(r.paper)|0):'mock')+'-'+(Number(r.sc)||100)+'-'+
+    String(r.d||dayKey()).replace(/[^0-9-]/g,'')+'.csv';
+}
+function histCsv(hid){
+  const r=(P.examHist||{})[hid]; if(!r) return false;
+  const lines=histCsvLines(r);
+  const ok=lines.length&&downloadCsv(histCsvName(r),[HIST_CSV_HEAD.map(csvCell).join(','),...lines].join('\r\n'));
+  toast(ok?'\u2b07 '+(r.paper?'Exam '+(Number(r.paper)|0):'Mock exam')+' \u2014 '+plural(lines.length,'question')+' exported':'Export blocked by the browser');
+  return !!ok;
+}
+function histCsvAll(){
+  const h=P.examHist||{};
+  const ks=Object.keys(h).filter(k=>Array.isArray(h[k].qs)&&h[k].qs.every(i=>!!QS[i]))
+    .sort((a,b)=>(Number(h[b].d0)||0)-(Number(h[a].d0)||0));
+  if(!ks.length){ toast('No exams to export yet'); return false; }
+  const lines=[]; ks.forEach(k=>lines.push(...histCsvLines(h[k])));
+  const ok=downloadCsv('skyforge-all-exams-'+dayKey()+'.csv',[HIST_CSV_HEAD.map(csvCell).join(','),...lines].join('\r\n'));
+  toast(ok?'\u2b07 '+plural(ks.length,'exam')+' exported':'Export blocked by the browser');
+  return !!ok;
+}
 function downloadCsv(name,text){
   try{
     // the BOM is what makes Excel read the UTF-8 accents correctly
@@ -8212,6 +8265,7 @@ $('simAgain').onclick=()=>{
   else startSim((sim&&sim.mode)||'exam');
 };
 $('simCsv').onclick=exportLastExam;
+$('redoCsvAll').onclick=()=>histCsvAll();
 $('simRedoThis').onclick=()=>{ const h=$('simRedoThis').dataset.hid; if(h) histOpen(h,$('simRedoThis')); };
 $('simAllRedo').onclick=()=>{ renderRedoScreen(); go('redoScreen'); syncNav(); };
 $('histGoRedo').onclick=()=>{ renderRedoScreen(); go('redoScreen'); syncNav(); };
@@ -11278,6 +11332,7 @@ if(TEST){
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
     ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
+    histCsvLines, histCsvName, histCsv, histCsvAll, HIST_CSV_HEAD,
     qStory, hiQual, renderStory, exReadText, exReadToggle, get exTts(){return exTts;}, get ttsOn(){return ttsOn;},
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
     voiceForPreset, voiceUsable,

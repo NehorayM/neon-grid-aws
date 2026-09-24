@@ -1657,6 +1657,50 @@ async function exReadChecks(){
     if(t.sim) t.simAbandon(); await sleep(20); t.simClearSave(); t.go('homeScreen'); await sleep(20);
   }
 }
+// Asked for: a CSV download from the redo exams — every question, how it went, and why.
+async function redoCsvChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const qs=t.paperQs(3), ans={}, flag={2:true};
+  ans[0]=t.QS[qs[0]].a.slice();                                         // right
+  ans[1]=t.QS[qs[1]].o.map(o=>o[0]).filter(l=>!t.QS[qs[1]].a.includes(l)).slice(0,t.QS[qs[1]].a.length); // wrong
+  t.P.examHist={e3:{hid:'e3',paper:3,qs:qs.slice(),ans,flag,mode:'exam',d:'2026-09-24',d0:2,at:2,c:1,n:qs.length,sc:315},
+                m1:{hid:'m1',paper:0,qs:t.paperQs(1).slice(0,5),ans:{},flag:{},mode:'exam',d:'2026-09-20',d0:1,at:1,c:0,n:5,sc:100}};
+  const got=[]; const realClick=HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click=function(){ got.push({name:this.download, href:this.href}); };
+  try{
+    t.go('redoScreen'); t.renderRedoScreen(); await sleep(20);
+    const cards=[...document.querySelectorAll('#redoList .rdcard')];
+    eq(cards.length,2,'(two kept exams)');
+    const csvBtn=cards[0].querySelector('.rdcsv');
+    ok(!!csvBtn,'each exam card has a CSV button');
+    ok(csvBtn.getBoundingClientRect().height>=32,'big enough to tap');
+    eq(cards[0].querySelector('button').textContent.trim(),'▶ Redo','and Redo is still the first button on the card');
+    ok(!$('redoCsvAll').classList.contains('hidden'),'the list has a download-all button');
+    csvBtn.click(); await sleep(20);
+    eq(got.length,1,'tapping it downloads a file');
+    eq(got[0].name,'skyforge-exam-3-315-2026-09-24.csv','named after the exam, its score and date');
+    const text=await (await fetch(got[0].href)).text();
+    const lines=text.replace(/^﻿/,'').split('\r\n');
+    const head3=[...new Uint8Array(await (await fetch(got[0].href)).arrayBuffer()).slice(0,3)];
+    eq(head3.join(','),'239,187,191','with the BOM Excel needs for UTF-8');   // text() would strip it
+    eq(lines.length,qs.length+1,'one row per question, plus the header');
+    ok(/"Result".*"Your answer","Correct answer","Explanation"/.test(lines[0]),'the header names the columns');
+    ok(/^"Exam 3","1","Right"/.test(lines[1]),'question 1 is marked right');
+    ok(/^"Exam 3","2","Wrong"/.test(lines[2]),'question 2 wrong');
+    ok(/^"Exam 3","3","Unanswered","Yes"/.test(lines[3]),'question 3 unanswered, and flagged');
+    const q0=t.QS[qs[0]];
+    ok(lines[1].indexOf(q0.a[0]+') ')>=0,'your answer and the correct answer are written out');
+    if(q0.w) ok(lines[1].indexOf(q0.w.slice(0,40).replace(/"/g,'""'))>=0,'with the written explanation');
+    $('redoCsvAll').click(); await sleep(20);
+    eq(got.length,2,'download-all gives one file');
+    ok(/^skyforge-all-exams-/.test(got[1].name),'named as all exams');
+    const all=(await (await fetch(got[1].href)).text()).replace(/^﻿/,'').split('\r\n');
+    eq(all.length,qs.length+5+1,'holding every question of every kept exam');
+    ok(all.some(l=>/^"Mock exam"/.test(l)),'mock exams included and named');
+    t.P.examHist={}; t.renderRedoScreen(); await sleep(10);
+    ok($('redoCsvAll').classList.contains('hidden'),'with nothing kept, there is nothing to download');
+  } finally { HTMLAnchorElement.prototype.click=realClick; t.P.examHist={}; t.go('homeScreen'); await sleep(20); }
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3419,7 +3463,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
