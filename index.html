@@ -75,6 +75,16 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .exmore>summary::after{content:' \203a';opacity:.6}
 .exmore[open]>summary::after{content:' \2039'}
 .exmore>.exwhy,.exmore>.exsvc{display:block;padding:0 12px 10px}
+/* the services block: one row per service — the name as a tag, the Hebrew under it, right to left */
+.exmore>.exsvc{display:flex;flex-direction:column;gap:0;padding:0 12px 6px;text-decoration:none}
+.exmore .svcline{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:9px 0;
+  border-top:1px solid var(--line)}
+.exmore .svcline:first-child{border-top:0;padding-top:2px}
+.exmore .svcline>b{align-self:flex-start;direction:ltr;unicode-bidi:isolate;font-family:var(--mono);
+  font-size:11px;font-weight:650;letter-spacing:.3px;color:var(--cyan);padding:2px 8px;border-radius:6px;
+  background:color-mix(in srgb, var(--cyan) 10%, transparent);border:1px solid color-mix(in srgb, var(--cyan) 28%, transparent)}
+.exmore .svcline>span{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
+  font-size:13px;line-height:1.65;color:#d3d9e2}
 #runBox,#histBox{margin-bottom:14px}
 .histrow .ds{white-space:normal}
 /* ---- Exam Redo ---- */
@@ -2463,7 +2473,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 09:57 UTC';
+const BUILD='2026-09-24 11:13 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -8798,7 +8808,7 @@ function renderExplain(q,picked,ok,timedOut){
         if(seenTerm.has(k)) return false;
         seenTerm.add(k); return true;
       });
-      terms.forEach(t=>defs.push('<span class="svcline"><b>'+esc(asWritten(txt,t.t))+'</b><span dir="rtl">'+esc(t.d)+'</span></span>'));
+      terms.forEach(t=>defs.push('<div class="svcline"><b dir="ltr">'+esc(asWritten(txt,t.t))+'</b><span dir="rtl" lang="he">'+esc(t.d)+'</span></div>'));
       const mine=picked&&picked.has&&picked.has(ltr);
       return '<div class="exitem exopt '+(right?'good':'bad')+(mine?' mine':'')+'">'+
         '<span class="k">'+ltr+(right?' \u2713':' \u2717')+'</span>'+
@@ -8809,7 +8819,7 @@ function renderExplain(q,picked,ok,timedOut){
         '</span></div>';
     }).join('')+'</div>');
     if(defs.length) bits.push('<details class="exmore"><summary>\u{1f4da} The services in this question</summary>'+
-      '<u class="exsvc">'+defs.join('')+'</u></details>');
+      '<div class="exsvc">'+defs.join('')+'</div></details>');
     if(e.why.rest) bits.push('<div class="exnote exrest">'+esc(e.why.rest)+'</div>');
   }
 

@@ -1555,6 +1555,33 @@ async function hunt10Checks(){
   } finally { t.cloudForTest(was[0],was[1]); t.histTable='unknown'; t.P.examHist={}; }
   ok(($('simCont').textContent||'').trim().length>10,'the finish-later button has a label before it is shown');
 }
+// Reported: "The services in this question" rendered as one underlined paragraph with the
+// service names glued into the Hebrew. Its container was a <u> and its layout rules only matched
+// inside an option.
+async function svcBlockChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const txt=q=>q.o.map(o=>o[1]).join(' ');
+  const qi=t.QS.findIndex(q=>/RDS Proxy/.test(txt(q)));
+  const q=t.QS[qi];
+  t.simClearSave(); t.startPaper(Math.floor(qi/65)+1,'practice'); await sleep(200);
+  t.simJump(qi%65); await sleep(50);
+  t.simPick(q.o.map(o=>o[0]).find(l=>!q.a.includes(l))); await sleep(200);
+  const d=[...$('explain').querySelectorAll('details.exmore')].find(x=>/services/.test(x.textContent));
+  ok(!!d,'the services block is there');
+  d.open=true; await sleep(20);
+  eq(d.querySelectorAll('u').length,0,'nothing in it is an underline element');
+  eq(getComputedStyle(d.querySelector('.exsvc')).textDecorationLine,'none','and nothing is underlined');
+  const rows=[...d.querySelectorAll('.svcline')];
+  ok(rows.length>=2,'one row per service');
+  const tops=rows.map(r=>Math.round(r.getBoundingClientRect().top));
+  ok(tops.every((y,i)=>i===0||y>tops[i-1]),'each on its own line, not run together');
+  ok(rows.every(r=>{ const b=r.querySelector('b'), sp=r.querySelector('span');
+      return b&&sp&&b.getBoundingClientRect().bottom<=sp.getBoundingClientRect().top+1; }),
+     'the service name sits above its Hebrew, not inside it');
+  ok(rows.every(r=>getComputedStyle(r.querySelector('span')).direction==='rtl'),'the Hebrew reads right to left');
+  ok(rows.every(r=>getComputedStyle(r.querySelector('b')).direction==='ltr'),'the name left to right');
+  t.simAbandon(); await sleep(20); t.simClearSave(); t.go('homeScreen'); await sleep(20);
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3317,7 +3344,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
