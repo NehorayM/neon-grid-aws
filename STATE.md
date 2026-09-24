@@ -940,6 +940,13 @@ the one casino panel without `hidden` in the markup, so both showed until a tab 
   client spun indefinitely. v2's `roulette_table()` marks `cur - 1`; the client also gives up
   a spin after 7 s with no result.
 
+**Taps that vanished (bug hunt 2026-09-24).** `casRpc` returned null for *any* call made while
+another was in flight — and the duel polls every 1.5 s, roulette every 2.5 s (0.8 s spinning).
+"Lock in", bets, Hit and Stand pressed during a poll did nothing. Proven with a slow fake
+server, then on the real one (three quick bets: before, one; now all three). Polls in
+`CAS_POLLS` still skip a beat; everything else waits up to 5 s for the line. Also: coming back
+to the casino puts a running duel on screen (`duelResume` → `casTab('Duel')`).
+
 `sql_tests/duel_v2_suite.sql` (run by `run.sh`, which also installs v2 twice to prove it is
 re-runnable). `suite.sql` now starts outside roulette's closing window: `now()` is fixed for a
 whole `do` block, and a run that began in the last 3 s of a round failed "a roulette bet is

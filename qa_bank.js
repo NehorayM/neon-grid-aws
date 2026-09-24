@@ -1494,6 +1494,67 @@ async function redoSyncChecks(){
   if(t.sim) t.simAbandon(); await sleep(20);
   t.P.examHist={}; t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
 }
+// Bug hunt 2026-09-24: a casino tap made during a poll vanished; a duel ran on unseen behind
+// Roulette; failed history uploads were never retried.
+async function hunt10Checks(){
+  const t=T(), $=id=>document.getElementById(id);
+  // ---- an action during a poll waits for it instead of vanishing
+  const calls=[];
+  const slow={rpc(fn){ calls.push(fn); return new Promise(r=>setTimeout(()=>r({data:{ok:true,chips:100},error:null}),300)); },
+    from(){ return {select(){ const q={or(){return q}, in(){return q}, order(){return q}, limit(){ return Promise.resolve({data:[]}); }}; return q; }}; }};
+  let was=t.cloudForTest(slow,{id:'u-h10'});
+  try{
+    const poll=t.casRpc('duel_state',{duel:'x'});
+    await sleep(40);
+    const act=await t.casRpc('duel_answer',{duel:'x',picks:['A']});
+    await poll;
+    eq(calls.join(),'duel_state,duel_answer','"Lock in" pressed during a poll is sent after it, not dropped');
+    ok(act&&act.ok,'and its answer comes back');
+    calls.length=0;
+    const p1=t.casRpc('roulette_table'); await sleep(20);
+    const p2=await t.casRpc('roulette_table'); await p1;
+    eq(calls.join(),'roulette_table','a second poll while one is in flight still skips');
+    eq(p2,null,'without waiting');
+    calls.length=0;
+    const bet=t.casRpc('roulette_bet',{pick:'red',amount:10}); await sleep(20);
+    const bet2=t.casRpc('bj_hit'); await Promise.all([bet,bet2]);
+    eq(calls.join(),'roulette_bet,bj_hit','two actions pressed together both go, one after the other');
+  } finally { t.cloudForTest(was[0],was[1]); }
+
+  // ---- coming back to the casino shows the duel that is running
+  t.go('casinoScreen'); t.casTab('Roul'); t.rouStop();
+  t.botStart(); await sleep(20);
+  t.casTab('Roul'); t.rouStop();
+  ok($('casDuel').classList.contains('hidden'),'(the player looked at Roulette mid-duel)');
+  await t.duelResume(); await sleep(20);
+  ok(!$('casDuel').classList.contains('hidden')&&$('casRoul').classList.contains('hidden'),
+     'coming back puts the running duel on screen, not behind Roulette');
+  const lost=t.P.botL||0;
+  $('duelLeave').click(); $('duelLeave').click(); await sleep(10);   // end it the way a player does
+  eq(t.duelId,null,'(and it can be left)');
+  t.P.botL=lost; t.duelShow('Lobby'); t.casTab('Roul'); t.rouStop(); t.go('homeScreen');
+
+  // ---- a failed history upload is tried again
+  let fail=true; const table={};
+  const flaky={from(){ return {
+    upsert(rows){ if(fail) return Promise.resolve({error:{code:'08006',message:'network'}});
+      rows.forEach(r=>{ table[r.hid]=r; }); return Promise.resolve({error:null}); },
+    select(){ const q=Promise.resolve({error:null,data:[]}); q.in=()=>Promise.resolve({error:null,data:[]}); return q; } }; }};
+  was=t.cloudForTest(flaky,{id:'u-h10'});
+  try{
+    t.histTable='unknown';
+    t.P.examHist={r1:{hid:'r1',paper:1,qs:t.paperQs(1),ans:{},sc:100,c:0,n:65,at:Date.now(),d0:Date.now()}};
+    t.histDirty.add('r1');
+    await t.histCloudPush(); await sleep(10);
+    ok(!table.r1,'(the upload fails)');
+    ok(t.histDirty.has('r1'),'the exam is kept for another try');
+    ok(!!t.histTimer,'and a retry is scheduled, not left for the next sync to happen along');
+    fail=false;
+    await t.histCloudPush(); await sleep(10);
+    ok(!!table.r1,'the retry sends it');
+  } finally { t.cloudForTest(was[0],was[1]); t.histTable='unknown'; t.P.examHist={}; }
+  ok(($('simCont').textContent||'').trim().length>10,'the finish-later button has a label before it is shown');
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3256,7 +3317,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

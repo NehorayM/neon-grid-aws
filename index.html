@@ -1727,7 +1727,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
         <button class="btn ghost sm" id="simCsv">⬇ CSV</button>
         <button class="btn ghost sm" id="simHome">Home</button>
       </div>
-      <button class="btn wide hidden" id="simCont" style="margin:14px auto 0;max-width:420px"></button>
+      <button class="btn wide hidden" id="simCont" style="margin:14px auto 0;max-width:420px">↩ Finish the questions you did not reach</button>
       <div class="sechead" id="simDomHead">Domain breakdown</div>
       <div class="card" id="simDomList"></div>
       <div class="sechead">Recent</div>
@@ -2463,7 +2463,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 09:00 UTC';
+const BUILD='2026-09-24 09:57 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -6598,6 +6598,11 @@ function histMissing(e){
   const m=String(e&&e.message||'');
   return !!e&&(e.code==='42P01'||e.code==='PGRST205'||(/exam_history/.test(m)&&/does not exist|schema cache|could not find/i.test(m)));
 }
+// a failed upload (offline, a dropped connection) is kept and tried again, not left for luck
+function histRetry(){
+  if(histTimer) return;
+  histTimer=setTimeout(histCloudPush,15000);
+}
 function histCloudQueue(hid){
   if(!hid) return;
   histDirty.add(hid);
@@ -6614,9 +6619,9 @@ async function histCloudPush(){
   let cloud={};
   try{
     const r=await sb.from('exam_history').select('hid,exam').in('hid',want.map(String));
-    if(r.error){ if(histMissing(r.error)){ histTable='missing'; return; } want.forEach(h=>histDirty.add(h)); return; }
+    if(r.error){ if(histMissing(r.error)){ histTable='missing'; return; } want.forEach(h=>histDirty.add(h)); histRetry(); return; }
     (r.data||[]).forEach(row=>{ if(row.exam) cloud[row.hid]=row.exam; });
-  }catch(e){ want.forEach(h=>histDirty.add(h)); return; }
+  }catch(e){ want.forEach(h=>histDirty.add(h)); histRetry(); return; }
   let adopted=false;
   const rows=[];
   want.forEach(h=>{
@@ -6633,9 +6638,9 @@ async function histCloudPush(){
   if(!rows.length){ histTable='ok'; histLastSync=Date.now(); if(route==='redoScreen') renderRedoScreen(); return; }
   try{
     const {error}=await sb.from('exam_history').upsert(rows);
-    if(error){ if(histMissing(error)) histTable='missing'; else rows.forEach(r=>histDirty.add(r.hid)); }
+    if(error){ if(histMissing(error)) histTable='missing'; else { rows.forEach(r=>histDirty.add(r.hid)); histRetry(); } }
     else { histTable='ok'; histLastSync=Date.now(); }
-  }catch(e){ rows.forEach(r=>histDirty.add(r.hid)); }
+  }catch(e){ rows.forEach(r=>histDirty.add(r.hid)); histRetry(); }
   if(route==='redoScreen') renderRedoScreen();
 }
 async function histCloudPull(){
@@ -6829,7 +6834,8 @@ function renderRedoScreen(){
     const b=document.createElement('button'); b.className='buy';
     b.textContent=live?'\u25b6 Continue':'\u25b6 Redo';
     b.setAttribute('aria-label',(live?'Continue the redo of ':'Redo ')+card.querySelector('.nm').textContent+', '+v+' out of 1000');
-    b.onclick=()=>live?(simSaved()&&simResume()):histOpen(k,b);
+    // resuming here still asks the account: the other device may have gone on with it
+    b.onclick=()=>live?(simSaved()&&simResume(),histCloudPull()):histOpen(k,b);
     card.appendChild(b); L.appendChild(card);
   });
 }
@@ -9377,10 +9383,16 @@ function rpcFile(fn){
   if(fn.indexOf('roulette')===0||fn==='casino_buy_chips') return 'supabase_casino_v2.sql';
   return 'supabase_casino.sql';
 }
+// The background polls: when something is already in flight they skip a beat. Everything else
+// is something the player pressed, and dropping it (as every call used to be) lost bets and the
+// "Lock in" that decides a duel.
+const CAS_POLLS=new Set(['roulette_table','duel_state','casino_state','bj_current']);
 async function casRpc(fn,args,say,opts){
   const tell=say||casMsg;
   if(!sb||!sbUser){ tell('Sign in to play.','bad'); return null; }
-  if(casBusy) return null;
+  if(casBusy&&CAS_POLLS.has(fn)) return null;
+  for(let i=0;i<50&&casBusy;i++) await new Promise(r=>setTimeout(r,100));
+  if(casBusy){ tell('The table is slow to answer — try again.','bad'); return null; }
   casBusy=true;
   try{
     const {data,error}=await sb.rpc(fn,args||{});
@@ -9821,7 +9833,7 @@ async function duelQuit(){
 // A duel outlives the screen: leaving the casino stopped the polling and a reload lost the
 // id, so the clock ran out unseen and the stake went with it. Pick it back up.
 async function duelResume(){
-  if(duelId){ duelRun(); duelRefresh(); return; }
+  if(duelId){ casTab('Duel'); duelRun(); duelRefresh(); return; }
   if(!sb||!sbUser) return;
   try{
     const {data}=await sb.from('duels').select('id,status')
