@@ -2463,7 +2463,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 08:49 UTC';
+const BUILD='2026-09-24 09:00 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -6671,14 +6671,35 @@ function histAdopt(mine,theirs){
 }
 // The redo on screen was built from the copy this device had when it opened. When a newer copy
 // arrives, take its answers: they are the other device's later work on the same exam.
+// Combined, not replaced: a copy stamped newer is not always the one with more work in it (every
+// Continue before the fix stamped a stale copy newest), and replacing let 18 answers wipe 37.
 function histRedoRefresh(){
   if(!sim||sim.mode!=='redo'||!sim.hid) return;
   const e=(P.examHist||{})[sim.hid]; if(!e) return;
-  if(JSON.stringify(e.ans||{})===JSON.stringify(sim.ans||{})) return;
-  sim.ans=JSON.parse(JSON.stringify(e.ans||{})); sim.flag=Object.assign({},e.flag||{});
+  const has=a=>Array.isArray(a)&&a.length>0;
+  const inc=e.ans||{}, mine=sim.ans||{}, merged={};
+  let extra=false;
+  sim.qs.forEach((_,i)=>{
+    if(has(inc[i])) merged[i]=inc[i].slice();
+    else if(has(mine[i])){ merged[i]=mine[i].slice(); extra=true; }   // only this device has it
+  });
+  if(JSON.stringify(merged)===JSON.stringify(mine)&&!extra) return;
+  sim.ans=merged; sim.flag=Object.assign({},sim.flag||{},e.flag||{});
   simPersist();
+  if(extra) histWrite();                     // what only this device had goes back up
   if(route==='quizScreen'){ simLoad(); renderSimStrip(); renderSimLive(); }
 }
+// Uploads wait a moment so a burst of taps is one write. Save, and a page being put away, do not.
+function histFlushNow(){
+  if(histTimer){ clearTimeout(histTimer); histTimer=null; }
+  if(histDirty.size) histCloudPush();
+}
+if(typeof document!=='undefined') document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden) return;
+  histFlushNow();
+  if(typeof syncTimer!=='undefined'&&syncTimer&&typeof syncNow==='function'){ clearTimeout(syncTimer); syncTimer=null; syncNow(true); }
+});
+if(typeof window!=='undefined') window.addEventListener('pagehide',()=>histFlushNow());
 // ---------- exam history ----------
 const HIST_KEEP=30;
 function histPrune(p){
@@ -6717,7 +6738,7 @@ async function histOpen(hid,btn){
   if(!(P.examHist||{})[hid]) return;
   // The other device may have gone further with this exam. Start from the account's copy, not
   // the one this device happened to keep — a short wait, and on without it if offline.
-  if(sbUser&&histTable!=='missing'){
+  if(sbUser&&histTable!=='missing'&&!(btn&&btn.dataset.armed)){   // the confirming tap already has it
     if(btn){ btn.disabled=true; }
     try{ await Promise.race([histCloudPull(),new Promise(r=>setTimeout(r,3500))]); }catch(e){}
     if(btn){ btn.disabled=false; }
@@ -6750,6 +6771,7 @@ async function histOpen(hid,btn){
 function redoFinish(){
   if(!sim) return;
   histWrite();
+  histFlushNow();                            // on a phone, Save then lock must not lose the save
   const e=P.examHist[sim.hid]||{};
   simQStop(); ttsStop(); hideExplain();
   { const stb=$('simTotal'); if(stb) stb.classList.add('hidden'); }
@@ -11134,7 +11156,7 @@ if(TEST){
     get pendingAdvance(){return pendingAdvance;},
     rpcFile, casRpc, casRefresh, renderCasino, casCard, placeBet, rouRefresh, rouStart, rouStop,
     paintRouTable, rouSetPhase, get rouPhase(){return rouPhase;}, set rouSpinningFor(v){ rouSpinningFor=v; }, bjDeal, bjAct, casTab,
-    histAdopt, histRedoRefresh, histCloudPush, get histDirty(){return histDirty;},
+    histAdopt, histRedoRefresh, histCloudPush, histFlushNow, get histTimer(){return histTimer;}, get histDirty(){return histDirty;},
     duelFind, duelRefresh, duelLockIn, duelQuit, paintDuel, duelShow, duelWhere, renderDuelLobby,
     botStart, botTick, botPlayerAnswer, get bot(){return bot;}, get duelExam(){return duelExam;},
     set duelExam(v){ duelExam=v; }, get duelLastView(){return duelLastView;}, duelResume,

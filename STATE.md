@@ -641,6 +641,22 @@ copy it was made on even with skewed clocks; `histRedoRefresh()` loads a newer p
 the redo on screen. `redoSyncChecks` replays the report; against the old code it fails 8 of 10,
 including "the account keeps the phone's answers — expected 37 got 18".
 
+**Round two, same day, tested signed in against the real server.** "I press Save in the redo
+and it still isn't the same." Save worked — after 1.5 s: the upload waits so a burst of taps is
+one write (the profile sync waits 4 s). A phone put away right after Save is suspended inside
+that window. Now `redoFinish` calls `histFlushNow()`, and `visibilitychange`→hidden and
+`pagehide` flush both the exam upload and a pending profile sync. Measured on the real server:
+the account has the saved answer 0.5 s after Save. Also, `histRedoRefresh` **combines** per
+question (incoming answer where there is one, ours where not) instead of replacing — every
+Continue before the first fix stamped a stale copy newest, and replacing let 18 answers wipe an
+open redo's 37; anything only this device had is written back up. `redoSyncChecks` covers both
+(22 checks; the previous build fails 8, including "expected 45 got 18").
+
+**Test origins.** `localhost:8765` and `127.0.0.1:8765` have been signed in as the tester account;
+never run QA there — `resetProfile` and the fixtures would reach the account. Run suites on a
+clean origin (the LAN IP, e.g. `http://10.10.1.184:8765/index.html?test=1`) and check `sbUser`
+is null first.
+
 ## The SAA-C03 score
 
 From the official exam guide: a scaled score of 100–1,000, 720 to pass; four domains weighted

@@ -1458,6 +1458,34 @@ async function redoSyncChecks(){
     eq(Object.keys(table.e8.exam.ans).length,45,'an older copy is not uploaded over the account\'s newer one');
     eq(Object.keys(t.P.examHist.e8.ans).length,45,'the older device takes the newer copy instead');
 
+    // an open redo is combined with a "newer" copy that has LESS in it, never cut down to it
+    // (every Continue before the fix stamped a stale copy newest: 18 answers over the phone's 37)
+    t.P.examHist.e8=JSON.parse(JSON.stringify(later)); t.P.examHist.e8.at=Date.now();
+    await t.histOpen('e8',null); await sleep(1700);      // let the open's own upload land first
+    eq(Object.keys(t.sim.ans).length,45,'reopened with the 45');
+    const stale18=JSON.parse(JSON.stringify(later)); stale18.ans=right(18); stale18.at=Math.max(Date.now(),Number(t.P.examHist.e8.at)||0)+60000;
+    table.e8.exam=stale18;
+    await t.histCloudPull(); await sleep(20);
+    eq(Object.keys(t.sim.ans).length,45,'a newer-stamped copy with 18 answers does not wipe the 45 in the open redo');
+    eq(Object.keys(t.P.examHist.e8.ans).length,45,'the combined answers are written back');
+    ok(t.P.examHist.e8.at>stale18.at,'stamped after the copy they were combined with');
+    await sleep(1700);
+    eq(Object.keys(table.e8.exam.ans).length,45,'and go back up, so the other device gets them');
+
+    // Save uploads straight away: on a phone, Save and then locking the screen lost it
+    const q45=t.QS[t.sim.qs[45]]; t.simJump(45); await sleep(1); q45.a.forEach(l=>t.simPick(l));
+    ok(!!t.histTimer,'an answer waits a moment before going up');
+    t.simSubmit(false); await sleep(40);
+    eq(Object.keys(table.e8.exam.ans).length,46,'Save & close uploads at once, without the wait');
+    eq(t.histTimer,null,'nothing left waiting');
+
+    // anything still waiting goes up when the page is put away
+    await t.histOpen('e8',null); await sleep(30);
+    const q46=t.QS[t.sim.qs[46]]; t.simJump(46); await sleep(1); q46.a.forEach(l=>t.simPick(l));
+    window.dispatchEvent(new Event('pagehide')); await sleep(40);
+    eq(Object.keys(table.e8.exam.ans).length,47,'closing the page sends the answer that was waiting');
+    t.simAbandon(); await sleep(20);
+
     // the profile merge keeps the larger count too
     const m=t.mergeProfiles({at:1,examHist:{z:{hid:'z',qs:[1],at:5,redos:9}}},{at:2,examHist:{z:{hid:'z',qs:[1],at:7,redos:3}}});
     eq(m.examHist.z.at,7,'the merge still takes the newer copy');
