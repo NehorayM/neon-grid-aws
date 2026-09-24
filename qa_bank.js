@@ -1366,8 +1366,10 @@ async function histSyncChecks(){
   const client={from(name){ return {
     upsert(rows){ if(fail) return Promise.resolve({error:fail});
       rows.forEach(r=>{ table[r.hid]=JSON.parse(JSON.stringify(r)); }); return Promise.resolve({error:null}); },
-    select(){ if(fail) return Promise.resolve({error:fail,data:null});
-      return Promise.resolve({error:null,data:Object.values(table).map(r=>({hid:r.hid,exam:r.exam}))}); } }; }};
+    select(){ const all=()=>fail?{error:fail,data:null}:{error:null,data:Object.values(table).map(r=>({hid:r.hid,exam:JSON.parse(JSON.stringify(r.exam))}))};
+      const q=Promise.resolve().then(all);
+      q.in=(col,vals)=>Promise.resolve().then(()=>{ const r=all(); if(r.data) r.data=r.data.filter(x=>vals.includes(x.hid)); return r; });
+      return q; } }; }};
   const was=t.cloudForTest(client,{id:'u-test'});
   try{
     t.histTable='unknown';
@@ -1401,6 +1403,68 @@ async function histSyncChecks(){
     ok(/supabase_exam_history\.sql/.test($('redoSync').textContent),'and the screen says how to create it');
   } finally { t.cloudForTest(was[0],was[1]); t.histTable='unknown'; }
   t.P.examHist={}; t.simClearSave(); t.go('homeScreen'); await sleep(20);
+}
+// Reported: the PC showed Exam 8 at 342 in Redo while the phone, mid-redo, was at 431 on Q37.
+// Opening a redo stamped the old copy "newest", the upload replaced the account's row blindly,
+// and an open redo never took in the other device's answers.
+async function redoSyncChecks(){
+  const t=T();
+  const table={};
+  const client={from(){ return {
+    upsert(rows){ rows.forEach(r=>{ table[r.hid]=JSON.parse(JSON.stringify(r)); }); return Promise.resolve({error:null}); },
+    select(){ const all=()=>({error:null,data:Object.values(table).map(r=>({hid:r.hid,exam:JSON.parse(JSON.stringify(r.exam))}))});
+      const q=Promise.resolve().then(all);
+      q.in=(c,v)=>Promise.resolve().then(()=>{ const r=all(); r.data=r.data.filter(x=>v.includes(x.hid)); return r; });
+      return q; } }; }};
+  const was=t.cloudForTest(client,{id:'u-redo'});
+  try{
+    t.histTable='unknown';
+    t.simClearSave(); t.P.examHist={}; t.P.runs={}; t.P.runsDone=[]; delete t.P.lastPaper;
+    const qs=t.paperQs(8), right=n=>{ const a={}; for(let i=0;i<n;i++) a[i]=t.QS[qs[i]].a.slice(); return a; };
+    const now=Date.now();
+    // this device (the PC) kept an older copy: 18 right
+    t.P.examHist.e8={hid:'e8',paper:8,qs:qs.slice(),ans:right(18),flag:{},mode:'practice',d:'2026-09-23',d0:now-9e6,at:now-6e5,redos:12,c:18,n:65,sc:342};
+    // the phone went on to 37 answered, and its copy is on the account
+    const phone=JSON.parse(JSON.stringify(t.P.examHist.e8)); phone.ans=right(37); phone.c=37; phone.sc=431; phone.at=now-6e4; phone.redos=11;
+    table.e8={user_id:'u-redo',hid:'e8',exam:phone};
+
+    // Continue on the PC starts from the phone's answers, not its own
+    await t.histOpen('e8',null); await sleep(30);
+    ok(t.sim&&t.sim.mode==='redo','Continue opens the redo');
+    eq(Object.keys(t.sim.ans).length,37,'from the account\'s copy: the 37 answers the phone had, not the PC\'s 18');
+    eq(t.sim.i,37,'on the first unanswered question');
+    eq(t.P.examHist.e8.redos,13,'the open is counted once, on the larger of the two counts');
+    ok(t.P.examHist.e8.at<=phone.at,'but opening does not stamp the copy newer than the work in it');
+    await sleep(1700);
+    eq(Object.keys(table.e8.exam.ans).length,37,'and the account keeps the phone\'s answers');
+
+    // an edit on the PC now is newer, even if the phone\'s clock ran ahead
+    table.e8.exam.at=Date.now()+3e5; t.P.examHist.e8.at=table.e8.exam.at;
+    const q37=t.QS[t.sim.qs[37]]; t.simJump(37); await sleep(1); q37.a.forEach(l=>t.simPick(l));
+    ok(t.P.examHist.e8.at>table.e8.exam.at-1,'an edit is stamped after the copy it was made on, whatever the clocks say');
+    await sleep(1700);
+    eq(Object.keys(table.e8.exam.ans).length,38,'and it reaches the account');
+
+    // the phone answers more while the PC's redo is open: a pull brings it into the open redo
+    const later=JSON.parse(JSON.stringify(table.e8.exam)); later.ans=right(45); later.c=45; later.at=t.P.examHist.e8.at+1000;
+    table.e8.exam=later;
+    await t.histCloudPull(); await sleep(20);
+    eq(Object.keys(t.sim.ans).length,45,'newer answers from the other device appear in the redo that is open');
+
+    // a device holding an old copy never uploads it over a newer one
+    const stale=JSON.parse(JSON.stringify(later)); stale.ans=right(5); stale.at=later.at-5000;
+    t.P.examHist.e8=stale; t.histDirty.add('e8');
+    await t.histCloudPush(); await sleep(10);
+    eq(Object.keys(table.e8.exam.ans).length,45,'an older copy is not uploaded over the account\'s newer one');
+    eq(Object.keys(t.P.examHist.e8.ans).length,45,'the older device takes the newer copy instead');
+
+    // the profile merge keeps the larger count too
+    const m=t.mergeProfiles({at:1,examHist:{z:{hid:'z',qs:[1],at:5,redos:9}}},{at:2,examHist:{z:{hid:'z',qs:[1],at:7,redos:3}}});
+    eq(m.examHist.z.at,7,'the merge still takes the newer copy');
+    eq(m.examHist.z.redos,9,'with the larger open count');
+  } finally { t.cloudForTest(was[0],was[1]); t.histTable='unknown'; }
+  if(t.sim) t.simAbandon(); await sleep(20);
+  t.P.examHist={}; t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.go('homeScreen'); await sleep(20);
 }
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
@@ -3164,7 +3228,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

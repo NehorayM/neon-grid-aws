@@ -2463,7 +2463,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 08:45 UTC';
+const BUILD='2026-09-24 08:49 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -6607,10 +6607,30 @@ function histCloudQueue(hid){
 async function histCloudPush(){
   histTimer=null;
   if(typeof sb==='undefined'||!sb||!sbUser||histTable==='missing'||!histDirty.size) return;
-  const rows=[...histDirty].map(h=>(P.examHist||{})[h]).filter(e=>e&&e.hid)
-    .map(e=>({user_id:sbUser.id, hid:String(e.hid), exam:e}));
+  const want=[...histDirty];
   histDirty.clear();
-  if(!rows.length) return;
+  // The upload used to replace the account's row with whatever this device held. A device with
+  // an old copy of an exam then wrote it over the other device's newer answers. Read first.
+  let cloud={};
+  try{
+    const r=await sb.from('exam_history').select('hid,exam').in('hid',want.map(String));
+    if(r.error){ if(histMissing(r.error)){ histTable='missing'; return; } want.forEach(h=>histDirty.add(h)); return; }
+    (r.data||[]).forEach(row=>{ if(row.exam) cloud[row.hid]=row.exam; });
+  }catch(e){ want.forEach(h=>histDirty.add(h)); return; }
+  let adopted=false;
+  const rows=[];
+  want.forEach(h=>{
+    const e=(P.examHist||{})[h], c=cloud[h];
+    if(!e||!e.hid) return;
+    if(c&&(Number(c.at)||0)>(Number(e.at)||0)){          // theirs is newer: take it, send nothing
+      P.examHist[h]=histAdopt(e,c); adopted=true; return;
+    }
+    const redos=Math.max(Number(e.redos)||0,Number(c&&c.redos)||0);
+    if(redos!==(Number(e.redos)||0)) e.redos=redos;
+    rows.push({user_id:sbUser.id, hid:String(e.hid), exam:e});
+  });
+  if(adopted){ saveProfile(); histRedoRefresh(); }
+  if(!rows.length){ histTable='ok'; histLastSync=Date.now(); if(route==='redoScreen') renderRedoScreen(); return; }
   try{
     const {error}=await sb.from('exam_history').upsert(rows);
     if(error){ if(histMissing(error)) histTable='missing'; else rows.forEach(r=>histDirty.add(r.hid)); }
@@ -6633,14 +6653,31 @@ async function histCloudPull(){
     const e=row.exam; if(!e||!Array.isArray(e.qs)) return;
     seen[row.hid]=Number(e.at)||0;
     const mine=P.examHist[row.hid];
-    if(!mine||(Number(e.at)||0)>(Number(mine.at)||0)){ P.examHist[row.hid]=e; changed=true; }
+    if(!mine||(Number(e.at)||0)>(Number(mine.at)||0)){ P.examHist[row.hid]=histAdopt(mine,e); changed=true; }
+    else if(mine&&(Number(e.redos)||0)>(Number(mine.redos)||0)) mine.redos=Number(e.redos);
   });
   // anything this device has that the table lacks, or has older, goes up
   Object.keys(P.examHist).forEach(h=>{ if(!(h in seen)||(Number(P.examHist[h].at)||0)>seen[h]) histDirty.add(h); });
-  if(changed){ normaliseProfile(P); histPrune(); saveProfile(); }
+  if(changed){ normaliseProfile(P); histPrune(); saveProfile(); histRedoRefresh(); }
   histLastSync=Date.now();
   if(histDirty.size) histCloudPush();
   return changed;
+}
+// a newer copy from elsewhere, keeping the larger open count of the two
+function histAdopt(mine,theirs){
+  const e=Object.assign({},theirs);
+  e.redos=Math.max(Number(mine&&mine.redos)||0,Number(theirs.redos)||0);
+  return e;
+}
+// The redo on screen was built from the copy this device had when it opened. When a newer copy
+// arrives, take its answers: they are the other device's later work on the same exam.
+function histRedoRefresh(){
+  if(!sim||sim.mode!=='redo'||!sim.hid) return;
+  const e=(P.examHist||{})[sim.hid]; if(!e) return;
+  if(JSON.stringify(e.ans||{})===JSON.stringify(sim.ans||{})) return;
+  sim.ans=JSON.parse(JSON.stringify(e.ans||{})); sim.flag=Object.assign({},e.flag||{});
+  simPersist();
+  if(route==='quizScreen'){ simLoad(); renderSimStrip(); renderSimLive(); }
 }
 // ---------- exam history ----------
 const HIST_KEEP=30;
@@ -6669,12 +6706,22 @@ function histWrite(){
   P.examHist[hid]=Object.assign({}, prev, {hid, paper:sim.paper||0, qs:sim.qs.slice(),
     ans:JSON.parse(JSON.stringify(sim.ans||{})), flag:Object.assign({},sim.flag||{}),
     mode:prev.mode||(sim.mode==='redo'?'exam':sim.mode||'exam'),
-    d:prev.d||dayKey(), d0:prev.d0||Date.now(), at:Date.now(),
+    d:prev.d||dayKey(), d0:prev.d0||Date.now(),
+    // two devices' clocks disagree; an edit must still beat the copy it was made on
+    at:Math.max(Date.now(),(Number(prev.at)||0)+1),
     redos:prev.redos||0}, sc);
   histPrune();
   histCloudQueue(hid);
 }
-function histOpen(hid,btn){
+async function histOpen(hid,btn){
+  if(!(P.examHist||{})[hid]) return;
+  // The other device may have gone further with this exam. Start from the account's copy, not
+  // the one this device happened to keep — a short wait, and on without it if offline.
+  if(sbUser&&histTable!=='missing'){
+    if(btn){ btn.disabled=true; }
+    try{ await Promise.race([histCloudPull(),new Promise(r=>setTimeout(r,3500))]); }catch(e){}
+    if(btn){ btn.disabled=false; }
+  }
   const r=(P.examHist||{})[hid]; if(!r) return;
   if(r.qs.some(i=>!QS[i])){ toast('That exam used questions this build no longer has'); return; }
   const go2=()=>{
@@ -6687,7 +6734,8 @@ function histOpen(hid,btn){
     const k=sim.qs.findIndex((q,i)=>!((sim.ans[i]||[]).length));
     sim.i=k>=0?k:0;
     // counted when a redo starts — counting on save counted a crash-and-resume twice
-    r.redos=(Number(r.redos)||0)+1; r.at=Date.now(); histCloudQueue(hid);
+    // Counted, but not stamped newer: stamping made a stale copy win just by being opened.
+    r.redos=(Number(r.redos)||0)+1; histCloudQueue(hid);
     saveProfile(); renderClock(); simLoad(); simClaim(); simPersist();
     toast('\u270e Redo \u2014 no timer. Change any answer; the score updates as you go');
   };
@@ -9010,7 +9058,7 @@ function mergeProfiles(a,b,opts){
   out.examHist={};
   new Set([...Object.keys(a.examHist||{}),...Object.keys(b.examHist||{})]).forEach(k=>{
     const x=(a.examHist||{})[k], y=(b.examHist||{})[k];
-    out.examHist[k]=(!x||!y)?(x||y):((Number(y.at)||0)>=(Number(x.at)||0)?y:x);
+    out.examHist[k]=(!x||!y)?(x||y):((Number(y.at)||0)>=(Number(x.at)||0)?histAdopt(x,y):histAdopt(y,x));
   });
   histPrune(out);
   // a run finished elsewhere is not left open here
@@ -11086,6 +11134,7 @@ if(TEST){
     get pendingAdvance(){return pendingAdvance;},
     rpcFile, casRpc, casRefresh, renderCasino, casCard, placeBet, rouRefresh, rouStart, rouStop,
     paintRouTable, rouSetPhase, get rouPhase(){return rouPhase;}, set rouSpinningFor(v){ rouSpinningFor=v; }, bjDeal, bjAct, casTab,
+    histAdopt, histRedoRefresh, histCloudPush, get histDirty(){return histDirty;},
     duelFind, duelRefresh, duelLockIn, duelQuit, paintDuel, duelShow, duelWhere, renderDuelLobby,
     botStart, botTick, botPlayerAnswer, get bot(){return bot;}, get duelExam(){return duelExam;},
     set duelExam(v){ duelExam=v; }, get duelLastView(){return duelLastView;}, duelResume,

@@ -623,6 +623,24 @@ Save & close (`redoFinish`) updates the entry only — no coins, XP, stats or ex
 counted when one starts, not on save (a crash-resume counted twice). Merged per entry, later `at`
 wins. Exams from before this build are not listed: their answers were never kept.
 
+### Two devices on one redo (fixed 2026-09-24)
+
+Reported: the PC listed Exam 8 at 342 while the phone, mid-redo, was at 431 on Q37. Each exam is
+one row and the newer `at` wins, but the older copy kept winning:
+
+1. `histOpen` stamped `r.at=Date.now()` to count the open — so a device holding an old copy
+   became "newest" the moment Continue was tapped, built the redo from its own stale answers
+   and pushed them over the other device's.
+2. `histCloudPush` was a blind upsert.
+3. An open redo never took in answers pulled from the other device.
+
+Now `histOpen` awaits `histCloudPull()` (3.5 s cap) and only counts the open (`redos`, merged as
+the max everywhere via `histAdopt`); `histCloudPush` reads the account's copies first and adopts
+any newer one instead of writing; `histWrite` stamps `max(now, prev.at+1)` so an edit beats the
+copy it was made on even with skewed clocks; `histRedoRefresh()` loads a newer pulled copy into
+the redo on screen. `redoSyncChecks` replays the report; against the old code it fails 8 of 10,
+including "the account keeps the phone's answers — expected 37 got 18".
+
 ## The SAA-C03 score
 
 From the official exam guide: a scaled score of 100–1,000, 720 to pass; four domains weighted
