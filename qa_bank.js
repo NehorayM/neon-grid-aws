@@ -1582,6 +1582,38 @@ async function svcBlockChecks(){
   ok(rows.every(r=>getComputedStyle(r.querySelector('b')).direction==='ltr'),'the name left to right');
   t.simAbandon(); await sleep(20); t.simClearSave(); t.go('homeScreen'); await sleep(20);
 }
+// Asked for: explanations that talk about what happened in THIS question. The story block
+// quotes the stem's situation and requirements, the write-up's reason, and why your pick fails.
+async function storyChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const st=t.qStory(t.QS[700]);
+  ok(/5 minutes to 20 minutes/.test(st.prob),'Q700: the situation keeps the fact that decides it (5 to 20 minutes)');
+  ok(st.ask.some(x=>/scale automatically/.test(x)),'and the ask is the requirement, not only "which solution"');
+  const s900=t.qStory(t.QS[900]);
+  ok(s900.ask.filter(x=>/must|requires/.test(x)).length>=2,'Q900: requirements in the middle of the stem are found');
+  let noAsk=0, noSit=0; t.QS.forEach(q=>{ const s=t.qStory(q); if(!s.ask.length) noAsk++; if(!s.prob) noSit++; });
+  eq(noAsk,0,'every question says what it asked for');
+  ok(noSit<120,'and nearly every one has a situation ('+noSit+' without)');
+  ok(/<b>LEAST operational overhead<\/b>/.test(t.hiQual('with the LEAST operational overhead?')),'the deciding qualifier is bolded');
+  // rendered: Q700, picking a Lambda option
+  const qi=700, q=t.QS[qi];
+  t.simClearSave(); t.startPaper(Math.floor(qi/65)+1,'practice'); await sleep(200);
+  t.simJump(qi%65); await sleep(50); t.simPick('A'); await sleep(200);
+  const box=$('explain').querySelector('.exstory');
+  ok(!!box,'the explanation opens with what happened in this question');
+  const txt=box?box.textContent:'';
+  ok(/THE SITUATION|The situation/i.test(txt)&&/What they asked for/i.test(txt),'with the situation and the ask');
+  ok(/Why C is the answer/i.test(txt)&&/ECS on Fargate/.test(txt),'why the answer is right, in the write-up\'s words');
+  ok(/Why A — your pick — is not it/i.test(txt)&&/Lambda's 15-minute limit/.test(txt),
+     'and why your pick fails — the Lambda sentence, found by service though it names no letter');
+  const each=[...$('explain').querySelectorAll('.exeach .exopt')];
+  ok(/above/.test(each.find(x=>/^C/.test(x.querySelector('.k').textContent)).textContent),'the list points up instead of repeating the answer');
+  ok(/above/.test(each.find(x=>/^A/.test(x.querySelector('.k').textContent)).textContent),'or your pick');
+  ok(/Lambda's 15-minute limit/.test(each.find(x=>/^D/.test(x.querySelector('.k').textContent)).textContent),
+     'the other Lambda option gets the same sentence, not "the write-up does not name this one"');
+  eq($('explain').querySelectorAll('.exrest').length,0,'the leftover paragraph is not printed a second time at the bottom');
+  t.simAbandon(); await sleep(20); t.simClearSave(); t.go('homeScreen'); await sleep(20);
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3344,7 +3376,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -1050,6 +1050,17 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
 .exlbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;
   color:var(--dim);margin-bottom:-3px}
 .exnote{font-size:12.8px;line-height:1.62;color:#d3d9e2}
+/* what happened in this question: the stem's own problem and ask, then why, then your pick */
+.exstory{margin:12px 0 4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:11px 13px 5px}
+.exstoryh{font-size:12.5px;font-weight:650;color:var(--dim);margin-bottom:6px}
+.exsrow{padding:8px 0;border-top:1px solid var(--line)}
+.exsrow:first-of-type{border-top:0}
+.exsk{font-family:var(--mono);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--cyan);margin-bottom:4px}
+.exsv{font-size:13.5px;line-height:1.68;color:#e2e8f0;direction:ltr;unicode-bidi:isolate;text-align:left}
+.exsv b{color:var(--gold);font-weight:650}
+.exsask{position:relative;padding-left:15px}
+.exsask+.exsask{margin-top:4px}
+.exsask::before{content:'\2192';position:absolute;left:0;color:var(--dim)}
 .exnote b{color:var(--cyan);font-weight:600}
 .exwhy{display:flex;flex-direction:column;gap:7px}
 .exwhy .exitem{display:flex;gap:9px;font-size:12.6px;line-height:1.58;color:#c9d6e8;
@@ -2473,7 +2484,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-24 11:13 UTC';
+const BUILD='2026-09-24 11:32 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -8743,6 +8754,15 @@ function noLine(q,ltr,txt,right,pivot,supp,line){
 const THIN=60;
 function optionLine(q,ltr,txt,line,pivot,shared){
   const right=q.a.includes(ltr);
+  if(!line&&!right&&q.w){
+    const corr=q.a.map(l=>(q.o.find(o=>o[0]===l)||['',''])[1]).join(' ').toLowerCase();
+    const terms=exFind(txt,4).map(t=>String(t.t)).filter(t=>t&&corr.indexOf(t.toLowerCase())<0);
+    if(terms.length){
+      const sents=(String(q.w).match(/[^.!?]+(?:[.!?]+|$)/g)||[]).map(x=>x.trim()).filter(Boolean);
+      const hit=sents.filter(x=>terms.some(t=>x.toLowerCase().indexOf(t.toLowerCase())>=0));
+      if(hit.length) line=hit.slice(0,2).join(' ');
+    }
+  }
   if(!line) return {text:noLine(q,ltr,txt,right,pivot,false,''),dim:true};
   if(line.length<THIN||shared){
     const add=noLine(q,ltr,txt,right,pivot,true,line);
@@ -8751,6 +8771,62 @@ function optionLine(q,ltr,txt,line,pivot,shared){
     if(add) return {text:line.replace(/[\s,;]*$/,'').replace(/([^.!?])$/,'$1.')+' '+add,dim:false};
   }
   return {text:line,dim:false};
+}
+// ---------- what happened in this question ----------
+// The question's own words: the problem it describes and what it asks for. Nothing here is
+// generic — every line is quoted from the stem or from the question's written explanation.
+function qStory(q){
+  const S=(String(q.q||'').replace(/\s+/g,' ').match(/[^.?!]+(?:[.?!]+|$)/g)||[]).map(x=>x.trim()).filter(x=>x.length>3);
+  const askRe=/\b(wants?|needs?|must|requires?|requirements?|which (solution|combination|option|approach|actions?|steps?|strategy|design|architecture|services?|configuration|method)|what should|how should|should the (solutions architect|company)|MOST|LEAST)\b/;
+  const probRe=/\b(reported|errors?|fail(s|ed|ure|ing)?|slow(er|ly)?|latency|too many|exceed(s|ed|ing)?|cannot|can't|unable|spikes?|outages?|downtime|bottleneck|throttl\w*|time ?outs?|degrad\w*|overload\w*|increas(e|ed|es|ing)|grow(s|ing|th)?|expensive|costs? (are|have|has)|manual(ly)?|compliance|lost|loss|unpredictable|intermittent|sensitive)\b/i;
+  // the question itself is the last sentence (or two: "... (Select TWO.)"); the requirements are
+  // every must/needs/requires/wants sentence before it, wherever they sit — the last three
+  const reqRe=/\b(wants?|needs?|must|requires?|required|should|has to|have to)\b/i;
+  let qi=S.length-1;
+  while(qi>0&&/^\(?select (two|three)/i.test(S[qi])) qi--;
+  const tail=S.slice(qi);
+  const reqs=S.slice(0,qi).filter(x=>reqRe.test(x)).slice(-3);
+  const ask=[...reqs,...tail].filter(x=>!/^\(?select (two|three)/i.test(x));
+  const numRe=/\b\d[\d,.]*\s?(ms|milliseconds?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|[KMGTP]B|[KMGTP]iB|%|percent|IOPS|requests|users|transactions|messages|instances|Mbps|Gbps)\b/i;
+  let prob=S.filter(x=>(probRe.test(x)||numRe.test(x))&&!ask.includes(x)).slice(0,2).join(' ');
+  // nothing went wrong in it and no numbers: the setup is the situation
+  if(!prob) prob=S.find(x=>!ask.includes(x))||'';
+  return {prob, ask};
+}
+// the words that decide between four plausible answers, in bold (input is already escaped)
+function hiQual(s){
+  return String(s).replace(/\b((?:MOST|LEAST) [\w-]+(?: [\w-]+)?|cost[- ]effective(?:ly)?|operational overhead|highly available|high availability|fault[- ]toleran\w+|lowest latency|minimal (?:changes|effort|downtime|cost)|least amount of \w+|without [\w-]+(?: [\w-]+)?|in real time|near-real-time|serverless|durab\w+|encrypt\w*|automatically|scal(?:e|es|able|ing))\b/g,'<b>$1</b>');
+}
+function renderStory(q,e,picked,ok){
+  if(!q||!e||!Array.isArray(q.a)){ renderStory.saidLead=false; renderStory.saidPick=new Set(); return ''; }
+  const st=qStory(q), rows=[];
+  renderStory.saidLead=false; renderStory.saidPick=new Set();   // what the list below need not repeat
+  const ansL=e.correct.map(x=>x[0]).join(' + ');
+  if(st.prob) rows.push(['The situation',esc(st.prob)]);
+  if(st.ask.length) rows.push(['What they asked for',st.ask.map(x=>'<div class="exsask">'+hiQual(esc(x))+'</div>').join('')]);
+  const right=q.a.map(l=>e.why.byLetter[l]).filter(Boolean);
+  const lead=[...new Set([...right,e.why.rest||''])].join(' ').replace(/\s+/g,' ').trim();
+  if(lead){ rows.push(['Why '+ansL+' is the answer',esc(lead)]); renderStory.saidLead=true; }
+  else if(e.full) rows.push(['Why '+ansL+' is the answer',esc(e.full)]);
+  if(e.note) rows.push(['Worth knowing',esc(e.note)]);
+  if(!ok&&picked&&picked.size){
+    const wrong=[...picked].filter(l=>!q.a.includes(l));
+    const missed=q.a.filter(l=>!picked.has(l));
+    const pk=(e.correctTerms[0]||{}).t||'';
+    const pivot=pk?asWritten(e.correct.map(x=>x[1]).join(' '),pk):'';
+    wrong.forEach(l=>{
+      const o=q.o.find(x=>x[0]===l)||[l,''];
+      let line='';
+      try{ line=optionLine(q,l,o[1],e.why.byLetter[l]||'',pivot,false).text; }catch(err){ line=e.why.byLetter[l]||''; }
+      rows.push(['Why '+l+' — your pick — is not it',esc(line||('It does not do what the question asks for: '+o[1]))]);
+      renderStory.saidPick.add(l);
+    });
+    if(q.a.length>1&&missed.length&&missed.length<q.a.length)
+      rows.push(['Half of it',esc('You had '+q.a.filter(l=>picked.has(l)).join(' + ')+' right; the answer also needs '+missed.join(' + ')+'.')]);
+  }
+  if(!rows.length){ renderStory.saidLead=false; renderStory.saidPick=new Set(); return ''; }
+  return '<div class="exstory"><div class="exstoryh">\u{1f50e} What happened in this question</div>'+
+    rows.map(([k,v])=>'<div class="exsrow"><div class="exsk">'+k+'</div><div class="exsv">'+v+'</div></div>').join('')+'</div>';
 }
 function renderExplain(q,picked,ok,timedOut){
   const e=buildExplain(q,picked,ok);
@@ -8772,8 +8848,11 @@ function renderExplain(q,picked,ok,timedOut){
     e.correct.forEach(x=>bits.push('<div class="exrow good"><span class="exl">'+x[0]+'</span><span>'+esc(x[1])+'</span></div>'));
   }
 
-  // the note written while this question's answer was verified beats anything derived
-  if(e.note) bits.push('<div class="exnote"><b>Why</b> '+esc(e.note)+'</div>');
+  // what happened in this question, in its own words — the note written while the answer was
+  // verified is part of it now
+  { const story=renderStory(q,e,picked instanceof Set?picked:new Set(picked||[]),ok);
+    if(story) bits.push(story);
+    else if(e.note) bits.push('<div class="exnote"><b>Why</b> '+esc(e.note)+'</div>'); }
 
   // Every option, right and wrong, with what is actually wrong with it. This is the written
   // explanation for the question, split so each line sits against the option it is about.
@@ -8814,13 +8893,17 @@ function renderExplain(q,picked,ok,timedOut){
         '<span class="k">'+ltr+(right?' \u2713':' \u2717')+'</span>'+
         '<span><b class="exbrief1" title="'+esc(txt)+'">'+esc(brief(txt))+'</b>'+
         (mine?'<em class="expick">your pick</em>':'')+
-        (function(){ const s=optionLine(q,ltr,txt,line,pivot,lineCount[line]>1);
+        (function(){
+          // the story above already said why the answer is right and why the pick is wrong
+          if(right&&renderStory.saidLead) return '<i class="dim exup">\u2191 Why this is the answer is above.</i>';
+          if(!right&&renderStory.saidPick&&renderStory.saidPick.has(ltr)) return '<i class="dim exup">\u2191 Why your pick is not it is above.</i>';
+          const s=optionLine(q,ltr,txt,line,pivot,lineCount[line]>1);
           return '<i'+(s.dim?' class="dim"':'')+'>'+esc(s.text)+'</i>'; })()+
         '</span></div>';
     }).join('')+'</div>');
     if(defs.length) bits.push('<details class="exmore"><summary>\u{1f4da} The services in this question</summary>'+
       '<div class="exsvc">'+defs.join('')+'</div></details>');
-    if(e.why.rest) bits.push('<div class="exnote exrest">'+esc(e.why.rest)+'</div>');
+    // the remainder (the sentences about no single option) opens the panel now, in the story
   }
 
   // How to tell questions of this shape apart in general — the sector's own decision rules.
@@ -11155,6 +11238,7 @@ if(TEST){
     simPersist, simClearSave, simSaved, simResume, ttsOk, ttsStop, ttsText, ttsSpeak,
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
     ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
+    qStory, hiQual, renderStory,
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
     voiceForPreset, voiceUsable,
     voiceTest, voiceProbe, renderVoice, voiceSay, voiceCheckAll, openVoice, VOICE_SAMPLE,
