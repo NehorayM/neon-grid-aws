@@ -2569,7 +2569,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-26 17:46 UTC';
+const BUILD='2026-09-26 17:56 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -7526,6 +7526,7 @@ let ttsOn=false;
 let exTts=false;            // what is being read is the explanation, not the question
 let ttsOwner='q';           // who started the reading: 'q' the question, 'ex' the explanation, 'para' a Study paragraph
 let paraOn=null;            // the paragraph being read
+let ttsBatch=0, ttsOwn=null; // which batch of utterances is current, and who asked for this reading
 let ttsSeq=0;
 function ttsStop(){
   ttsOn=false; ttsSeq++;              // anything still queued from before is now stale
@@ -7629,7 +7630,11 @@ function ttsSend(text,seq,plain){
   // watchdog's retry drops it. Speed and pitch have never broken anything, so they stay.
   const voice=plain?null:(typeof voiceChosen==='function'?voiceChosen():null);
   let started=false;
-  const done=()=>{ if(seq===ttsSeq){ ttsOn=false; renderTtsBtn(); } };
+  // A retry cancels this batch, and a cancelled utterance still fires onerror: without its own
+  // number it counted as current, ended the reading and lost who had asked for it.
+  const batch=++ttsBatch, own=ttsOwn;
+  const cur=()=>seq===ttsSeq&&batch===ttsBatch;
+  const done=()=>{ if(cur()){ ttsOn=false; renderTtsBtn(); } };
   chunks.forEach((part,k)=>{
     const u=new SpeechSynthesisUtterance(part);
     u.rate=typeof voiceRate==='function'?voiceRate():1;
@@ -7637,7 +7642,8 @@ function ttsSend(text,seq,plain){
     u.volume=typeof voiceVolume==='function'?voiceVolume():1;
     u.lang='en-US';
     if(voice) u.voice=voice;
-    if(k===0) u.onstart=()=>{ started=true; if(seq===ttsSeq){ ttsOn=true; renderTtsBtn(); } };
+    if(k===0) u.onstart=()=>{ started=true;
+      if(cur()){ if(own){ exTts=own.ex; ttsOwner=own.owner; paraOn=own.para; } ttsOn=true; renderTtsBtn(); } };
     if(k===chunks.length-1) u.onend=done;
     u.onerror=done;
     ss.speak(u);
@@ -7648,6 +7654,8 @@ function ttsSpeak(text,opts){
   if(!ttsOk()) { toast('This browser cannot read aloud'); return false; }
   exTts=!!(opts&&opts.ex);
   ttsOwner=(opts&&opts.owner)||(exTts?'ex':'q');
+  if(ttsOwner!=='para') paraOn=null;
+  ttsOwn={ex:exTts, owner:ttsOwner, para:paraOn};   // restored by whichever batch starts
   const ss=window.speechSynthesis;
   const seq=++ttsSeq;                 // a later tap makes this batch's callbacks stale
   try{
@@ -7667,8 +7675,7 @@ function ttsSpeak(text,opts){
       // becomes a stutter instead of a button that does nothing.
       setTimeout(()=>{
         if(seq!==ttsSeq||live()) return;
-        try{ ss.cancel(); }catch(e){}
-        const live2=ttsSend(text,seq,true);
+        const live2=ttsRetry(text,seq);
         setTimeout(()=>{
           if(seq!==ttsSeq) return;
           if(live2&&live2()) return;
@@ -7681,6 +7688,11 @@ function ttsSpeak(text,opts){
     },0);
     return true;
   }catch(e){ ttsOn=false; renderTtsBtn(); return false; }
+}
+// the watchdog's second try: clear the queue, send the text as plainly as possible
+function ttsRetry(text,seq){
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  return ttsSend(text,seq,true);
 }
 function simSpeak(){
   if(!sim) return false;
@@ -7744,6 +7756,8 @@ const PARA_READ=new Set(['p','key','trap','note','list','steps']);   // not tabl
 function paraText(el){
   const c=el.cloneNode(true);
   c.querySelectorAll('.parread,.ic').forEach(x=>x.remove());
+  // list items sit edge to edge in the markup: end each one as a sentence, or they run together
+  c.querySelectorAll('li').forEach(li=>{ const t=li.textContent.trim(); li.textContent=t+(/[.!?:;]$/.test(t)?' ':'. '); });
   return c.textContent.replace(/\s*[\u2014\u2013]\s*/g,', ').replace(/[\u2b50\u26a0\u270e\u2192\u2191]/g,'')
     .replace(/\s+/g,' ').trim();
 }
@@ -11765,6 +11779,7 @@ if(TEST){
     get lbUid(){return lbUid;}, set lbAuthKnown(v){ lbAuthKnown=v; }, lbFetch, renderLeaderboard, get lbState(){return lbState;}, renderMistakes, openMistakes, startMistakes, mistakeAsk, mistakeCsv, fmtMins,
     qStory, hiQual, renderStory, exReadText, exReadToggle, get exTts(){return exTts;}, get ttsOn(){return ttsOn;},
     paraRead, paraText, studyBlocksHTML, get ttsOwner(){return ttsOwner;},
+    ttsRetry, get ttsSeq(){return ttsSeq;}, get paraOn(){return paraOn;},
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
     voiceForPreset, voiceUsable,
     voiceTest, voiceProbe, renderVoice, voiceSay, voiceCheckAll, openVoice, VOICE_SAMPLE,

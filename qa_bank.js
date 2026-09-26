@@ -2097,6 +2097,57 @@ async function studyReadChecks(){
     t.go('homeScreen'); await sleep(20);
   }
 }
+// What the review of the Study read-aloud confirmed, replayed.
+async function studyReadReviewChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis'), realU=window.SpeechSynthesisUtterance;
+  const utts=[]; let speaking=false;
+  // an engine that starts nothing by itself: the test fires onstart/onerror by hand
+  Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
+    speak(u){ utts.push(u); }, cancel(){ speaking=false; }, addEventListener(){}, removeEventListener(){}, getVoices(){ return []; },
+    get speaking(){return speaking;}, get pending(){return false;}, get paused(){return false;}
+  }});
+  window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };
+  try{
+    t.STUDY_T.stuOpen(0); await sleep(30);
+    const para=document.querySelector('#stuBody .rdpara'), btn=para.querySelector('.parread');
+    btn.click(); await sleep(20);
+    const first=utts.slice();
+    ok(first.length>0,'(the first attempt is queued)');
+    // the first attempt fails, the way a bad voice does
+    first[0].onerror&&first[0].onerror({error:'synthesis-failed'});
+    // the watchdog's retry, as it runs after 900 ms of silence
+    t.ttsRetry(t.paraText(para),t.ttsSeq);
+    const retry=utts.slice(first.length);
+    ok(retry.length>0,'(the retry is queued)');
+    // the cancelled first batch reports in late — it must not count
+    first.forEach(u=>u.onerror&&u.onerror({error:'canceled'}));
+    retry[0].onstart&&retry[0].onstart();
+    ok(t.ttsOn,'the retry is reading');
+    eq(t.ttsOwner,'para','as the paragraph\'s reading, not the question\'s');
+    eq(t.paraOn,para,'of that paragraph');
+    eq(btn.textContent,'⏹','so its button shows Stop');
+    btn.click(); await sleep(10);
+    ok(!t.ttsOn,'and Stop stops it, instead of starting it over');
+    // a late error from a batch that has been replaced does not end the current one
+    btn.click(); await sleep(20);
+    const b1=utts.slice(-1)[0]; b1.onstart&&b1.onstart();
+    ok(t.ttsOn&&t.ttsOwner==='para','(reading again)');
+    first[0].onerror&&first[0].onerror({error:'canceled'});
+    ok(t.ttsOn,'a stale batch\'s error does not stop the current reading');
+    t.ttsRetry('x',t.ttsSeq); t.go('homeScreen'); await sleep(10);
+    // ---- 2. a list reads item by item
+    const box=document.createElement('div'); box.className='rdpara';
+    box.innerHTML='<ul><li>Six copies over three Availability Zones.</li><li>Tolerates losing two</li><li>Grows to 128 TB</li></ul><button class="parread">x</button>';
+    const txt=t.paraText(box);
+    ok(!/[a-z0-9][.;]?[A-Z][a-z]/.test(txt.replace(/\. [A-Z]/g,'')),'list items do not run into each other');
+    ok(/Zones\. Tolerates losing two\. Grows to 128 TB\./.test(txt),'each ends as a sentence: '+txt);
+  } finally {
+    if(real) Object.defineProperty(window,'speechSynthesis',real); else delete window.speechSynthesis;
+    window.SpeechSynthesisUtterance=realU;
+    t.go('homeScreen'); await sleep(10);
+  }
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3859,7 +3910,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); await studyReadChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); await studyReadChecks(); await studyReadReviewChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
