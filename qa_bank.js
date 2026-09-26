@@ -2048,6 +2048,55 @@ async function leaderboardReviewChecks(){
     } finally { t.cloudForTest(was[0],was[1]); t.lbAuthChanged(); }
   } finally { t.P.wk=keepWk; t.lbReset(); t.go('homeScreen'); await sleep(10); }
 }
+// Asked for: a read button on every paragraph of the Study sections, not on tables.
+async function studyReadChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const real=Object.getOwnPropertyDescriptor(window,'speechSynthesis'), realU=window.SpeechSynthesisUtterance;
+  const said=[]; let speaking=false;
+  Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
+    speak(u){ said.push(u.text); speaking=true; setTimeout(()=>u.onstart&&u.onstart(),5); },
+    cancel(){ speaking=false; }, addEventListener(){}, removeEventListener(){}, getVoices(){ return []; },
+    get speaking(){return speaking;}, get pending(){return false;}, get paused(){return false;}
+  }});
+  window.SpeechSynthesisUtterance=function(txt){ this.text=txt; };
+  try{
+    t.STUDY_T.stuOpen(0); await sleep(30);
+    const body=$('stuBody');
+    const paras=[...body.querySelectorAll('.rdpara')];
+        ok(paras.length>0,'a Study chapter has read buttons');
+    eq(body.querySelectorAll('.mdxtable .parread, .rdpara .mdxtable').length,0,'no table has one');
+    ok(body.querySelectorAll('.mdxtable').length===0||[...body.querySelectorAll('.mdxtable')].every(x=>!x.closest('.rdpara')),'tables stand on their own');
+    ok([...body.querySelectorAll('.stutopic > p, .stutopic > .lb-call')].length===0,'every paragraph and callout is wrapped with a button');
+    const b0=paras[0].querySelector('.parread');
+    ok(b0.getBoundingClientRect().width>=32&&b0.getBoundingClientRect().height>=32,'the button is big enough to tap');
+    b0.click(); await sleep(80);
+    const txt0=said.join(' ');
+    ok(txt0.length>20&&paras[0].textContent.indexOf(txt0.slice(0,20))>=0,'tapping it reads that paragraph');
+    ok(t.ttsOn&&t.ttsOwner==='para','as a paragraph read');
+    eq(b0.textContent,'⏹','its button turns into Stop');
+    ok(paras[0].classList.contains('reading'),'and the paragraph is marked');
+    // another paragraph takes over
+    const p1=paras[1]; said.length=0;
+    p1.querySelector('.parread').click(); await sleep(80);
+    ok(said.join(' ').length>0&&p1.textContent.indexOf(said.join(' ').slice(0,15))>=0,'another paragraph moves the reading there');
+    eq(b0.textContent,'\u{1f50a}','the first one goes back to Read');
+    eq(p1.querySelector('.parread').textContent,'⏹','the new one shows Stop');
+    p1.querySelector('.parread').click(); await sleep(20);
+    ok(!t.ttsOn,'tapping Stop stops');
+    // a callout reads without its icon
+    const trap=paras.find(p=>p.querySelector('.lb-call'));
+    if(trap){ const tx=t.paraText(trap); ok(!/[⭐⚠✎]/.test(tx)&&tx.length>10,'a callout is read without its icon'); }
+    // leaving the chapter stops it
+    paras[0].querySelector('.parread').click(); await sleep(60);
+    ok(t.ttsOn,'(reading again)');
+    t.go('homeScreen'); await sleep(20);
+    ok(!t.ttsOn,'leaving the chapter stops the reading');
+  } finally {
+    if(real) Object.defineProperty(window,'speechSynthesis',real); else delete window.speechSynthesis;
+    window.SpeechSynthesisUtterance=realU;
+    t.go('homeScreen'); await sleep(20);
+  }
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3810,7 +3859,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); await studyReadChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

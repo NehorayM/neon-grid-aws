@@ -285,6 +285,13 @@ h2.head{font-size:18px;font-weight:650;letter-spacing:.2px;margin-bottom:4px}
   background:var(--surface);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
 .stujump button:hover,.stujump button.on{color:var(--txt);border-color:var(--line2)}
 .stutopic{scroll-margin-top:86px;padding-top:6px}
+/* a read-aloud button on each paragraph: in the gutter, out of the text's way */
+.rdpara{position:relative;padding-right:40px;border-radius:10px;transition:background .2s}
+.rdpara.reading{background:color-mix(in srgb, var(--cyan) 7%, transparent)}
+.parread{position:absolute;top:2px;right:0;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+  font-size:14px;background:transparent;border:1px solid var(--line);color:var(--dim);opacity:.75}
+.parread:hover,.parread.on{opacity:1;border-color:var(--cyan);color:var(--cyan)}
+.parread.on{background:color-mix(in srgb, var(--cyan) 12%, transparent)}
 .stutopic h2{font-size:17px;font-weight:650;letter-spacing:.2px;margin:22px 0 10px;
   padding-bottom:9px;border-bottom:1px solid var(--line)}
 .stutopic:first-of-type h2{margin-top:6px}
@@ -2562,7 +2569,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-26 17:44 UTC';
+const BUILD='2026-09-26 17:46 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -2967,6 +2974,7 @@ function go(id){
     const v=$('verdict'); if(v) v.classList.add('hidden');
     const m=$('studyModal'); if(m) m.classList.add('hidden');
   }
+  if(route==='stuReadScreen'&&id!=='stuReadScreen'&&typeof ttsOwner!=='undefined'&&ttsOn&&ttsOwner==='para') ttsStop();
   SCREENS.forEach(s=>$(s).classList.toggle('hidden',s!==id)); route=id;
   const inGame=(id==='gameScreen');
   $('app').classList.toggle('reading',id==='learnReadScreen'||id==='learnRecapScreen');
@@ -7516,6 +7524,8 @@ const ttsOk=()=>typeof window!=='undefined'&&'speechSynthesis' in window;
 // follows our own flag and the utterance's own end event instead
 let ttsOn=false;
 let exTts=false;            // what is being read is the explanation, not the question
+let ttsOwner='q';           // who started the reading: 'q' the question, 'ex' the explanation, 'para' a Study paragraph
+let paraOn=null;            // the paragraph being read
 let ttsSeq=0;
 function ttsStop(){
   ttsOn=false; ttsSeq++;              // anything still queued from before is now stale
@@ -7637,6 +7647,7 @@ function ttsSend(text,seq,plain){
 function ttsSpeak(text,opts){
   if(!ttsOk()) { toast('This browser cannot read aloud'); return false; }
   exTts=!!(opts&&opts.ex);
+  ttsOwner=(opts&&opts.owner)||(exTts?'ex':'q');
   const ss=window.speechSynthesis;
   const seq=++ttsSeq;                 // a later tap makes this batch's callbacks stale
   try{
@@ -7694,8 +7705,8 @@ function readAllowed(paper,i){
   return false;                                  // 13 on: never
 }
 function renderTtsBtn(){
-  if(!ttsOn) exTts=false;
-  renderExReadBtn();
+  if(!ttsOn){ exTts=false; ttsOwner='q'; paraOn=null; }
+  renderExReadBtn(); renderParaBtns();
   const b=$('simTts'); if(!b) return;
   const allowed=!sim||readAllowed(sim.paper,sim.i);
   // the question's reading only: the explanation's is allowed on every question, and the
@@ -7710,7 +7721,7 @@ function renderTtsBtn(){
 // ---------- reading the explanation ----------
 function renderExReadBtn(){
   const b=document.querySelector('#explain .exread'); if(!b) return;
-  const on=ttsOn&&exTts;
+  const on=ttsOn&&exTts&&ttsOwner==='ex';
   b.classList.toggle('on',on);
   b.textContent=on?'\u23f9 Stop':'\u{1f50a} Read';
   b.setAttribute('aria-label',on?'Stop reading the explanation':'Read the explanation aloud');
@@ -7727,6 +7738,42 @@ function exReadText(){
     parts.push(k.trim()+'. '+v.trim());
   });
   return parts.join(' ').replace(/\s*[\u2014\u2013]\s*/g,', ').replace(/[\u2705\u274c\u23f1\u2191\u2192]/g,'').replace(/\s+/g,' ').trim();
+}
+// ---------- reading a Study paragraph ----------
+const PARA_READ=new Set(['p','key','trap','note','list','steps']);   // not tables, diagrams or code
+function paraText(el){
+  const c=el.cloneNode(true);
+  c.querySelectorAll('.parread,.ic').forEach(x=>x.remove());
+  return c.textContent.replace(/\s*[\u2014\u2013]\s*/g,', ').replace(/[\u2b50\u26a0\u270e\u2192\u2191]/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+function paraRead(btn){
+  const el=btn.closest('.rdpara'); if(!el) return;
+  if(ttsOn&&ttsOwner==='para'&&paraOn===el){ ttsStop(); renderTtsBtn(); return; }
+  const text=paraText(el); if(!text) return;
+  ensureAudio&&ensureAudio();
+  paraOn=el;
+  ttsSpeak(text,{ex:true,owner:'para'});
+  paraOn=el;                           // ttsSpeak's own repaint must not lose which one it is
+  renderParaBtns();
+}
+function renderParaBtns(){
+  document.querySelectorAll('#stuBody .rdpara').forEach(el=>{
+    const on=ttsOn&&ttsOwner==='para'&&paraOn===el;
+    el.classList.toggle('reading',on);
+    const b=el.querySelector('.parread'); if(!b) return;
+    b.textContent=on?'\u23f9':'\u{1f50a}';
+    b.setAttribute('aria-label',on?'Stop reading':'Read this paragraph aloud');
+    b.classList.toggle('on',on);
+  });
+}
+// the chapter's blocks, each readable one with its own button
+function studyBlocksHTML(arr){
+  return (arr||[]).map(b=>{
+    const html=lbHTML(b);
+    if(!html||!PARA_READ.has(b.t)||!ttsOk()) return html;
+    return '<div class="rdpara">'+html+'<button type="button" class="parread" aria-label="Read this paragraph aloud">\u{1f50a}</button></div>';
+  }).join('');
 }
 function exReadToggle(){
   if(ttsOn&&exTts){ ttsStop(); renderTtsBtn(); return; }
@@ -11510,9 +11557,11 @@ function stuOpen(i){
     jump.appendChild(b);
   });
   stuJumpSync();
+  if(ttsOn&&ttsOwner==='para') ttsStop();       // a new chapter: the old paragraph stops
   $('stuBody').innerHTML=c.topics.map((t,k)=>
-    '<section class="stutopic" id="stuT'+k+'"><h2>'+esc(t.nm)+'</h2>'+blocksHTML(t.blocks)+'</section>'
+    '<section class="stutopic" id="stuT'+k+'"><h2>'+esc(t.nm)+'</h2>'+studyBlocksHTML(t.blocks)+'</section>'
   ).join('');
+  $('stuBody').querySelectorAll('.parread').forEach(b=>{ b.onclick=()=>paraRead(b); });
   stuRenderQuiz(c);
   $('stuNext').textContent=i<STU_CH.length-1?('Next: '+STU_CH[i+1].nm+' ▸'):'Back to chapters';
   stuMarkRead(i);
@@ -11715,6 +11764,7 @@ if(TEST){
     wkState, wkBump, wkCorrect, wkMerge, wkNum, weekKey, lbWeek, wkSane, lbReset, lbAuthChanged, lbAfterPush,
     get lbUid(){return lbUid;}, set lbAuthKnown(v){ lbAuthKnown=v; }, lbFetch, renderLeaderboard, get lbState(){return lbState;}, renderMistakes, openMistakes, startMistakes, mistakeAsk, mistakeCsv, fmtMins,
     qStory, hiQual, renderStory, exReadText, exReadToggle, get exTts(){return exTts;}, get ttsOn(){return ttsOn;},
+    paraRead, paraText, studyBlocksHTML, get ttsOwner(){return ttsOwner;},
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
     voiceForPreset, voiceUsable,
     voiceTest, voiceProbe, renderVoice, voiceSay, voiceCheckAll, openVoice, VOICE_SAMPLE,
