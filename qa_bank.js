@@ -1910,6 +1910,79 @@ async function mistakesReviewChecks(){
     t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.P.examHist={}; t.go('homeScreen'); await sleep(20);
   }
 }
+// Asked for: a home-page leaderboard of all users by correct answers this week.
+async function leaderboardChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const keepWk=t.P.wk;
+  try{
+    // ---- the count: every correct answer this week, per device
+    t.P.wk=undefined;
+    eq(t.wkCorrect(),0,'a new week starts at nothing');
+    t.simClearSave(); t.startPaper(2,'practice'); await sleep(20);
+    for(let k=0;k<4;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+    const w=t.QS[t.sim.qs[4]]; t.simJump(4); await sleep(1);
+    w.o.map(o=>o[0]).filter(l=>!w.a.includes(l)).slice(0,w.a.length).forEach(l=>t.simPick(l));
+    t.simSubmit(true); await sleep(60);
+    eq(t.wkCorrect(),4,'an exam adds its right answers — 4, not the 5 answered');
+    ok(Object.keys(t.P.wk.dev).length===1&&t.P.wk.dev[t.DEVICE_ID]===4,'counted against this device');
+    // an old week does not carry over
+    t.P.wk={key:'2020-w1',dev:{x:50}};
+    eq(t.wkCorrect(),0,'last year\'s count is not this week\'s');
+    eq(t.P.wk.key,t.weekKey(),'and the week rolls over');
+    // ---- two devices, one week: they add up
+    const k=t.weekKey();
+    const m=t.wkMerge({key:k,dev:{phone:20,pc:5}},{key:k,dev:{pc:12}});
+    eq(m.dev.phone+m.dev.pc,32,'phone 20 + desktop 12: the same week adds up to 32');
+    eq(t.wkMerge({key:k,dev:{a:3}},{key:'2020-w1',dev:{a:99}}).dev.a,3,'a newer week is never replaced by an older one');
+    eq(t.wkMerge({key:'2020-w1',dev:{a:99}},{key:k,dev:{a:3}}).dev.a,3,'whichever side it is on');
+    eq(t.wkMerge({key:k,dev:{a:'abc',b:-5,c:7}},null).dev.c,7,'one side missing is not a conflict');
+    eq(t.wkMerge({key:k,dev:{a:'abc',b:-5}},{key:k,dev:{}}).dev.a,0,'junk counts as nothing');
+    const mp=t.mergeProfiles({at:2,wk:{key:k,dev:{phone:20}}},{at:1,wk:{key:k,dev:{pc:12}}});
+    eq(mp.wk.dev.phone+mp.wk.dev.pc,32,'and the profile merge keeps both devices');
+
+    // ---- the card
+    t.P.wk={key:k,dev:{[t.DEVICE_ID]:9}};
+    t.go('homeScreen'); t.renderLeaderboard(false); await sleep(10);
+    ok(!$('lbSignIn').classList.contains('hidden'),'signed out, it offers to sign in');
+    ok(/Sign in/.test($('lbNote').textContent),'and says what signing in gets you');
+    ok(/you: 9/.test($('lbSub').textContent),'your own count shows either way');
+    let resp={data:{ok:true,week:k,players:14,top:[
+      {rank:1,name:'bob',c:45,me:false},{rank:2,name:'<img src=x onerror=alert(1)>',c:30,me:false},
+      {rank:3,name:'carol',c:12,me:false}],me:{rank:9,c:5}},error:null};
+    const calls=[];
+    const client={rpc(fn,args){ calls.push([fn,args]); return Promise.resolve(resp); }};
+    const was=t.cloudForTest(client,{id:'u-lb'});
+    try{
+      await t.lbFetch(true); await sleep(10); t.renderLeaderboard(false);
+      eq(calls[0]&&calls[0][0],'leaderboard_week','it asks the server for this week');
+      eq(calls[0][1].wk,k,'for this week by the app\'s own week key');
+      const rows=[...document.querySelectorAll('#lbList .lbrow')];
+      eq(rows.length,4,'the top three, and you below them');
+      eq(rows[0].querySelector('.lbrk').textContent,'\u{1f947}','gold for first');
+      eq(rows[0].querySelector('.lbc').textContent,'45','with the count');
+      ok(!document.querySelector('#lbList img'),'a username is text, never markup');
+      ok(rows[3].classList.contains('me')&&rows[3].classList.contains('gap'),'your row is marked and set apart');
+      eq(rows[3].querySelector('.lbrk').textContent,'#9','with your rank');
+      eq(rows[3].querySelector('.lbc').textContent,'9','and this device\'s count when it is ahead of the server\'s');
+      ok(/14 players/.test($('lbNote').textContent),'how many are playing this week');
+      // you in the top list: marked there, not added twice
+      resp={data:{ok:true,week:k,players:2,top:[{rank:1,name:'me',c:50,me:true},{rank:2,name:'bob',c:45,me:false}],me:{rank:1,c:50}},error:null};
+      await t.lbFetch(true); await sleep(10);
+      eq(document.querySelectorAll('#lbList .lbrow').length,2,'in the top list you are not added twice');
+      ok(document.querySelector('#lbList .lbrow.me .lbnm').textContent.indexOf('(you)')>0,'and marked as you');
+      // not installed yet
+      resp={data:null,error:{message:'Could not find the function public.leaderboard_week(lim, wk) in the schema cache'}};
+      await t.lbFetch(true); await sleep(10);
+      eq(t.lbState,'missing','a database without the function is noticed');
+      ok(/supabase_leaderboard\.sql/.test($('lbNote').textContent),'and the card says what to run');
+      // it does not ask again on every render
+      resp={data:{ok:true,week:k,players:0,top:[],me:null},error:null};
+      await t.lbFetch(true); calls.length=0;
+      await t.lbFetch(false); await t.lbFetch(false);
+      eq(calls.length,0,'a fresh board is not fetched again within a minute');
+    } finally { t.cloudForTest(was[0],was[1]); }
+  } finally { t.P.wk=keepWk; t.simClearSave(); t.go('homeScreen'); await sleep(20); }
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3672,7 +3745,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
