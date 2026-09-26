@@ -21,7 +21,8 @@ begin
   if me is null then
     return jsonb_build_object('ok', false, 'reason', 'sign in to see the leaderboard');
   end if;
-  if wk is null or wk !~ '^[0-9]{4}-w[0-9]{1,2}$' then
+  -- the week is named by the date of its Sunday: '2026-09-20'
+  if wk is null or wk !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
     return jsonb_build_object('ok', false, 'reason', 'bad week');
   end if;
   n := greatest(1, least(coalesce(lim, 10), 50));

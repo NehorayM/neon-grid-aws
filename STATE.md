@@ -657,6 +657,33 @@ never run QA there — `resetProfile` and the fixtures would reach the account. 
 clean origin (the LAN IP, e.g. `http://10.10.1.184:8765/index.html?test=1`) and check `sbUser`
 is null first.
 
+## The weekly leaderboard (2026-09-26)
+
+Home → "This week" → 🏆 Top this week: every player, by correct answers this week.
+
+- **The count**: `P.wk = {key, dev:{deviceId:n}}`, bumped wherever `P.correct` is (the quiz
+  answer, an exam's right answers on submit). Per device so two devices in one week add up;
+  `wkMerge` keeps each device's larger count. Learn-mode checks, study checks and duels do not
+  touch `P.correct` and so do not count here either.
+- **The week**: `lbWeek()` = the date of the week's Sunday, from whole calendar days
+  (`'2026-09-20'`). NOT `weekKey()` — the weekly challenge's key counts fractional days from Jan 1,
+  so it turns over at the start of Saturday and splits the New Year week in three (left alone:
+  changing it would reset everyone's challenge once). A key more than 7 days ahead of the clock
+  is ignored (`wkSane`), so one device with a wrong date cannot freeze the week everywhere.
+- **The board**: `supabase_leaderboard.sql` → `leaderboard_week(wk, lim)`, security definer,
+  authenticated only. Profiles stay private; it returns rank, username, count and your own rank.
+  Non-numeric counts are 0 (cannot break the board for everyone), a week caps at 5000. The
+  counts are the browser's own numbers, like everything else in the profile.
+- **The card**: cache held per user id (`lbUid`) and cleared on any change of user — a shared
+  device showed the previous account's rank as yours; refetched after every successful upload
+  and when you have answered more since the last fetch (not on every render while the server
+  lags); `Loading…` until the session is known (`lbAuthKnown`, set by `lbAuthChanged()`).
+  **`lbAuthKnown` must not read `CLOUD_ON` at declaration** — it is declared further down, and
+  `typeof` on it there throws and takes the whole page down.
+
+Reviewed by a four-lens workflow and a verifier: 17 findings, 10 confirmed (5 distinct), all
+fixed. `leaderboard_suite.sql` (17), `leaderboardChecks` (29), `leaderboardReviewChecks` (22).
+
 ## The mistakes exam (2026-09-26)
 
 Redo page → 🎯 card → `mistakeScreen` → a timed exam of every question you got wrong.
@@ -931,6 +958,7 @@ SQL files, run in this order in the SQL editor:
 4. `supabase_duel.sql` — duels + the server-side answer key (~47 KB)
 5. `supabase_duel_v2.sql` — exam choice, per-question history, a rebuilt key, the roulette fix
 6. `supabase_exam_history.sql` — the exam list behind the Redo tab
+7. `supabase_leaderboard.sql` — the weekly leaderboard on the home page
 
 All are idempotent. Never put the `sb_secret_` key in the page.
 

@@ -1928,9 +1928,9 @@ async function leaderboardChecks(){
     // an old week does not carry over
     t.P.wk={key:'2020-w1',dev:{x:50}};
     eq(t.wkCorrect(),0,'last year\'s count is not this week\'s');
-    eq(t.P.wk.key,t.weekKey(),'and the week rolls over');
+    eq(t.P.wk.key,t.lbWeek(),'and the week rolls over');
     // ---- two devices, one week: they add up
-    const k=t.weekKey();
+    const k=t.lbWeek();
     const m=t.wkMerge({key:k,dev:{phone:20,pc:5}},{key:k,dev:{pc:12}});
     eq(m.dev.phone+m.dev.pc,32,'phone 20 + desktop 12: the same week adds up to 32');
     eq(t.wkMerge({key:k,dev:{a:3}},{key:'2020-w1',dev:{a:99}}).dev.a,3,'a newer week is never replaced by an older one');
@@ -1982,6 +1982,71 @@ async function leaderboardChecks(){
       eq(calls.length,0,'a fresh board is not fetched again within a minute');
     } finally { t.cloudForTest(was[0],was[1]); }
   } finally { t.P.wk=keepWk; t.simClearSave(); t.go('homeScreen'); await sleep(20); }
+}
+// What the review of the leaderboard confirmed, replayed.
+async function leaderboardReviewChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const keepWk=t.P.wk;
+  try{
+    // ---- 1. the week is Sunday to Saturday, whatever the hour, DST or year
+    eq(t.lbWeek(new Date(2026,8,26,0,30)),'2026-09-20','Saturday just after midnight is still this week');
+    eq(t.lbWeek(new Date(2026,8,26,23,59)),'2026-09-20','and so is Saturday night');
+    eq(t.lbWeek(new Date(2026,8,27,0,1)),'2026-09-27','a new week on Sunday');
+    eq(t.lbWeek(new Date(2027,0,1,12)),'2026-12-27','New Year\'s Day is in the week that started in December');
+    eq(t.lbWeek(new Date(2027,0,2,12)),'2026-12-27','and so is the day after: one week, not three');
+    eq(t.wkNum('2026-w39'),0,'a week in the old form is not a week');
+    // ---- 5. a date far ahead does not take the week
+    const k=t.lbWeek();
+    t.P.wk={key:'2030-06-02',dev:{x:500}};
+    eq(t.wkCorrect(),0,'a week years ahead is ignored');
+    eq(t.P.wk.key,k,'and this week starts over');
+    eq(t.wkMerge({key:k,dev:{a:3}},{key:'2030-06-02',dev:{a:900}}).key,k,'a far-future week does not win a merge');
+    const next=t.lbWeek(new Date(Date.now()+7*864e5));
+    eq(t.wkMerge({key:k,dev:{a:3}},{key:next,dev:{a:1}}).key,next,'one week ahead (another timezone) still does');
+
+    // ---- 4. before the session is read, a signed-in user is not told to sign in
+    t.go('homeScreen');
+    t.lbAuthKnown=false; t.renderLeaderboard(false);
+    ok(/Loading/.test($('lbNote').textContent)&&$('lbSignIn').classList.contains('hidden'),'while the session loads it says Loading, not Sign in');
+    t.lbAuthChanged();
+    ok(!$('lbSignIn').classList.contains('hidden'),'once it is known to be signed out, it offers to sign in');
+
+    // ---- 2. a board belongs to one user
+    t.P.wk={key:k,dev:{[t.DEVICE_ID]:4}};
+    const calls=[]; let answer=(uid)=>({data:{ok:true,week:k,players:3,top:[{rank:1,name:'someone',c:80,me:false}],me:{rank:3,c:uid==='A'?40:4}},error:null});
+    let delay=0;
+    const client={rpc(fn,args){ calls.push(fn); const who=t.sbUser&&t.sbUser.id; return new Promise(r=>setTimeout(()=>r(answer(who)),delay)); }};
+    let was=t.cloudForTest(client,{id:'A'});
+    try{
+      t.lbAuthChanged(); await sleep(30);
+      ok(/\u{1f949}/u.test($('lbList').textContent)&&/40/.test($('lbList').textContent),'(A sees A\'s rank — a bronze third — and count)');
+      t.cloudForTest(client,{id:'B'}); t.lbAuthChanged(); await sleep(30);
+      ok(!/40/.test($('lbList').textContent),'after a switch to B, nothing of A\'s board is shown');
+      eq(t.lbUid,'B','the board is B\'s');
+      // a slow answer for A that lands after A has gone is dropped
+      t.cloudForTest(client,{id:'A'}); t.lbReset(); delay=80;
+      const inflight=t.lbFetch(true); await sleep(10);
+      t.cloudForTest(client,{id:'B'}); t.lbReset(); delay=0;
+      await inflight; t.renderLeaderboard(false);
+      ok(!/40/.test($('lbList').textContent),'an answer that arrives for a user who signed out is thrown away');
+      // ---- 3. behind your own count: refetched, not held for a minute
+      await t.lbFetch(true); calls.length=0;
+      t.P.wk={key:k,dev:{[t.DEVICE_ID]:9}};                     // you answered 5 more
+      await t.lbFetch(false);
+      eq(calls.length,1,'a board behind your own count is fetched again at once');
+      calls.length=0; await t.lbFetch(false);
+      ok(calls.length<=1,'(and not in a loop)');
+      calls.length=0; t.lbAfterPush(); await sleep(10);
+      eq(calls.length,1,'an upload fetches the board again');
+      // a count the board has not seen yet still shows
+      answer=()=>({data:{ok:true,week:k,players:1,top:[{rank:1,name:'someone',c:80,me:false}],me:null},error:null});
+      await t.lbFetch(true); t.renderLeaderboard(false);
+      const me=document.querySelector('#lbList .lbrow.me');
+      ok(!!me&&me.querySelector('.lbc').textContent==='9','your count shows before the board has ranked it');
+      eq(me&&me.querySelector('.lbrk').textContent,'—','with no rank yet');
+      ok(/new week starts on Sunday/.test($('lbNote').textContent),'the card says when the week turns over');
+    } finally { t.cloudForTest(was[0],was[1]); t.lbAuthChanged(); }
+  } finally { t.P.wk=keepWk; t.lbReset(); t.go('homeScreen'); await sleep(10); }
 }
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
@@ -3745,7 +3810,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

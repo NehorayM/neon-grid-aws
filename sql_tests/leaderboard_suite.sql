@@ -23,18 +23,18 @@ declare
   r jsonb;
 begin
   -- alice 30 (two devices 20 + 10), bob 45, carol a broken value and 7, dave last week, E 99999
-  update public.profiles set profile = '{"wk":{"key":"2026-w39","dev":{"phone":20,"pc":10}}, "coins":5}'::jsonb where id = A;
-  update public.profiles set profile = '{"wk":{"key":"2026-w39","dev":{"x":45}}}'::jsonb where id = B;
-  update public.profiles set profile = '{"wk":{"key":"2026-w39","dev":{"x":"abc","y":7}}}'::jsonb where id = C;
-  update public.profiles set profile = '{"wk":{"key":"2026-w38","dev":{"x":500}}}'::jsonb where id = D;
-  update public.profiles set profile = '{"wk":{"key":"2026-w39","dev":{"x":99999}}}'::jsonb where id = E;
+  update public.profiles set profile = '{"wk":{"key":"2026-09-20","dev":{"phone":20,"pc":10}}, "coins":5}'::jsonb where id = A;
+  update public.profiles set profile = '{"wk":{"key":"2026-09-20","dev":{"x":45}}}'::jsonb where id = B;
+  update public.profiles set profile = '{"wk":{"key":"2026-09-20","dev":{"x":"abc","y":7}}}'::jsonb where id = C;
+  update public.profiles set profile = '{"wk":{"key":"2026-09-13","dev":{"x":500}}}'::jsonb where id = D;
+  update public.profiles set profile = '{"wk":{"key":"2026-09-20","dev":{"x":99999}}}'::jsonb where id = E;
 
   perform set_config('test.uid', '', false);
-  r := public.leaderboard_week('2026-w39');
+  r := public.leaderboard_week('2026-09-20');
   perform test_assert(not (r->>'ok')::boolean, 'signed out: no leaderboard');
 
   perform as_user(A);
-  r := public.leaderboard_week('2026-w39');
+  r := public.leaderboard_week('2026-09-20');
   perform test_assert((r->>'ok')::boolean, 'signed in: the board comes back');
   perform test_assert((r->>'players')::int = 4, 'four players this week (last week''s does not count)');
   perform test_assert(r->'top'->0->>'name' = 'player' and (r->'top'->0->>'c')::int = 5000,
@@ -48,19 +48,21 @@ begin
   perform test_assert((r->'me'->>'rank')::int = 3 and (r->'me'->>'c')::int = 30, 'your own rank and count');
   perform test_assert(not (r::text ~ '"coins"') and not (r::text ~ '1111'), 'no profile data and no ids leak');
 
-  r := public.leaderboard_week('2026-w39', 2);
+  r := public.leaderboard_week('2026-09-20', 2);
   perform test_assert(jsonb_array_length(r->'top') = 2, 'the list stops at the limit asked for');
   perform test_assert((r->'me'->>'rank')::int = 3, 'and your rank still comes back when you are below it');
 
-  r := public.leaderboard_week('2026-w39', 100000);
+  r := public.leaderboard_week('2026-09-20', 100000);
   perform test_assert(jsonb_array_length(r->'top') <= 50, 'a huge limit is held to 50');
 
+  r := public.leaderboard_week('2026-w39');
+  perform test_assert(not (r->>'ok')::boolean, 'the old week format is refused');
   r := public.leaderboard_week('''; drop table public.profiles; --');
   perform test_assert(not (r->>'ok')::boolean, 'a week that is not a week is refused');
   perform test_assert((select count(*) from public.profiles) >= 5, 'and nothing happened to the table');
 
   perform as_user(D);
-  r := public.leaderboard_week('2026-w39');
+  r := public.leaderboard_week('2026-09-20');
   perform test_assert(r->'me' = 'null'::jsonb or r->'me' is null, 'no answers this week: no rank for you');
 
   raise notice 'LEADERBOARD CHECKS PASSED';

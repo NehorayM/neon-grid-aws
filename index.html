@@ -2562,7 +2562,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-26 12:04 UTC';
+const BUILD='2026-09-26 17:44 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -8313,12 +8313,24 @@ function renderGoals(){
 // ================= CORRECT ANSWERS THIS WEEK =================
 // Counted per device and summed: a phone and a desktop in the same week add up, and the merge
 // keeps each device's larger count instead of one device's total over the other's.
-const wkNum=k=>{ const m=/^(\d{4})-w(\d{1,2})$/.exec(String(k||'')); return m?Number(m[1])*100+Number(m[2]):0; };
+// The board's week is named by the date of its Sunday, from whole calendar days. weekKey() —
+// the weekly challenge's — counts fractions of days from Jan 1, so it turned over at the start
+// of Saturday and split the week around New Year into three.
+function lbWeek(d){
+  d=d||new Date();
+  const sun=new Date(d.getFullYear(),d.getMonth(),d.getDate()-d.getDay());
+  return sun.getFullYear()+'-'+pad2(sun.getMonth()+1)+'-'+pad2(sun.getDate());
+}
+// a week key as a day number, for ordering; 0 for anything that is not one (the old '2026-w39')
+const wkNum=k=>{ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(k||'')); return m?Math.round(Date.UTC(+m[1],+m[2]-1,+m[3])/86400000):0; };
+// a week more than a week ahead of this clock is a wrong date somewhere, not a newer week
+const wkSane=k=>{ const n=wkNum(k); return n>0&&n<=wkNum(lbWeek())+7; };
 function wkState(){
-  const k=weekKey();
+  const k=lbWeek();
   const cur=(P.wk&&typeof P.wk==='object')?P.wk:null;
-  // a week newer than this device's clock (another device, another timezone) is kept, not reset
-  if(!cur||!cur.key||wkNum(cur.key)<wkNum(k)) P.wk={key:k,dev:{}};
+  // one week ahead (another device, another timezone) is kept; an older, malformed or far-future
+  // week starts this one from nothing
+  if(!cur||!wkSane(cur.key)||wkNum(cur.key)<wkNum(k)) P.wk={key:k,dev:{}};
   if(!P.wk.dev||typeof P.wk.dev!=='object'||Array.isArray(P.wk.dev)) P.wk.dev={};
   return P.wk;
 }
@@ -8328,12 +8340,12 @@ function wkBump(n){
 }
 function wkCorrect(){
   const w=wkState();
-  if(w.key!==weekKey()) return 0;
+  if(w.key!==lbWeek()) return 0;
   return Object.values(w.dev).reduce((a,v)=>a+(Number(v)>0?Math.floor(Number(v)):0),0);
 }
 // the newer week wins outright; the same week keeps every device, each at its larger count
 function wkMerge(x,y){
-  const ok=o=>o&&typeof o==='object'&&!Array.isArray(o)&&wkNum(o.key)?o:null;
+  const ok=o=>o&&typeof o==='object'&&!Array.isArray(o)&&wkSane(o.key)?o:null;
   x=ok(x); y=ok(y);
   if(!x||!y) return x||y||undefined;
   if(x.key!==y.key) return wkNum(x.key)>wkNum(y.key)?x:y;
@@ -8344,21 +8356,41 @@ function wkMerge(x,y){
 }
 
 // ================= WEEKLY LEADERBOARD =================
-let lbCache=null, lbAt=0, lbBusy=false, lbState='';
+let lbCache=null, lbAt=0, lbBusy=null, lbState='', lbUid=null, lbMine=0;
+// Until the session has been read, a signed-in user is not a guest: the card says Loading.
+let lbAuthKnown=false;       // CLOUD_ON is declared further down: read it at render time, not here
+function lbReset(){ lbCache=null; lbAt=0; lbState=''; lbUid=null; }
 async function lbFetch(force){
-  if(typeof sb==='undefined'||!sb||!sbUser){ lbState='guest'; lbCache=null; return; }
-  if(lbBusy||(!force&&Date.now()-lbAt<60000&&lbCache)) return;
-  lbBusy=true;
+  if(typeof sb==='undefined'||!sb||!sbUser){ lbState='guest'; lbCache=null; lbUid=null; return; }
+  const uid=sbUser.id;
+  // a board fetched for someone else (a sign-out and sign-in on this device) is not this one's
+  if(lbUid!==uid){ lbCache=null; lbAt=0; lbUid=uid; }
+  // you have answered more since this board was fetched: it is behind, fetch it again (only
+  // then — while an upload is pending the server's count lags, and that is not a reason to
+  // ask on every render)
+  if(lbCache&&wkCorrect()>lbMine) lbAt=0;
+  if(lbBusy===uid||(!force&&Date.now()-lbAt<60000&&lbCache)) return;
+  lbBusy=uid;
   try{
-    const {data,error}=await sb.rpc('leaderboard_week',{wk:weekKey(),lim:10});
+    const {data,error}=await sb.rpc('leaderboard_week',{wk:lbWeek(),lim:10});
+    if(!sbUser||sbUser.id!==uid) return;           // signed out, or someone else, meanwhile
     if(error){
       lbState=/could not find the function|schema cache|does not exist/i.test(error.message||'')?'missing':'error';
       lbCache=null;
-    } else if(data&&data.ok){ lbState='ok'; lbCache=data; lbAt=Date.now(); }
+    } else if(data&&data.ok){ lbState='ok'; lbCache=data; lbAt=Date.now(); lbMine=wkCorrect(); }
     else { lbState='error'; lbCache=null; }
   }catch(e){ lbState='error'; }
-  finally{ lbBusy=false; }
+  finally{ if(lbBusy===uid) lbBusy=null; }
   if(route==='homeScreen') renderLeaderboard();
+}
+// after an upload the board can show it: fetch again rather than wait out the minute
+function lbAfterPush(){ lbAt=0; if(route==='homeScreen') lbFetch(true); }
+// the session changed hands (or was read at last): what the card shows is no longer right
+function lbAuthChanged(){
+  lbAuthKnown=true;
+  const uid=(typeof sbUser!=='undefined'&&sbUser)?sbUser.id:null;
+  if(uid!==lbUid) lbReset();
+  if(route==='homeScreen') renderLeaderboard(true);
 }
 function renderLeaderboard(fetchToo){
   const L=$('lbList'), note=$('lbNote'); if(!L||!note) return;
@@ -8368,12 +8400,13 @@ function renderLeaderboard(fetchToo){
   $('lbSignIn').classList.add('hidden');
   if(fetchToo) lbFetch(false);
   if(!(typeof sbUser!=='undefined'&&sbUser)){
+    if(!lbAuthKnown&&CLOUD_ON){ note.textContent='Loading\u2026'; return; }
     note.textContent='Sign in to see where you stand this week — and to be on the board.';
     $('lbSignIn').classList.remove('hidden');
     return;
   }
   if(lbState==='missing'){ note.textContent='The leaderboard is not installed yet — run supabase_leaderboard.sql in the Supabase SQL editor.'; return; }
-  if(!lbCache){ note.textContent=lbState==='error'?'Could not load the leaderboard — it will try again.':'Loading\u2026'; return; }
+  if(!lbCache||lbUid!==sbUser.id){ note.textContent=lbState==='error'?'Could not load the leaderboard — it will try again.':'Loading\u2026'; return; }
   const rows=(lbCache.top||[]).slice();
   // your own number is this device's, straight away — the board catches up on the next sync
   let meShown=false;
@@ -8382,15 +8415,16 @@ function renderLeaderboard(fetchToo){
     d.className='lbrow'+(r.me?' me':'')+(gap?' gap':'');
     const rk=Number(r.rank)||0;
     d.innerHTML='<span class="lbrk"></span><span class="lbnm"></span><span class="lbc"></span>';
-    d.querySelector('.lbrk').textContent=rk===1?'\u{1f947}':rk===2?'\u{1f948}':rk===3?'\u{1f949}':'#'+rk;
+    d.querySelector('.lbrk').textContent=!rk?'\u2014':rk===1?'\u{1f947}':rk===2?'\u{1f948}':rk===3?'\u{1f949}':'#'+rk;
     d.querySelector('.lbnm').textContent=r.me?((r.name&&r.name!=='you'?r.name:'You')+(r.name&&r.name!=='you'?' (you)':'')):(r.name||'player');
     d.querySelector('.lbc').textContent=r.me?Math.max(Number(r.c)||0,mine):(Number(r.c)||0);
     L.appendChild(d);
   };
   rows.forEach(r=>{ if(r.me) meShown=true; add(r,false); });
   if(!meShown&&lbCache.me) add({rank:lbCache.me.rank,name:(typeof myName!=='undefined'&&myName)||'you',c:lbCache.me.c,me:true},true);
+  else if(!meShown&&mine>0) add({rank:0,name:(typeof myName!=='undefined'&&myName)||'you',c:mine,me:true},true);
   if(!rows.length) note.textContent=mine?'Your answers are on their way to the board.':'Nobody has a correct answer yet this week — be the first.';
-  else note.textContent=plural(Number(lbCache.players)||rows.length,'player')+' this week \u00b7 resets on Sunday';
+  else note.textContent=plural(Number(lbCache.players)||rows.length,'player')+' this week \u00b7 a new week starts on Sunday';
 }
 
 // ================= WEEKLY CHALLENGE =================
@@ -9734,6 +9768,7 @@ async function syncNow(silent){
       if(route==='paperScreen') renderPapers();
     }
     const ok=await pushCloud();
+    if(ok&&typeof lbAfterPush==='function') lbAfterPush();
     if(!silent) authMsg(ok?'Progress synced.':'Could not sync — kept locally.',ok?'ok':'bad');
   }catch(e){ if(!silent) authMsg(humanError(e),'bad'); }
   syncing=false; renderAuth();
@@ -9825,6 +9860,7 @@ async function doSignOut(){
   if(sbUser) await pushCloud();          // never lose the last few answers
   await client.auth.signOut();
   sbUser=null; lastSync=0; myName=null;
+  lbAuthChanged();
   authMsg('Signed out. Your progress stays on this device.','ok');
   refreshTop();
   renderAuth();
@@ -9839,15 +9875,18 @@ async function doReset(){
 async function initAuth(){
   renderAuth();
   if(!CLOUD_ON) return;
-  const client=await loadSupabase(); if(!client) return;
+  const client=await loadSupabase(); if(!client){ lbAuthChanged(); return; }
   const {data}=await client.auth.getSession();
   if(data&&data.session){
     sbUser=data.session.user;
     myName=(sbUser.user_metadata&&sbUser.user_metadata.username)||null;
+    lbAuthChanged();
     await syncNow(true); refreshTop();
-  }
+  } else lbAuthChanged();
   client.auth.onAuthStateChange((_e,session)=>{
+    const before=sbUser?sbUser.id:null;
     sbUser=session?session.user:null; renderAuth();
+    if((sbUser?sbUser.id:null)!==before) lbAuthChanged();
     if(typeof renderCasino==='function'){ renderCasino(); if(sbUser) casRefresh(); }
   });
   sbReady=true; renderAuth();
@@ -11673,7 +11712,8 @@ if(TEST){
     ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
     histCsvLines, histCsvName, histCsv, histCsvAll, HIST_CSV_HEAD,
     examLabel, mistakeSet, mistakeStats, histViewsRefresh,
-    wkState, wkBump, wkCorrect, wkMerge, wkNum, weekKey, lbFetch, renderLeaderboard, get lbState(){return lbState;}, renderMistakes, openMistakes, startMistakes, mistakeAsk, mistakeCsv, fmtMins,
+    wkState, wkBump, wkCorrect, wkMerge, wkNum, weekKey, lbWeek, wkSane, lbReset, lbAuthChanged, lbAfterPush,
+    get lbUid(){return lbUid;}, set lbAuthKnown(v){ lbAuthKnown=v; }, lbFetch, renderLeaderboard, get lbState(){return lbState;}, renderMistakes, openMistakes, startMistakes, mistakeAsk, mistakeCsv, fmtMins,
     qStory, hiQual, renderStory, exReadText, exReadToggle, get exTts(){return exTts;}, get ttsOn(){return ttsOn;},
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
     voiceForPreset, voiceUsable,
