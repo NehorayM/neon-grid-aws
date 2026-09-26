@@ -1701,6 +1701,116 @@ async function redoCsvChecks(){
     ok($('redoCsvAll').classList.contains('hidden'),'with nothing kept, there is nothing to download');
   } finally { HTMLAnchorElement.prototype.click=realClick; t.P.examHist={}; t.go('homeScreen'); await sleep(20); }
 }
+// Asked for: an exam of every question got wrong in the kept exams — all of them, even past 65 —
+// timed, as simulation or practice, with the material they come from shown first.
+async function mistakesChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const wrongOf=qi=>{ const q=t.QS[qi]; return q.o.map(o=>o[0]).filter(l=>!q.a.includes(l)).slice(0,q.a.length); };
+  const mk=(p,nWrong,at,blank)=>{ const qs=t.paperQs(p), ans={};
+    qs.forEach((qi,i)=>{ if(blank&&i>=65-blank) return; ans[i]=i<nWrong?wrongOf(qi):t.QS[qi].a.slice(); });
+    return {hid:'m'+p+'-'+at,paper:p,qs,ans,flag:{},mode:'exam',d:'2026-09-2'+p,d0:at,at,c:65-nWrong,n:65,sc:500}; };
+  const keep={h:t.P.examHist, sv:t.P.simSave};
+  try{
+    t.simClearSave();
+    // ---- which questions
+    const A=mk(3,40,100,10), B=mk(4,50,200);
+    t.P.examHist={a:A,b:B};
+    let ms=t.mistakeSet();
+    eq(ms.qs.length,90,'every wrong answer across the kept exams, 40 + 50');
+    ok(ms.qs.length>65,'more than 65 is fine — all of them go in');
+    eq(ms.exams.sort().join(),'Exam 3,Exam 4','and it knows which exams they came from');
+    ok(!ms.qs.some(qi=>t.paperQs(3).slice(55).includes(qi)),'a blank is not a mistake');
+    // a later exam that got some of them right takes them out
+    const again=mk(3,0,300); again.hid='again';
+    t.P.examHist={a:A,b:B,again};
+    ms=t.mistakeSet();
+    eq(ms.qs.length,50,'answered right in a later exam: no longer a mistake');
+    eq(ms.fixed,40,'and counted as fixed');
+    // ---- the screen before it
+    t.P.examHist={a:A,b:B};
+    t.go('redoScreen'); t.renderRedoScreen(); await sleep(20);
+    ok(!$('redoMistakes').classList.contains('hidden'),'the Redo page offers it');
+    ok(/90 questions/.test($('redoMkTitle').textContent),'saying how many');
+    $('redoMkGo').click(); await sleep(30);
+    eq(t.route,'mistakeScreen','its button opens the mistakes screen');
+    ok(document.querySelector('#nav #navRedo').classList.contains('on'),'with the Redo tab still lit');
+    const doms=[...document.querySelectorAll('#mistakeDoms .bsrow')];
+    eq(doms.length,4,'one row per exam domain');
+    eq(doms.reduce((n,r)=>n+Number(r.querySelector('.bspct').textContent),0),90,'which add up to every question');
+    const secs=[...document.querySelectorAll('#mistakeSecs .mkrow')];
+    ok(secs.length>=3,'and the subject areas they come from');
+    const counts=secs.map(r=>Number(r.querySelector('.bspct').textContent));
+    ok(counts.every((c,i)=>i===0||c<=counts[i-1]),'most mistakes first');
+    eq(counts.reduce((a,b)=>a+b,0),90,'every question in exactly one of them');
+    ok(/study first/.test(secs[0].textContent)&&!/study first/.test((secs[3]||{textContent:''}).textContent),'the top three marked to study first');
+    const study=secs[0].querySelector('.mkstudy');
+    ok(!!study,'with a Study button');
+    study.click(); await sleep(30);
+    eq(t.route,'stuReadScreen','which opens the study chapter for it');
+    t.openMistakes(); await sleep(20);
+    ok(/90 questions/.test($('mistakeStart').textContent)&&/2 h 38 min/.test($('mistakeStart').textContent),
+       'the start button says how many and how long (105 s a question)');
+    // ---- the exam
+    $('mistakeStart').click(); await sleep(20);
+    ok(!$('modeAsk').classList.contains('hidden'),'Start asks simulation or practice');
+    ok(/90 questions/.test($('modeAskSub').textContent),'and the picker says 90, not 65');
+    t.modePick('practice'); await sleep(50);
+    eq(t.route,'quizScreen','then it starts');
+    eq(t.sim.qs.length,90,'with all 90');
+    eq(new Set(t.sim.qs).size,90,'each once');
+    eq(t.sim.kind,'mistakes','as a mistakes exam');
+    eq(t.sim.mode,'practice','in the mode picked');
+    eq(t.sim.mins,158,'on a 158-minute clock');
+    eq(document.querySelectorAll('#simStrip .sq').length,90,'the question strip has all 90');
+    // it survives a reload
+    for(let k=0;k<3;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+    t.simPersist(); const order=t.sim.qs.join();
+    eq(t.P.simSave.kind,'mistakes','the save knows what it is');
+    const run=Object.values(t.P.runs||{}).find(r=>r.kind==='mistakes');
+    ok(!!run,'and so does its copy in Running exams');
+    t.simAbandon(); await sleep(20); t.simResume(); await sleep(50);
+    ok(t.sim&&t.sim.kind==='mistakes'&&t.sim.qs.join()===order,'a resume brings back the same exam, same order');
+    eq(Object.keys(t.sim.ans).length,3,'with its answers');
+    t.simSubmit(true); await sleep(80);
+    ok(/^Mistakes exam/.test($('simVerdict').textContent),'the result is called the mistakes exam');
+    eq($('simAgain').textContent,'New mistakes exam ›','with a way to sit the next one');
+    const h=Object.values(t.P.examHist).find(e=>e.kind==='mistakes');
+    ok(!!h,'it is kept in the Redo list');
+    eq(t.examLabel(h),'Mistakes exam','under its own name');
+    eq(t.mistakeSet().qs.length,87,'and the three answered right drop out of the next one');
+    $('simAgain').click(); await sleep(20);
+    eq(t.route,'mistakeScreen','"New mistakes exam" goes back to the plan');
+    // ---- an open exam is put on hold, not deleted
+    t.startPaper(5,'exam'); await sleep(20);
+    t.simJump(0); t.QS[t.sim.qs[0]].a.forEach(l=>t.simPick(l)); t.simPersist();
+    const openRid=t.P.simSave.rid;
+    t.openMistakes(); await sleep(20);
+    $('mistakeStart').click(); await sleep(10);
+    ok(/on hold/.test($('mistakeStart').textContent),'starting over an open exam asks first');
+    $('mistakeStart').click(); await sleep(10);
+    t.modePick('exam'); await sleep(40);
+    eq(t.sim.kind,'mistakes','then starts the mistakes exam');
+    ok(Object.values(t.P.runs||{}).some(r=>r.rid===openRid&&r.paper===5),'and Exam 5 is still in Running exams');
+    ok(!(t.P.runsDone||[]).includes(openRid),'not thrown away');
+    t.simAbandon(); await sleep(20);
+    // ---- the CSV
+    const got=[]; const rc=HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click=function(){ got.push({name:this.download,href:this.href}); };
+    try{ t.mistakeCsv(); } finally { HTMLAnchorElement.prototype.click=rc; }
+    ok(got.length&&/^skyforge-mistakes-/.test(got[0].name),'the questions download as a CSV');
+    const lines=(await (await fetch(got[0].href)).text()).split('\r\n');
+    eq(lines.length,t.mistakeSet().qs.length+1,'one row each');
+    ok(/Wrong in Exam [34]/.test(lines[1]),'saying which exam it was wrong in');
+    // ---- nothing to practise
+    t.P.examHist={}; t.openMistakes(); await sleep(20);
+    ok(!$('mistakeEmpty').classList.contains('hidden')&&$('mistakeActs').classList.contains('hidden'),'with no mistakes there is nothing to start');
+    t.renderRedoScreen();
+    ok($('redoMistakes').classList.contains('hidden'),'and the Redo page does not offer it');
+  } finally {
+    if(t.sim) t.simAbandon(); await sleep(20);
+    t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.P.examHist={}; t.go('homeScreen'); await sleep(20);
+  }
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3463,7 +3573,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
