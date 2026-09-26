@@ -628,7 +628,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
   background:var(--gold);color:#1b1408}
 .unlockbtn:disabled{background:rgba(255,255,255,.09);color:var(--dim)}
 /* The paper's own budget, under the question's five-pixel bar. The track is ticked once per
-   question by a repeating gradient, so "65 x 120 seconds" is visible rather than arithmetic. */
+   question by a repeating gradient, so "65 x 150 seconds" is visible rather than arithmetic. */
 .simtotal{margin:6px 0 2px;padding:9px 11px;border-radius:11px;
   background:color-mix(in srgb, var(--cyan) 5%, var(--surface));
   border:1px solid color-mix(in srgb, var(--cyan) 22%, var(--line))}
@@ -1545,7 +1545,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     <div class="tiles">
       <button class="tile hero-tile" id="practiceTile"><span class="ic">⚡</span><b>Practice</b><span>Answer &amp; earn games</span></button>
       <button class="tile hero-tile" id="simOpen"><span class="ic">🧪</span><b>Random mock exam</b><span>65 drawn fresh to the real domain weights · 130 minutes</span></button>
-      <button class="tile hero-tile" id="paperOpen"><span class="ic">📄</span><b>Practice Exams</b><span>The whole bank as numbered papers · 65 questions · 2 minutes a question</span></button>
+      <button class="tile hero-tile" id="paperOpen"><span class="ic">📄</span><b>Practice Exams</b><span>The whole bank as numbered papers · 65 questions · 2½ minutes a question</span></button>
       <button class="tile hero-tile" id="courseOpen"><span class="ic">🎓</span><b>Learn a Subject</b><span>Module by module · read a part, prove you got it, then a 10-question exam on what you learned</span></button>
       <button class="tile" id="studyModeOpen"><span class="ic">🧠</span><b>Briefed drill</b><span>A briefing before each question</span></button>
       <button class="tile" id="mockOpen"><span class="ic">📝</span><b>Mock exam</b><span>20 Q · by domain</span></button>
@@ -6158,9 +6158,9 @@ function openVoice(){
 // ================= FULL EXAM SIMULATION =================
 // 65 questions, 130 minutes, domain-weighted — the shape of the real SAA-C03.
 const SIM_LEN=65, SIM_PASS=72;
-// Every question is capped at SIM_QSEC (120) seconds, so the budget for a whole paper is
+// Every question is capped at SIM_QSEC (150) seconds, so the budget for a whole paper is
 // just that times the number of questions — the two clocks cannot disagree.
-const SIM_QSEC=120;   // per exam question: two minutes (was 90, then 105)
+const SIM_QSEC=150;   // per exam question: two and a half minutes (was 90, 105, then 120)
 const simBudget=n=>Math.ceil(n*SIM_QSEC/60);
 const SIM_MIN=simBudget(SIM_LEN);
 // Numbered practice exams: the bank cut into fixed papers, in bank order, so
@@ -6315,7 +6315,7 @@ function simQTimeUp(){
   simQStop();
   if(!sim||!sim.running) return;
   ttsStop();
-  // 120 seconds covers reading it, answering it and reading the feedback. When they
+  // 150 seconds covers reading it, answering it and reading the feedback. When they
   // are gone the paper moves on regardless — a blank question simply scores as wrong,
   // because an exam does not wait for you to get it right.
   const last=sim.i>=simLen()-1;

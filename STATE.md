@@ -16,7 +16,7 @@ Push to `main` and Pages redeploys in about a minute.
 |---|---|
 | Study guide `AWS-SAA-C03-Combined.md` | Two sources merged into one 24-topic guide |
 | **Question bank** | 1,201 questions, every answer read and verified one by one. The old 2,502-question bank is gone |
-| **Practice Exams** | The **Exam** tab. 19 numbered papers — 65 questions each (the last holds 31), **2 minutes a question**, score, CSV export. A paper you leave is kept and offered back; exams 1–10 brief you before each question and explain every answer; any question's stem can be read aloud on request |
+| **Practice Exams** | The **Exam** tab. 19 numbered papers — 65 questions each (the last holds 31), **2½ minutes a question**, score, CSV export. A paper you leave is kept and offered back; exams 1–10 brief you before each question and explain every answer; any question's stem can be read aloud on request |
 | **Study** | The **Study** tab. The whole syllabus as 13 readable chapters, 76 topics, with authored comparison tables, decision trees and flows, and 3 checks per chapter |
 | Practice, mock, exam, flashcards | Original app, still running on the new bank |
 | **Learn a Subject** | The main mode. 23 subjects, 97 parts, 388 check questions, 230 exam questions — all authored, none drawn from the bank |
@@ -112,7 +112,7 @@ visual language. Chapters are coloured by the exam domain they mostly serve.
   with no voices installed fires `onerror: synthesis-failed`, so the button never lies about
   reading; it also accepts `speak()` silently in some builds, so the page checks 400ms later
   and says so rather than leaving you wondering.
-- **Two minutes a question.** `SIM_QSEC=120` (it was 90, then 105). The top clock counts the current question
+- **Two and a half minutes a question.** `SIM_QSEC=150` (it was 90, then 105, then 120). The top clock counts the current question
   down, not the whole paper, and the bar above the question drains with it. When it reaches
   zero the paper moves to the next question whether or not anything was answered — a blank
   question scores as wrong, and the clock never waits for a right answer. On the last question
@@ -123,7 +123,7 @@ visual language. Chapters are coloured by the exam domain they mostly serve.
   still be opened and answered from the review list — it shows an empty clock rather than
   bouncing you straight back out, which is what `if(simQLeft<=0){ simQStop(); return; }` at
   the top of `simQTick` is for.
-  On papers 1–10 the same per-question time (SIM_QSEC, now 120 s) covers reading the feedback, so it can move on mid-read.
+  On papers 1–10 the same per-question time (SIM_QSEC, now 150 s) covers reading the feedback, so it can move on mid-read.
   **There is one clock** — see "One clock" below. `simTimeLeft()` is the sum of the question
   clocks, and `simCheckTime` ends the paper when that reaches zero. `simBudget(n)` survives
   only as the headline figure.
