@@ -1718,7 +1718,7 @@ async function mistakesChecks(){
     let ms=t.mistakeSet();
     eq(ms.qs.length,90,'every wrong answer across the kept exams, 40 + 50');
     ok(ms.qs.length>65,'more than 65 is fine — all of them go in');
-    eq(ms.exams.sort().join(),'Exam 3,Exam 4','and it knows which exams they came from');
+    eq(ms.exams.sort().join(),'Exam 3 (2026-09-23),Exam 4 (2026-09-24)','and it knows which exams they came from, by sitting');
     ok(!ms.qs.some(qi=>t.paperQs(3).slice(55).includes(qi)),'a blank is not a mistake');
     // a later exam that got some of them right takes them out
     const again=mk(3,0,300); again.hid='again';
@@ -1806,6 +1806,105 @@ async function mistakesChecks(){
     ok(!$('mistakeEmpty').classList.contains('hidden')&&$('mistakeActs').classList.contains('hidden'),'with no mistakes there is nothing to start');
     t.renderRedoScreen();
     ok($('redoMistakes').classList.contains('hidden'),'and the Redo page does not offer it');
+  } finally {
+    if(t.sim) t.simAbandon(); await sleep(20);
+    t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.P.examHist={}; t.go('homeScreen'); await sleep(20);
+  }
+}
+// What the four-lens review of the mistakes exam confirmed, each replayed.
+async function mistakesReviewChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const wrongOf=qi=>{ const q=t.QS[qi]; return q.o.map(o=>o[0]).filter(l=>!q.a.includes(l)).slice(0,q.a.length); };
+  const entry=(hid,p,ans,d0,extra)=>Object.assign({hid,paper:p,qs:t.paperQs(p),ans,flag:{},mode:'exam',d:'2026-09-'+(10+(d0%20)),d0,at:d0,c:0,n:65,sc:300},extra||{});
+  try{
+    t.simClearSave(); t.P.runs={}; t.P.runsDone=[];
+    // ---- 1. a redo that saves an old exam does not re-date its untouched answers
+    const qs3=t.paperQs(3), q0=qs3[0];
+    // Exam 3 sat first, q0 RIGHT; a mistakes exam later has q0 WRONG
+    t.P.examHist={
+      e3:entry('e3',3,{0:t.QS[q0].a.slice(),1:wrongOf(qs3[1])},1000),
+      mk:{hid:'mk',paper:0,kind:'mistakes',qs:[q0],ans:{0:wrongOf(q0)},flag:{},mode:'exam',d:'2026-09-20',d0:5000,at:5000,aat:{0:5000},c:0,n:1,sc:100}};
+    ok(t.mistakeSet().qs.includes(q0),'(q0: right in Exam 3, then wrong later — a mistake)');
+    await t.histOpen('e3',null); await sleep(30);
+    t.simSubmit(false); await sleep(40);                     // redo: Save & close, nothing changed
+    ok(t.P.examHist.e3.at>5000,'(saving the redo moved Exam 3\'s version stamp past the later answer)');
+    ok(t.mistakeSet().qs.includes(q0),'saving an old exam in Redo does not make its old answers the latest');
+    // changing that answer in a redo DOES count as answering it now
+    await t.histOpen('e3',null); await sleep(30);
+    t.simJump(0); await sleep(5); t.QS[q0].a.forEach(l=>t.simPick(l)); t.QS[q0].a.forEach(l=>t.simPick(l)); t.QS[q0].a.forEach(l=>t.simPick(l));
+    t.sim.ans[0]=t.QS[q0].a.slice(); t.histWrite();
+    t.simSubmit(false); await sleep(40);
+    ok(Number(t.P.examHist.e3.aat[0])>5000||!t.mistakeSet().qs.includes(q0),'answering it again in a redo counts as the latest answer');
+
+    // ---- 3. exams are counted by sitting, not by name
+    const m1=t.paperQs(1).slice(0,3), m2=t.paperQs(2).slice(0,3);
+    t.P.examHist={
+      a:{hid:'a',paper:0,qs:m1,ans:{0:wrongOf(m1[0])},flag:{},d:'2026-09-01',d0:1,at:1,c:0,n:3,sc:100},
+      b:{hid:'b',paper:0,qs:m2,ans:{0:wrongOf(m2[0])},flag:{},d:'2026-09-02',d0:2,at:2,c:0,n:3,sc:100}};
+    eq(t.mistakeSet().exams.length,2,'two mock exams are two exams, not one "Mock exam"');
+    ok(t.mistakeSet().exams.every(x=>/\(2026-09-0[12]\)/.test(x)),'each named with its date');
+
+    // ---- 2. a mistakes exam is not a full simulation
+    const before={sims:t.P.sims||0, sp:t.P.simsPassed||0, best:t.P.bestSim||0, ex:t.P.exams||0, ep:t.P.examsPassed||0, coins:t.P.coins||0};
+    t.P.bestSim=0; before.best=0;
+    t.startMistakes('practice'); await sleep(30);
+    eq(t.sim.qs.length,2,'(a two-question mistakes exam)');
+    for(let k=0;k<2;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }
+    t.simSubmit(true); await sleep(60);
+    ok(/PASS/.test($('simVerdict').textContent),'(all right: it scores a pass)');
+    eq(t.P.sims||0,before.sims,'but it is not counted as a full simulation');
+    eq(t.P.simsPassed||0,before.sp,'nor as one passed');
+    eq(t.P.bestSim||0,0,'nor as a best score');
+    eq(t.P.exams||0,before.ex,'nor as an exam sat');
+    eq(t.P.examsPassed||0,before.ep,'nor passed');
+    ok((t.P.coins||0)-before.coins<90,'and pays per right answer, without the 90-coin pass bonus');
+    ok(t.P.simLog[0]&&t.P.simLog[0].k==='m','its log entry is marked as a mistakes exam');
+
+    // ---- 4. Quit returns to the mistakes screen, which offers it back
+    t.P.examHist={a:{hid:'a',paper:0,qs:t.paperQs(6),ans:Object.fromEntries(t.paperQs(6).map((qi,i)=>[i,wrongOf(qi)])),flag:{},d:'2026-09-03',d0:3,at:3,c:0,n:65,sc:100}};
+    t.startMistakes('practice'); await sleep(30);
+    t.simJump(4); await sleep(5); t.simPersist();
+    t.simAbandon(); await sleep(30);
+    eq(t.route,'mistakeScreen','Quit on a mistakes exam goes back to its screen, not Home');
+    ok(!$('mistakeResume').classList.contains('hidden'),'which offers it back');
+    ok(/question 5 of 65/.test($('mistakeResume').textContent),'saying where it stopped');
+    ok(/^Start a new one/.test($('mistakeStart').textContent),'with a new one as the second choice');
+    $('mistakeResume').click(); await sleep(40);
+    ok(t.sim&&t.sim.kind==='mistakes'&&t.sim.i===4,'Resume picks it up at that question');
+    eq($('qSector').textContent.indexOf('MISTAKES EXAM'),0,'the question header calls it the mistakes exam');
+    const rid=t.sim.rid;
+    // ---- 4b. the random mock puts it on hold instead of deleting it
+    t.simAbandon(); await sleep(30);
+    t.go('homeScreen'); await sleep(10);
+    $('simOpen').click(); await sleep(10);
+    ok(/on hold/.test($('simOpen').textContent),'Random mock exam asks before shelving the open exam');
+    $('simOpen').click(); await sleep(10);
+    ok(!$('modeAsk').classList.contains('hidden'),'then asks simulation or practice');
+    ok(!/on hold/.test($('simOpen').textContent),'and the tile says what it says again');
+    t.modePick('practice'); await sleep(40);
+    eq(t.sim.kind||'','','(a mock is now open)');
+    ok(!(t.P.runsDone||[]).includes(rid),'the mistakes exam was not thrown away');
+    ok(Object.values(t.P.runs||{}).some(r=>r.rid===rid),'it is in Running exams');
+    t.simAbandon(); await sleep(30);
+
+    // ---- 5. the Start button's confirm does not stick
+    t.openMistakes(); await sleep(20);
+    const sb=$('mistakeStart');
+    sb.click(); await sleep(5);
+    ok(/on hold/.test(sb.textContent),'(Start over an open exam asks first)');
+    sb.click(); await sleep(10);
+    $('modeAskNo').click(); await sleep(10);
+    ok(/^Start /.test(sb.textContent),'dismissing the picker leaves the button saying Start, not the question');
+    eq(Math.round(sb.getBoundingClientRect().width),Math.round(sb.parentElement.getBoundingClientRect().width),'and full width');
+
+    // ---- 6. a pull refreshes the mistakes screen in front of you
+    const n0=t.mistakeSet().qs.length;
+    t.P.examHist.z={hid:'z',paper:0,qs:t.paperQs(7).slice(0,4),ans:{0:wrongOf(t.paperQs(7)[0])},flag:{},d:'2026-09-04',d0:9,at:9,c:0,n:4,sc:100};
+    t.histViewsRefresh(); await sleep(10);
+    ok(new RegExp((n0+1)+' questions').test($('mistakeStart').textContent),'new data from another device shows on the mistakes screen');
+
+    // ---- 7. a kept mistakes exam's CSV is named for it
+    ok(/^skyforge-mistakes-/.test(t.histCsvName({kind:'mistakes',paper:0,sc:400,d:'2026-09-26'})),'its CSV is named skyforge-mistakes-…');
   } finally {
     if(t.sim) t.simAbandon(); await sleep(20);
     t.simClearSave(); t.P.runs={}; t.P.runsDone=[]; t.P.examHist={}; t.go('homeScreen'); await sleep(20);
@@ -3573,7 +3672,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){

@@ -657,6 +657,35 @@ never run QA there — `resetProfile` and the fixtures would reach the account. 
 clean origin (the LAN IP, e.g. `http://10.10.1.184:8765/index.html?test=1`) and check `sbUser`
 is null first.
 
+## The mistakes exam (2026-09-26)
+
+Redo page → 🎯 card → `mistakeScreen` → a timed exam of every question you got wrong.
+
+- **Which questions** — `mistakeSet()`: every question whose *latest* answer across the kept exams
+  (`P.examHist`) is wrong. Fixed-since and blanks are out (a half-kept exam would pour its blanks
+  in). "Latest" is per answer: `histWrite` keeps `aat[i]`, when answer i was given — carried over
+  when unchanged, now when changed. The entry's `at` is a *version stamp* that every redo pick
+  and every Save moves for the whole entry; ordering by it (the first cut) let saving an old exam
+  in Redo re-date all its answers. Entries from before `aat` fall back to `d0`, never `at`.
+  Sources are counted by entry (`hid`), named "Exam 3 (2026-09-23)" — by label, three mocks were
+  "1 exam".
+- **The plan screen**: questions · exams · minutes · subjects; mistakes by SAA domain (`qDom`);
+  subject areas most-first with overall accuracy and a Study button (`STU_SECS` → `stuOpen`);
+  CSV of the questions. Resume, when one is under way, comes first.
+- **The exam**: all of them, shuffled, `SIM_QSEC` each (`simBudget(n)`), any n — the strip,
+  clock and resume already handle >65. `sim.kind='mistakes'` rides every copy of a run (save,
+  runs backup, `lastPaper`, history, redo) and `examLabel(o,the)` names exams everywhere a label
+  used to be built from `paper` alone. Quit goes back to `mistakeScreen`, not Home.
+- **Not a full simulation**: `real=kind!=='mistakes'` gates sims/simsPassed/bestSim/exams/
+  examsPassed/logExam/the exam quest and the +90/+200 pass bonus; per-answer coins, secStats, SR
+  and history still apply. The Redo stats and chart leave mistakes exams out.
+- **Starting over an open exam puts it on hold** (`runRecord`, not `simClearSave`, whose
+  `runDone` deletes it everywhere). The random mock now does the same and asks first — it used
+  to delete a paused exam with no warning.
+
+Reviewed by a four-lens workflow plus an adversarial verifier: 19 findings, 16 confirmed (7
+distinct), all fixed; `mistakesChecks` (47) and `mistakesReviewChecks` (32) replay them.
+
 ## The SAA-C03 score
 
 From the official exam guide: a scaled score of 100–1,000, 720 to pass; four domains weighted

@@ -138,7 +138,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   background:transparent;border:1px solid var(--line2);color:var(--cyan)}
 .mkstudy:hover{border-color:var(--cyan)}
 .mkacts{display:flex;flex-direction:column;align-items:center;gap:8px;margin:14px auto 4px;max-width:var(--colw)}
-.mkacts .btn.wide{width:100%}
+.mkacts .btn.wide,#mistakeStart,#mistakeResume{width:100%}
+#mistakeResume.hidden{display:none}
 .rdtools .hidden{display:none}
 .rdempty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:34px 18px;
   color:var(--dim);font-size:12.5px}
@@ -1864,6 +1865,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
       <div id="mistakeSecs"></div>
     </div>
     <div class="mkacts" id="mistakeActs">
+      <button class="btn wide hidden" id="mistakeResume">▶ Resume</button>
       <button class="btn wide" id="mistakeStart">Start the mistakes exam ▸</button>
       <button class="btn ghost sm" id="mistakeCsv">⬇ These questions (CSV)</button>
     </div>
@@ -2542,7 +2544,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-26 10:35 UTC';
+const BUILD='2026-09-26 11:55 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -6177,14 +6179,17 @@ function startSim(mode){
   // the qs PROPERTY is a ReferenceError, and it threw before sim was ever assigned.
   const qs=simBuild();
   const budget=simBudget(qs.length);
-  simClearSave();
+  // An exam that was open is put on hold in Running exams, not deleted — clearing the save
+  // marked it done everywhere, and a paused paper went with no warning.
+  if(sim&&sim.running) simAbandon();
+  if(P.simSave) runRecord(P.simSave);
   sim={qs,i:0,ans:{},flag:{},rev:{},running:true,rid:newRid(),
        paper:0,mins:budget,qt:{},
        mode:(mode==='practice'?'practice':'exam'),
        startAt:Date.now(),endAt:Date.now()+budget*60000};
   saveProfile();
   renderClock();          // switch to the exam countdown immediately, not on the next tick
-  simLoad();
+  simLoad(); simClaim(); simPersist();
 }
 // The paper ends when its questions are out of time — the number on screen. It used to end on
 // a separate wall clock that kept running whenever no question clock was (an explanation, the
@@ -6397,7 +6402,7 @@ function simLoad(){
   const qi=sim.qs[sim.i], q=QS[qi];
   curQ=qi; answeredThis=false; eliminated.clear();
   chosen.clear(); (sim.ans[sim.i]||[]).forEach(l=>chosen.add(l));
-  $('qSector').textContent=(sim.paper?('EXAM '+sim.paper):'EXAM SIM')+
+  $('qSector').textContent=(sim.kind==='mistakes'?'MISTAKES EXAM':sim.paper?('EXAM '+sim.paper):'EXAM SIM')+
     (isRedo()?' \u00b7 REDO':isPractice()?' \u00b7 PRACTICE':'');
   { const ab=$('simAnsBtn'); if(ab) ab.classList.toggle('hidden',!isRedo()); }
   { const sb=$('simSubmit'); if(sb&&!sb.dataset.armed) sb.textContent=isRedo()?'Save & close':'Submit exam'; }
@@ -6627,23 +6632,25 @@ function simSubmit(auto){
   if(P.lastPaper){ P.lastPaper.pct=pct; P.lastPaper.passed=passed?1:0;
                    if(!lastOpen(P.lastPaper).length) delete P.lastPaper; }
   // a continuation pays the pass bonus only if this is the sitting that crosses the line
-  const newPass=passed&&!(cont&&base.passed);
+  // a mistakes exam is practice on questions already seen: its PASS is not an exam passed
+  const real=kind!=='mistakes';
+  const newPass=real&&passed&&!(cont&&base.passed);
   // Minutes actually spent on questions. Wall time since the start counted every pause —
   // a practice paper left overnight reported 872 minutes.
   const mins=Math.max(0,Math.round((simTotalFull()-simTotalLeft())/60));
-  if(!cont){ P.sims=(P.sims||0)+1; }
+  if(!cont&&real){ P.sims=(P.sims||0)+1; }
   if(newPass) P.simsPassed=(P.simsPassed||0)+1;
-  P.bestSim=Math.max(P.bestSim||0,pct);
+  if(real) P.bestSim=Math.max(P.bestSim||0,pct);
   P.simLog=(P.simLog||[]);
-  P.simLog.unshift({d:dayKey(),p:pct,sc:S.scaled,pass:passed?1:0,mins,pr:isPractice()?1:0,ct:cont?1:0,
+  P.simLog.unshift({d:dayKey(),p:pct,sc:S.scaled,pass:passed?1:0,mins,pr:isPractice()?1:0,ct:cont?1:0,k:real?'':'m',
     dom:DOMAINS.map(x=>byDom[x.id][1]?Math.round(byDom[x.id][0]/byDom[x.id][1]*100):0)});
   P.simLog=P.simLog.slice(0,12);
   if(cont){ P.correct+=gain; }
   else { P.answered+=len; P.correct+=correct; checkChest(); renderChest(); }
   // the papers are the exams now, so the exam badges, quest and history track them
-  if(!cont) P.exams=(P.exams||0)+1;
+  if(!cont&&real) P.exams=(P.exams||0)+1;
   if(newPass) P.examsPassed=(P.examsPassed||0)+1;
-  logExam(correct,len,passed);
+  if(real) logExam(correct,len,passed);
   if(newPass) questProgress('exam',1);
   if(paper) recordPaper(paper,pct,isPractice(),cont);
   lastExamCsv={paper,kind,name:(kind==='mistakes'?'skyforge-mistakes':paper?'skyforge-exam-'+paper:'skyforge-sim')+'-'+dayKey()+'.csv',list:csv};
@@ -6724,13 +6731,18 @@ async function histCloudPush(){
     rows.push({user_id:sbUser.id, hid:String(e.hid), exam:e});
   });
   if(adopted){ saveProfile(); histRedoRefresh(); }
-  if(!rows.length){ histTable='ok'; histLastSync=Date.now(); if(route==='redoScreen') renderRedoScreen(); return; }
+  if(!rows.length){ histTable='ok'; histLastSync=Date.now(); histViewsRefresh(); return; }
   try{
     const {error}=await sb.from('exam_history').upsert(rows);
     if(error){ if(histMissing(error)) histTable='missing'; else { rows.forEach(r=>histDirty.add(r.hid)); histRetry(); } }
     else { histTable='ok'; histLastSync=Date.now(); }
   }catch(e){ rows.forEach(r=>histDirty.add(r.hid)); histRetry(); }
+  histViewsRefresh();
+}
+// the screens drawn from the kept exams, whichever is in front
+function histViewsRefresh(){
   if(route==='redoScreen') renderRedoScreen();
+  else if(route==='mistakeScreen') renderMistakes();
 }
 async function histCloudPull(){
   if(typeof sb==='undefined'||!sb||!sbUser||histTable==='missing') return false;
@@ -6818,7 +6830,15 @@ function histWrite(){
   P.examHist=P.examHist||{};
   const prev=P.examHist[hid]||{};
   const sc=histScoreOf(sim.qs,sim.ans||{});
-  P.examHist[hid]=Object.assign({}, prev, {hid, paper:sim.paper||0, kind:sim.kind||prev.kind||'', qs:sim.qs.slice(),
+  // When each answer was given. `at` versions the whole entry and a redo moves it for every
+  // answer in it, so it cannot say which of two exams answered a question last.
+  const now=Date.now(), pa=prev.ans||{}, paat=prev.aat||{}, aat={};
+  Object.keys(sim.ans||{}).forEach(i=>{
+    const a=sim.ans[i]; if(!Array.isArray(a)||!a.length) return;
+    const same=JSON.stringify(a)===JSON.stringify(pa[i]||null);
+    aat[i]=same?(Number(paat[i])||Number(prev.d0)||now):now;
+  });
+  P.examHist[hid]=Object.assign({}, prev, {hid, paper:sim.paper||0, kind:sim.kind||prev.kind||'', aat, qs:sim.qs.slice(),
     ans:JSON.parse(JSON.stringify(sim.ans||{})), flag:Object.assign({},sim.flag||{}),
     mode:prev.mode||(sim.mode==='redo'?'exam':sim.mode||'exam'),
     d:prev.d||dayKey(), d0:prev.d0||Date.now(),
@@ -6897,8 +6917,11 @@ function renderRedoScreen(){
       $('redoMkSub').textContent='Everything you got wrong, from '+plural(ms.exams.length,'exam')+
         ' \u00b7 '+fmtMins(simBudget(n))+' on the clock';
     } }
-  const scs=ks.map(k=>Number(h[k].sc)||100);
-  const passN=scs.filter(x=>x>=SAA_PASS).length;
+  // the numbers are about exams: a mistakes exam re-sits questions already seen, so it is listed
+  // but not counted in the best, the average or the passes
+  const real=ks.filter(k=>h[k].kind!=='mistakes');
+  const scs=(real.length?real:ks).map(k=>Number(h[k].sc)||100);
+  const passN=real.map(k=>Number(h[k].sc)||100).filter(x=>x>=SAA_PASS).length;
   $('redoStats').innerHTML=ks.length?
     '<div class="stat"><b>'+ks.length+'</b><span>exams kept</span></div>'+
     '<div class="stat"><b>'+Math.max(...scs)+'</b><span>best</span></div>'+
@@ -6908,7 +6931,7 @@ function renderRedoScreen(){
   const cb=$('redoChartBox'), ch=$('redoChart');
   cb.classList.toggle('hidden',ks.length<2);
   if(ks.length>=2){
-    const last=ks.slice(0,12).reverse();
+    const last=(real.length>=2?real:ks).slice(0,12).reverse();
     const y=v=>Math.max(4,Math.round((v-100)/900*100));
     ch.innerHTML='<div class="pl" style="bottom:'+y(SAA_PASS)+'%"></div>'+last.map(k=>{
       const v=Number(h[k].sc)||100;
@@ -7072,7 +7095,7 @@ function renderSimCont(){
 }
 function simAbandon(){
   if(!sim) return;
-  const paper=sim.paper||0;
+  const paper=sim.paper||0, wasMistakes=sim.kind==='mistakes'&&sim.mode!=='redo';
   simPersist(); simPauseSave();   // quitting is a decision, so the paper pauses with it
   simQStop(); ttsStop(); hideExplain();
   { const stb=$('simTotal'); if(stb) stb.classList.add('hidden'); }
@@ -7085,6 +7108,7 @@ function simAbandon(){
   $('lifeFifty').style.display=''; $('lifeSkip').style.display='';
   $('hintBtn').style.display='';
   // land where the saved run is offered back, not on the home screen
+  if(wasMistakes){ openMistakes(); return; }
   if(paper){ renderPapers(); go('paperScreen'); }
   else { go('homeScreen'); renderHome(); }
   syncNav();
@@ -7094,21 +7118,27 @@ function simAbandon(){
 // once and answered right in a later exam is not a mistake any more; a blank is not one at all
 // (a kept exam stopped half-way would pour its blanks in).
 function mistakeSet(){
-  const h=P.examHist||{}, last={}, from={}, everWrong=new Set();
-  Object.values(h).forEach(e=>{
+  const h=P.examHist||{}, last={}, src={}, names={}, everWrong=new Set();
+  Object.keys(h).forEach(key=>{
+    const e=h[key];
     if(!e||!Array.isArray(e.qs)) return;
-    const at=Number(e.at)||0, label=examLabel(e);
+    const id=e.hid||key, base=Number(e.d0)||Number(e.at)||0;
+    // a sitting, told apart from another of the same exam by its date
+    names[id]=examLabel(e)+(e.d?' ('+e.d+')':'');
     e.qs.forEach((qi,i)=>{
       const q=QS[qi]; if(!q) return;
       const a=(e.ans||{})[i]; if(!Array.isArray(a)||!a.length) return;
       const ok=a.length===q.a.length&&q.a.every(l=>a.includes(l));
-      if(!ok){ everWrong.add(qi); (from[qi]=from[qi]||new Set()).add(label); }
-      if(!last[qi]||at>=last[qi].at) last[qi]={ok,at};
+      // when THIS answer was given — not when its exam was last saved (a redo re-saves them all)
+      const t=Number((e.aat||{})[i])||base;
+      if(!ok){ everWrong.add(qi); (src[qi]=src[qi]||new Set()).add(id); }
+      if(!last[qi]||t>=last[qi].t) last[qi]={ok,t};
     });
   });
   const qs=[...everWrong].filter(qi=>last[qi]&&!last[qi].ok).sort((a,b)=>a-b);
-  const exams=new Set(); qs.forEach(qi=>from[qi].forEach(x=>exams.add(x)));
-  return {qs, fixed:everWrong.size-qs.length, exams:[...exams], from};
+  const ids=new Set(); qs.forEach(qi=>src[qi].forEach(x=>ids.add(x)));
+  const from={}; qs.forEach(qi=>{ from[qi]=new Set([...src[qi]].map(x=>names[x])); });
+  return {qs, fixed:everWrong.size-qs.length, exams:[...ids].map(x=>names[x]), from};
 }
 // where they are: by SAA-C03 domain, and by subject area (most first)
 function mistakeStats(qs){
@@ -7167,7 +7197,15 @@ function renderMistakes(){
     }
     L.appendChild(row);
   });
-  $('mistakeStart').textContent='Start the mistakes exam \u2014 '+n+' questions \u00b7 '+fmtMins(mins)+' \u25b8';
+  // one already under way comes first; a new one is the second choice
+  const open=simSaved(), mine=!!(open&&open.kind==='mistakes'&&open.mode!=='redo');
+  const rb=$('mistakeResume');
+  rb.classList.toggle('hidden',!mine);
+  if(mine) rb.textContent='\u25b6 Resume the mistakes exam \u2014 question '+((Number(open.i)||0)+1)+' of '+open.qs.length;
+  const sbtn=$('mistakeStart');
+  sbtn.dataset.armed='';
+  sbtn.classList.toggle('ghost',mine);
+  sbtn.textContent=(mine?'Start a new one \u2014 ':'Start the mistakes exam \u2014 ')+n+' questions \u00b7 '+fmtMins(mins)+' \u25b8';
   return ms;
 }
 function openMistakes(){ renderMistakes(); go('mistakeScreen'); syncNav(); }
@@ -7188,11 +7226,11 @@ function startMistakes(mode){
 }
 function mistakeAsk(btn){
   const ms=mistakeSet(), n=ms.qs.length; if(!n) return;
-  const ask=()=>modeAsk('the mistakes exam',m=>startMistakes(m),
+  const ask=()=>{ renderMistakes(); modeAsk('the mistakes exam',m=>startMistakes(m),
     'Same '+n+' questions and the same clock \u2014 '+fmtMins(simBudget(n))+' \u2014 either way. '+
-    'What changes is whether you can stop.');
+    'What changes is whether you can stop.'); };
   const open=simSaved();
-  if(open&&btn){ armed(btn,'Put '+examLabel(open,1)+' on hold and start?',ask); return; }
+  if(open&&btn){ armed(btn,'Put '+examLabel(open,1)+' on hold and start a new one?',ask); return; }
   ask();
 }
 function mistakeCsv(){
@@ -7990,7 +8028,7 @@ function histCsvLines(r){
   }).filter(Boolean);
 }
 function histCsvName(r){
-  return 'skyforge-'+(r.paper?'exam-'+(Number(r.paper)|0):'mock')+'-'+(Number(r.sc)||100)+'-'+
+  return 'skyforge-'+(r.kind==='mistakes'?'mistakes':r.paper?'exam-'+(Number(r.paper)|0):'mock')+'-'+(Number(r.sc)||100)+'-'+
     String(r.d||dayKey()).replace(/[^0-9-]/g,'')+'.csv';
 }
 function histCsv(hid){
@@ -8429,7 +8467,19 @@ $('bankOpen').onclick=()=>{ renderBank(); go('bankScreen'); };
 $('bankBack').onclick=()=>{ go('homeScreen'); renderHome(); };
 $('adaptBtn').onclick=toggleAdaptive;
 $('playClockWrap').onclick=toggleClockView;
-$('simOpen').onclick=()=>modeAsk('the mock exam',m=>startSim(m));
+$('simOpen').onclick=()=>{
+  const open=simSaved(), b=$('simOpen');
+  const ask=()=>modeAsk('the mock exam',m=>startSim(m));
+  if(open&&!b.dataset.armed){
+    b.dataset.armed='1';
+    const was=b.innerHTML;
+    b.innerHTML='<span class="ic">\u23f8</span><b>Put '+esc(examLabel(open,1))+' on hold?</b><span>Tap again to start a mock</span>';
+    setTimeout(()=>{ if(b.dataset.armed){ b.dataset.armed=''; b.innerHTML=was; } },4000);
+    b._was=was; return;
+  }
+  if(b.dataset.armed){ b.dataset.armed=''; if(b._was) b.innerHTML=b._was; }
+  ask();
+};
 $('simPrev').onclick=()=>simGo(-1);
 $('simNext').onclick=()=>simGo(1);
 $('simFlag').onclick=simFlagToggle;
@@ -8449,6 +8499,7 @@ $('redoCsvAll').onclick=()=>histCsvAll();
 $('redoMkGo').onclick=()=>openMistakes();
 $('mistakeBack').onclick=()=>{ renderRedoScreen(); go('redoScreen'); syncNav(); };
 $('mistakeStart').onclick=()=>mistakeAsk($('mistakeStart'));
+$('mistakeResume').onclick=()=>{ const sv=simSaved(); if(sv) simResumeHere(sv); };
 $('mistakeCsv').onclick=()=>mistakeCsv();
 $('simRedoThis').onclick=()=>{ const h=$('simRedoThis').dataset.hid; if(h) histOpen(h,$('simRedoThis')); };
 $('simAllRedo').onclick=()=>{ renderRedoScreen(); go('redoScreen'); syncNav(); };
@@ -8542,7 +8593,7 @@ $('navExam').onclick=()=>{ if(L) learnLeave(true);
   renderPapers(); go('paperScreen'); syncNav(); };
 $('navRedo').onclick=()=>{ if(L) learnLeave(true);
   renderRedoScreen(); go('redoScreen'); syncNav();
-  histCloudPull().then(ch=>{ if(route==='redoScreen') renderRedoScreen(); }); };
+  histCloudPull().then(ch=>histViewsRefresh()); };
 $('navShop').onclick=()=>{ if(L) toast('Subject paused — tap Home to leave it');
   renderShop(); go('shopScreen'); syncNav(); };
 $('navBadges').onclick=()=>{ renderBadges(); go('achScreen'); syncNav(); };
@@ -9575,7 +9626,7 @@ async function syncNow(silent){
       // did the merge just hand our exam to the other device?
       if(simOwnerCheck()) { syncing=false; renderAuth(); return; }
       await histCloudPull();
-      if(route==='redoScreen') renderRedoScreen();
+      histViewsRefresh();
       if(route==='paperScreen') renderPapers();
     }
     const ok=await pushCloud();
@@ -11517,7 +11568,7 @@ if(TEST){
     useFifty:()=>useFifty(), unlockCost, STUDY_COST, renderThemes,
     ttsChunks, ttsVoice, ttsVoicesEn, ttsLoadVoices, ttsWarm, ttsSend,
     histCsvLines, histCsvName, histCsv, histCsvAll, HIST_CSV_HEAD,
-    examLabel, mistakeSet, mistakeStats, renderMistakes, openMistakes, startMistakes, mistakeAsk, mistakeCsv, fmtMins,
+    examLabel, mistakeSet, mistakeStats, histViewsRefresh, renderMistakes, openMistakes, startMistakes, mistakeAsk, mistakeCsv, fmtMins,
     qStory, hiQual, renderStory, exReadText, exReadToggle, get exTts(){return exTts;}, get ttsOn(){return ttsOn;},
     VOICE_PRESETS, voicePreset, voiceRate, voicePitch, voiceVolume, voiceChosen,
     voiceForPreset, voiceUsable,
