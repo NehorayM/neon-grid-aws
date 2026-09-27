@@ -63,9 +63,10 @@ function bankChecks(){
 function paperChecks(){
   const t=T();
   eq(t.PAPER_LEN,65,'papers are 65 questions');
-  eq(t.SIM_QSEC,105,'a question gets 105 seconds');
+  eq(t.SIM_QSEC,135,'a question gets 2:15');
   eq(t.PAPER_MIN,Math.ceil(65*t.SIM_QSEC/60),'a 65-question paper is budgeted at the per-question limit each');
-  eq(t.simBudget(65),114,'65 questions, 114 minutes');
+  eq(t.simBudget(65),Math.ceil(65*t.SIM_QSEC/60),'65 questions at '+t.SIM_QSEC+' s each: '+t.simBudget(65)+' minutes');
+  eq(t.simBudget(65),147,'2:15 a question makes a 65-question paper 147 minutes');
   eq(t.simBudget(31),Math.ceil(31*t.SIM_QSEC/60),'the short paper is budgeted the same way');
   eq(t.PAPER_COUNT, Math.ceil(t.QS.length/65), 'paper count covers the bank');
   const seen=new Set();
@@ -256,7 +257,7 @@ function homeCheck(){
   const t=T();
   hittable($('paperOpen'),'Practice Exams tile');
   ok(/Practice Exams/.test($('paperOpen').textContent),'the tile is labelled');
-  ok(new RegExp(t.SIM_QSEC+' seconds a question').test($('paperOpen').textContent),'the tile states the per-question limit');
+  ok(new RegExp(Math.floor(t.SIM_QSEC/60)+':'+String(t.SIM_QSEC%60).padStart(2,'0')+' a question').test($('paperOpen').textContent),'the tile states the per-question limit');
 }
 
 // The rest of the app reads the same bank; these walk each mode far enough to
@@ -1748,8 +1749,8 @@ async function mistakesChecks(){
     study.click(); await sleep(30);
     eq(t.route,'stuReadScreen','which opens the study chapter for it');
     t.openMistakes(); await sleep(20);
-    ok(/90 questions/.test($('mistakeStart').textContent)&&/2 h 38 min/.test($('mistakeStart').textContent),
-       'the start button says how many and how long (105 s a question)');
+    ok(/90 questions/.test($('mistakeStart').textContent)&&$('mistakeStart').textContent.indexOf(t.fmtMins(t.simBudget(90)))>=0,
+       'the start button says how many and how long ('+t.SIM_QSEC+' s a question)');
     // ---- the exam
     $('mistakeStart').click(); await sleep(20);
     ok(!$('modeAsk').classList.contains('hidden'),'Start asks simulation or practice');
@@ -1760,7 +1761,7 @@ async function mistakesChecks(){
     eq(new Set(t.sim.qs).size,90,'each once');
     eq(t.sim.kind,'mistakes','as a mistakes exam');
     eq(t.sim.mode,'practice','in the mode picked');
-    eq(t.sim.mins,158,'on a 158-minute clock');
+    eq(t.sim.mins,t.simBudget(90),'on a clock of '+t.SIM_QSEC+' s a question');
     eq(document.querySelectorAll('#simStrip .sq').length,90,'the question strip has all 90');
     // it survives a reload
     for(let k=0;k<3;k++){ t.simJump(k); await sleep(1); t.QS[t.sim.qs[k]].a.forEach(l=>t.simPick(l)); }

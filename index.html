@@ -628,7 +628,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
   background:var(--gold);color:#1b1408}
 .unlockbtn:disabled{background:rgba(255,255,255,.09);color:var(--dim)}
 /* The paper's own budget, under the question's five-pixel bar. The track is ticked once per
-   question by a repeating gradient, so "65 x 150 seconds" is visible rather than arithmetic. */
+   question by a repeating gradient, so "65 x 135 seconds" is visible rather than arithmetic. */
 .simtotal{margin:6px 0 2px;padding:9px 11px;border-radius:11px;
   background:color-mix(in srgb, var(--cyan) 5%, var(--surface));
   border:1px solid color-mix(in srgb, var(--cyan) 22%, var(--line))}
@@ -1544,8 +1544,8 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
     <button class="btn wide" id="resumeBtn" aria-label="Resume your last session"></button>
     <div class="tiles">
       <button class="tile hero-tile" id="practiceTile"><span class="ic">⚡</span><b>Practice</b><span>Answer &amp; earn games</span></button>
-      <button class="tile hero-tile" id="simOpen"><span class="ic">🧪</span><b>Random mock exam</b><span>65 drawn fresh to the real domain weights · 130 minutes</span></button>
-      <button class="tile hero-tile" id="paperOpen"><span class="ic">📄</span><b>Practice Exams</b><span>The whole bank as numbered papers · 65 questions · 2½ minutes a question</span></button>
+      <button class="tile hero-tile" id="simOpen"><span class="ic">🧪</span><b>Random mock exam</b><span id="simOpenSub">65 drawn fresh to the real domain weights</span></button>
+      <button class="tile hero-tile" id="paperOpen"><span class="ic">📄</span><b>Practice Exams</b><span id="paperOpenSub">The whole bank as numbered papers · 65 questions</span></button>
       <button class="tile hero-tile" id="courseOpen"><span class="ic">🎓</span><b>Learn a Subject</b><span>Module by module · read a part, prove you got it, then a 10-question exam on what you learned</span></button>
       <button class="tile" id="studyModeOpen"><span class="ic">🧠</span><b>Briefed drill</b><span>A briefing before each question</span></button>
       <button class="tile" id="mockOpen"><span class="ic">📝</span><b>Mock exam</b><span>20 Q · by domain</span></button>
@@ -2569,7 +2569,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-26 17:56 UTC';
+const BUILD='2026-09-27 08:32 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -6156,11 +6156,11 @@ function openVoice(){
 }
 
 // ================= FULL EXAM SIMULATION =================
-// 65 questions, 130 minutes, domain-weighted — the shape of the real SAA-C03.
+// 65 questions, SIM_QSEC each, domain-weighted — the shape of the real SAA-C03.
 const SIM_LEN=65, SIM_PASS=72;
-// Every question is capped at SIM_QSEC (150) seconds, so the budget for a whole paper is
+// Every question is capped at SIM_QSEC (135) seconds, so the budget for a whole paper is
 // just that times the number of questions — the two clocks cannot disagree.
-const SIM_QSEC=150;   // per exam question: two and a half minutes (was 90, 105, then 120)
+const SIM_QSEC=135;   // per exam question: 2:15 — the user's call (was 90, 105, 120, 150)
 const simBudget=n=>Math.ceil(n*SIM_QSEC/60);
 const SIM_MIN=simBudget(SIM_LEN);
 // Numbered practice exams: the bank cut into fixed papers, in bank order, so
@@ -11661,6 +11661,10 @@ const LEARN_T={
 };
 // LEARN:JS:END 
 // ================= BOOT =================
+// the tiles say what the clock actually is, from the one constant it reads
+(()=>{ const m=Math.floor(SIM_QSEC/60), sec=SIM_QSEC%60, per=m+':'+String(sec).padStart(2,'0');
+  const a=$('simOpenSub'); if(a) a.textContent='65 drawn fresh to the real domain weights \u00b7 '+SIM_MIN+' minutes';
+  const b=$('paperOpenSub'); if(b) b.textContent='The whole bank as numbered papers \u00b7 65 questions \u00b7 '+per+' a question'; })();
 (()=>{ const rb=$('recBuild'); if(rb) rb.textContent='build '+BUILD; })();
 (()=>{ const fc=$('flashCount');                  // stated 88 for a deck that has been 90
   if(fc) fc.textContent=Object.keys(CODEX).length+' AWS terms'; })();
