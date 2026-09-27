@@ -657,6 +657,27 @@ never run QA there — `resetProfile` and the fixtures would reach the account. 
 clean origin (the LAN IP, e.g. `http://10.10.1.184:8765/index.html?test=1`) and check `sbUser`
 is null first.
 
+## The casino tournament (2026-09-27)
+
+Casino → 🏆 Tourney. You and seven bots (people's names), knockout: quarter-final, semi-final,
+final. A match is five practice-exam questions, two minutes each; more right wins; a tie goes to
+sudden-death questions (up to three, then a coin). Bots are right about two times in three and
+"answer" at a human-looking moment (`oppAt`: mostly 25–90 s, sometimes quick, sometimes late).
+The final's winner takes the pot: eight buy-ins (10/25/50/100/250).
+
+**All on the server** (`supabase_tournament.sql`): the questions (`tourney_pick`, never twice in a
+tournament), the answer key (the duel's `answer_key`), the clock (`tourney_seconds()`=120, +2 s
+grace; a question left to run out is recorded unanswered by `tourney_state`), the bots' answers
+(`m_bot`, generated at match start, told to the browser only after you answer that question), the
+rest of the bracket (`tourney_rest`, bot vs bot) and the payout. `tournaments` has RLS on and no
+policies: only the security-definer functions touch it. The bots' seven buy-ins are the house's,
+so a win makes chips — starts are capped at five a day (`tourney_daily()`).
+
+The page draws the server's view: lobby (resume if one is open), the duel's board with a
+2-minute clock kept in step locally (at 0 it asks the server, which times the question out),
+a reveal after each answer, and the bracket between rounds / at the end.
+`sql_tests/tournament_suite.sql` (38), `tournamentChecks` (40) against a JS fake of the rules.
+
 ## The weekly leaderboard (2026-09-26)
 
 Home → "This week" → 🏆 Top this week: every player, by correct answers this week.
@@ -959,6 +980,7 @@ SQL files, run in this order in the SQL editor:
 5. `supabase_duel_v2.sql` — exam choice, per-question history, a rebuilt key, the roulette fix
 6. `supabase_exam_history.sql` — the exam list behind the Redo tab
 7. `supabase_leaderboard.sql` — the weekly leaderboard on the home page
+8. `supabase_tournament.sql` — the casino tournament (you vs seven bots)
 
 All are idempotent. Never put the `sb_secret_` key in the page.
 

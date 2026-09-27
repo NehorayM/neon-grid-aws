@@ -2149,6 +2149,147 @@ async function studyReadReviewChecks(){
     t.go('homeScreen'); await sleep(10);
   }
 }
+// Asked for: a casino tournament against bots, five exam questions a match, two minutes each,
+// knockout to a winner who takes the pot. The server's rules are tested in tournament_suite.sql;
+// this plays the page against a fake of the same rules.
+function tourFake(t,opts){
+  opts=opts||{};
+  const st={chips:1000, t:null, left:5, bot:opts.bot||(()=>({ok:false,t:30})), seconds:120, missing:!!opts.missing, calls:[]};
+  const names=['you','Maya','Omer','Noa','Daniel','Lior','Yael','Amit'];
+  let qn=0; const pick=n=>Array.from({length:n},()=>t.paperQs(4)[(qn++)%65]);
+  const view=()=>{ const x=st.t; if(!x) return null; const i=x.log.length, n=x.q.length, b=(x.status==='active'&&x.phase==='play'&&i<n)?x.bot[i]:null;
+    return {id:x.id,status:x.status,phase:x.phase,round:x.round,buyin:x.buyin,pot:x.buyin*8,payout:x.payout,exam:0,players:names,
+      alive:x.alive.slice(),results:x.results.slice(),opp:x.opp,question:b?x.q[i]:null,i,n,secondsTotal:120,
+      secondsLeft:b?Math.max(0,120-Math.floor((Date.now()-x.start)/1000)):null,oppAt:b?b.t:null,
+      you:x.log.filter(e=>e.ok).length,them:x.log.filter(e=>e.bot).length,log:x.log.slice(),chips:st.chips}; };
+  const newMatch=x=>{ x.q=pick(5); x.bot=x.q.map(()=>st.bot()); x.log=[]; x.start=Date.now(); x.phase='play'; };
+  const after=x=>{
+    const i=x.log.length, n=x.q.length; if(i<n){ x.start=Date.now(); return; }
+    const you=x.log.filter(e=>e.ok).length, them=x.log.filter(e=>e.bot).length;
+    if(you===them&&n<8){ x.q.push(pick(1)[0]); x.bot.push(st.bot()); x.start=Date.now(); return; }
+    const won=you>them;
+    x.results.push({round:x.round,a:0,b:x.opp,sa:you,sb:them,w:won?0:x.opp,you:true});
+    const rest=(to_end)=>{ let al=x.alive.slice(), rd=x.round, from=1;
+      for(;;){ const nx=[]; for(let k=0;k<al.length/2;k++){ const a=al[2*k], b=al[2*k+1];
+          if(k<from){ const m=x.results.find(r=>r.round===rd&&(r.a===a||r.b===a)); nx.push(m.w); }
+          else { x.results.push({round:rd,a,b,sa:4,sb:2,w:a}); nx.push(a); } }
+        al=nx; if(!to_end||al.length<=1) break; rd++; from=0; }
+      x.alive=al; };
+    if(!won){ x.status='lost'; x.phase='between'; rest(true); return; }
+    rest(false);
+    if(x.round>=3){ x.status='won'; x.phase='between'; x.payout=x.buyin*8; st.chips+=x.payout; return; }
+    x.round++; x.phase='between'; x.opp=x.alive[1];
+  };
+  const client={rpc(fn,args){ st.calls.push(fn);
+    if(st.missing) return Promise.resolve({data:null,error:{message:'Could not find the function public.'+fn+' in the schema cache'}});
+    let data=null; const x=st.t;
+    if(fn==='tourney_current') data={ok:true,t:view(),chips:st.chips,left:st.left};
+    else if(fn==='tourney_start'){
+      if(x&&x.status==='active') data={ok:true,resumed:true,t:view(),chips:st.chips};
+      else if(st.chips<args.buyin) data={ok:false,reason:'not enough chips',chips:st.chips};
+      else { st.chips-=args.buyin; st.left--; st.t={id:'t'+Date.now(),status:'active',phase:'play',round:1,buyin:args.buyin,payout:0,alive:[0,1,2,3,4,5,6,7],results:[],opp:1};
+        newMatch(st.t); data={ok:true,t:view(),chips:st.chips}; } }
+    else if(fn==='tourney_answer'){
+      const i=x.log.length, q=t.QS[x.q[i]], ok=args.picks.length===q.a.length&&q.a.every(l=>args.picks.includes(l));
+      x.log.push({q:x.q[i],ans:q.a.slice(),pick:args.picks,ok,bot:x.bot[i].ok}); after(x); data={ok:true,t:view(),chips:st.chips}; }
+    else if(fn==='tourney_state'){
+      if(x.status==='active'&&x.phase==='play'&&Date.now()-x.start>=120000){ const i=x.log.length, q=t.QS[x.q[i]];
+        x.log.push({q:x.q[i],ans:q.a.slice(),pick:null,ok:false,bot:x.bot[i].ok,late:true}); after(x); }
+      data={ok:true,t:view(),chips:st.chips}; }
+    else if(fn==='tourney_next'){ if(x.phase==='between'&&x.status==='active') newMatch(x); data={ok:true,t:view(),chips:st.chips}; }
+    else if(fn==='tourney_leave'){ x.results.push({round:x.round,a:0,b:x.opp,sa:0,sb:1,w:x.opp,you:true,left:true}); x.status='lost'; x.phase='between';
+      let al=x.alive.slice(); al=[al[1]]; x.alive=al; data={ok:true,t:view(),chips:st.chips}; }
+    else if(fn==='casino_state'||fn==='bj_current'||fn==='roulette_table') data={ok:true,chips:st.chips};
+    return Promise.resolve({data,error:null}); }};
+  st.client=client; st.age=(sec)=>{ if(st.t) st.t.start-=sec*1000; };
+  return st;
+}
+async function tournamentChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const vis=id=>!$(id).classList.contains('hidden');
+  const answerRight=async()=>{ const q=t.QS[t.tourView.question]; q.a.forEach(l=>[...$('tourOpts').children].find(b=>b.dataset.ltr===l).click()); await sleep(5); $('tourLock').click(); await sleep(25); };
+  const answerWrong=async()=>{ const q=t.QS[t.tourView.question]; q.o.map(o=>o[0]).filter(l=>!q.a.includes(l)).slice(0,q.a.length).forEach(l=>[...$('tourOpts').children].find(b=>b.dataset.ltr===l).click()); await sleep(5); $('tourLock').click(); await sleep(25); };
+  let F=tourFake(t), was=t.cloudForTest(F.client,{id:'u-tour'});
+  try{
+    // ---- the tab and the lobby
+    t.go('casinoScreen'); $('casGuest').classList.add('hidden'); $('casMain').classList.remove('hidden');
+    $('casTabTour').click(); await sleep(30);
+    ok(vis('casTour')&&!vis('casRoul')&&!vis('casDuel'),'the Tourney tab shows the tournament, and only it');
+    ok(vis('tourLobby'),'starting at the lobby');
+    ok(/8.*players/.test($('tourLobby').textContent)&&/2 min/.test($('tourLobby').textContent)&&/2 in 3/.test($('tourLobby').textContent),'which states the rules');
+    t.tourBuyin=50; t.renderTourLobby();
+    ok(/pot 400 chips/.test($('tourPotNote').textContent),'a 50-chip buy-in shows a 400-chip pot');
+    ok(/5 tournaments left today/.test($('tourLeftNote').textContent),'and how many starts are left today');
+    // ---- a match
+    $('tourStart').click(); await sleep(40);
+    ok(vis('tourPlay'),'Start puts you in the quarter-final');
+    ok(/Quarter-final/.test($('tourRound').textContent)&&/Maya/.test($('tourRound').textContent),'against a bot with a person\'s name');
+    eq($('tourMePips').children.length,5,'five questions a match');
+    ok(/^Exam 4 · Q\d+/.test($('tourSrc').textContent),'every question says which exam it is from');
+    eq($('tourCount').textContent,'2:00','two minutes on the clock');
+    ok(/thinking/.test($('tourStatus').textContent),'the bot is still thinking at the start');
+    F.age(35); await t.tourSync(); await sleep(600);
+    ok(/has answered/.test($('tourStatus').textContent),'and answers when a person might (30 s in, here)');
+    await answerRight();
+    ok(vis('tourLast')&&/you .* ✓/.test($('tourLast').textContent),'your answer comes back marked, with the right one');
+    ok(/Maya ✗/.test($('tourLast').textContent),'and the bot\'s result');
+    eq($('tourScore').textContent,'1 — 0','the score moves');
+    for(let k=0;k<4;k++) await answerRight();
+    ok(vis('tourBracket'),'after five, the bracket');
+    eq($('tourResult').textContent,'THROUGH','you are through');
+    ok(/semi-final/.test($('tourPay').textContent),'to the semi-final');
+    eq(document.querySelectorAll('#tourBr .tbcol')[0].querySelectorAll('.tbm').length,4,'all four quarter-finals shown');
+    ok(document.querySelector('#tourBr .tbm.you .tbp.me.w'),'your win marked in the bracket');
+    ok(vis('tourNext')&&/semi-final/.test($('tourNext').textContent),'with a button for the next round');
+    // ---- semi-final and final: won, the pot paid
+    $('tourNext').click(); await sleep(30);
+    ok(vis('tourPlay')&&/Semi-final/.test($('tourRound').textContent),'the semi-final');
+    for(let k=0;k<5;k++) await answerRight();
+    $('tourNext').click(); await sleep(30);
+    ok(/Final/.test($('tourRound').textContent),'the final');
+    const chips0=F.chips;
+    for(let k=0;k<5;k++) await answerRight();
+    eq($('tourResult').textContent,'CHAMPION','winning the final makes you champion');
+    ok(/\+400 chips/.test($('tourPay').textContent),'and pays the pot');
+    eq(F.chips,chips0+400,'(which the server paid)');
+    eq(document.querySelectorAll('#tourBr .tbm').length,7,'the whole bracket: seven matches');
+    eq($('tourAgain').textContent,'Play another','and a way to play another');
+    // ---- knocked out
+    $('tourAgain').click(); await sleep(10);
+    ok(vis('tourLobby'),'back to the lobby');
+    F.bot=()=>({ok:true,t:20});
+    $('tourStart').click(); await sleep(40);
+    for(let k=0;k<5;k++) await answerWrong();
+    eq($('tourResult').textContent,'KNOCKED OUT','none against five is out');
+    ok(/won the tournament/.test($('tourReason').textContent),'and it says who won it');
+    ok(!vis('tourNext'),'with no next round');
+    // ---- the clock runs out
+    $('tourAgain').click(); await sleep(10);
+    F.bot=()=>({ok:false,t:40});
+    $('tourStart').click(); await sleep(40);
+    F.age(125); await t.tourSync(); await sleep(40);
+    ok(vis('tourLast')&&/\(time\)/.test($('tourLast').textContent),'a question left to run out comes back as unanswered');
+    eq(t.tourView.i,1,'and the match moves on');
+    // ---- resuming after leaving the casino
+    t.go('homeScreen'); await sleep(10); t.tourStop();
+    t.go('casinoScreen'); $('casTabTour').click(); await sleep(40);
+    ok(vis('tourPlay')&&t.tourView.i===1,'coming back picks the tournament up where it was');
+    // ---- leaving concedes, after a confirm
+    $('tourLeave').click(); await sleep(5);
+    ok(/Tap again/.test($('tourLeave').textContent),'leaving asks first');
+    $('tourLeave').click(); await sleep(40);
+    eq($('tourResult').textContent,'KNOCKED OUT','then concedes');
+    ok(/you left/.test($('tourPay').textContent),'saying you left');
+  } finally { t.cloudForTest(was[0],was[1]); t.tourStop(); }
+  // ---- not installed yet
+  F=tourFake(t,{missing:true}); was=t.cloudForTest(F.client,{id:'u-tour'});
+  try{
+    await t.tourLoad(); await sleep(20);
+    ok(/supabase_tournament\.sql/.test($('tourMsg').textContent),'without the SQL it says what to run');
+    F.missing=false; await t.tourLoad(); await sleep(20);
+    eq($('tourMsg').textContent,'','once it is installed, the message goes');
+  } finally { t.cloudForTest(was[0],was[1]); t.tourStop(); t.casTab('Roul'); t.rouStop(); t.go('homeScreen'); await sleep(10); }
+}
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
 // telling the bar. And a redo, which has no clock, paused at all.
 async function pauseBarChecks(){
@@ -3911,7 +4052,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); await studyReadChecks(); await studyReadReviewChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); await studyReadChecks(); await studyReadReviewChecks(); await tournamentChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
