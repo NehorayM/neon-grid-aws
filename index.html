@@ -2063,6 +2063,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
           <div class="qcard" style="margin-bottom:10px"><div class="duelsrc" id="tourSrc"></div><div class="qtext" id="tourQ"></div></div>
           <div class="opts" id="tourOpts"></div>
           <div class="ch-note" id="tourStatus" style="text-align:center;min-height:20px;margin-top:8px" aria-live="polite"></div>
+          <div class="authnote" id="tourPlayMsg"></div>
           <button class="btn wide hidden" id="tourLock" style="margin-top:10px">Lock in</button>
           <button class="btn ghost sm duelleave" id="tourLeave">Leave the tournament</button>
         </div>
@@ -2072,6 +2073,7 @@ h3 .heb{display:block;direction:rtl;unicode-bidi:isolate;text-align:right;
           <p class="ch-note" id="tourReason"></p>
           <div class="tourbr" id="tourBr"></div>
           <div class="duelrecap" id="tourRecap"></div>
+          <div class="authnote" id="tourBrMsg"></div>
           <div class="duelacts">
             <button class="btn hidden" id="tourNext">Next round ▸</button>
             <button class="btn ghost" id="tourAgain">Back to the lobby</button>
@@ -2639,7 +2641,7 @@ const QS=DATA.questions, SECTIONS=DATA.sections, SHORT=DATA.short||SECTIONS;
 // A build time rather than a commit hash, because the stamp cannot contain the hash of the
 // commit that carries it: stamping before committing always names the PREVIOUS commit, which
 // is exactly the wrong answer for "is this page stale?". A timestamp cannot be wrong that way.
-const BUILD='2026-09-27 08:40 UTC';
+const BUILD='2026-09-27 08:58 UTC';
 const BANKV='5ade60bee8';
 const TEST=(typeof window!=='undefined'&&(window.__TEST__||/[?&]test=1/.test(location.search)));
 // Every bar in the app is an <i> whose width is a percentage. Most of the sums feeding them
@@ -9991,7 +9993,7 @@ async function doSignOut(){
   if(sbUser) await pushCloud();          // never lose the last few answers
   await client.auth.signOut();
   sbUser=null; lastSync=0; myName=null;
-  lbAuthChanged();
+  lbAuthChanged(); if(typeof tourReset==='function') tourReset();
   authMsg('Signed out. Your progress stays on this device.','ok');
   refreshTop();
   renderAuth();
@@ -10017,7 +10019,7 @@ async function initAuth(){
   client.auth.onAuthStateChange((_e,session)=>{
     const before=sbUser?sbUser.id:null;
     sbUser=session?session.user:null; renderAuth();
-    if((sbUser?sbUser.id:null)!==before) lbAuthChanged();
+    if((sbUser?sbUser.id:null)!==before){ lbAuthChanged(); if(typeof tourReset==='function') tourReset(); }
     if(typeof renderCasino==='function'){ renderCasino(); if(sbUser) casRefresh(); }
   });
   sbReady=true; renderAuth();
@@ -10083,7 +10085,7 @@ function rpcFile(fn){
 // The background polls: when something is already in flight they skip a beat. Everything else
 // is something the player pressed, and dropping it (as every call used to be) lost bets and the
 // "Lock in" that decides a duel.
-const CAS_POLLS=new Set(['roulette_table','duel_state','casino_state','bj_current','tourney_current']);
+const CAS_POLLS=new Set(['roulette_table','duel_state','casino_state','bj_current']);
 async function casRpc(fn,args,say,opts){
   const tell=say||casMsg;
   if(!sb||!sbUser){ tell('Sign in to play.','bad'); return null; }
@@ -10095,8 +10097,11 @@ async function casRpc(fn,args,say,opts){
     const {data,error}=await sb.rpc(fn,args||{});
     if(error){
       if(/could not find the function|schema cache|does not exist/i.test(error.message||'')){
-        if(opts&&opts.missingOk) return 'missing';
-        tell('This part is not installed on your database yet — run '+rpcFile(fn)+' in the Supabase SQL editor.','bad');
+        // which function is missing: the one called, or one it depends on (a duel function
+        // behind a tournament) — and so which file to run
+        const m=/function public\.(\w+)/i.exec(error.message||''), gone=m?m[1]:fn;
+        if(opts&&opts.missingOk&&gone===fn) return 'missing';
+        tell('This part is not installed on your database yet — run '+rpcFile(gone)+' in the Supabase SQL editor.','bad');
       }
       else tell(humanError(error),'bad');
       return null;
@@ -10549,12 +10554,18 @@ async function duelResume(){
 // The server holds everything that decides chips: the questions, the answer key, the clock, the
 // bots' answers and the payout. This draws what it is told and keeps a local clock in step.
 let tourBuyin=25, tourExam=0, tourView=null, tourTick=null, tourPicked=new Set(), tourLeftToday=null;
-let tourBase=0, tourBaseLeft=0, tourKey='', tourMissingSQL=false;
+let tourBase=0, tourBaseLeft=0, tourKey='', tourMissingSQL=false, tourAnswering=false, tourSyncT=null, tourSyncTries=0;
 try{ const n=Number(localStorage.getItem('academy_tour_exam')); if(n>=0&&n<=PAPER_COUNT) tourExam=Math.floor(n)||0; }catch(e){}
 const TOUR_ROUND=['Quarter-final','Semi-final','Final'];
-function tourMsg(t,kind){ const e=$('tourMsg'); if(!e) return; e.textContent=t||''; e.className='authnote'+(kind?' '+kind:''); }
+// every panel has its own message line: an error during a match went to the hidden lobby's
+function tourMsg(t,kind){ ['tourMsg','tourPlayMsg','tourBrMsg'].forEach(id=>{ const e=$(id); if(!e) return;
+  e.textContent=t||''; e.className='authnote'+(kind?' '+kind:''); }); }
 function tourShow(which){ ['tourLobby','tourPlay','tourBracket'].forEach(id=>$(id).classList.toggle('hidden',id!=='tour'+which)); }
-function tourStop(){ if(tourTick){ clearInterval(tourTick); tourTick=null; } }
+function tourStop(){ if(tourTick){ clearInterval(tourTick); tourTick=null; } if(tourSyncT){ clearTimeout(tourSyncT); tourSyncT=null; } }
+const tourOnScreen=()=>route==='casinoScreen'&&!$('casTour').classList.contains('hidden');
+// a different user (or nobody): nothing of the last one's tournament stays on screen
+function tourReset(){ tourStop(); tourView=null; tourKey=''; tourAnswering=false; tourLeftToday=null; tourMsg('');
+  tourShow('Lobby'); renderTourLobby(); }
 const tourName=(v,seat)=>{ const p=(v&&v.players)||[]; return String(p[seat]||(seat===0?'you':'player')); };
 function tourMissing(){
   tourMissingSQL=true; tourShow('Lobby'); renderTourLobby();
@@ -10635,6 +10646,7 @@ function tourPaintPlay(v){
         const b=document.createElement('button'); b.className='opt'; b.dataset.ltr=ltr;
         b.innerHTML='<span class="ltr">'+ltr+'</span><span>'+esc(txt)+'</span>';
         b.onclick=()=>{
+          if(tourAnswering||tourElapsedLeft()<=0) return;       // on its way, or out of time
           if(tourPicked.has(ltr)) tourPicked.delete(ltr);
           else { if(need===1) tourPicked.clear(); if(tourPicked.size>=need){ pickFull(need,b); return; } tourPicked.add(ltr); }
           [...box.children].forEach(el=>el.classList.toggle('sel',tourPicked.has(el.dataset.ltr)));
@@ -10649,8 +10661,10 @@ function tourPaintPlay(v){
   tourPaintLast(v);
   // the clock: the server's time left, counted down here; the bot answers at the moment it chose
   tourBase=Date.now(); tourBaseLeft=Number(v.secondsLeft)||0;
+  // a response that lands after you left the tab must not start the clock out of sight
+  if(!tourOnScreen()) return;
   tourClock();
-  tourTick=setInterval(tourClock,500);
+  if(!tourTick&&tourView&&tourView.phase==='play') tourTick=setInterval(tourClock,500);
   if(!$('tourLeave').dataset.armed) $('tourLeave').textContent='Leave the tournament';
 }
 function tourElapsedLeft(){ return Math.max(0,tourBaseLeft-Math.floor((Date.now()-tourBase)/1000)); }
@@ -10664,17 +10678,39 @@ function tourClock(){
   const opp=tourName(v,v.opp), answered=(total-left)>=(Number(v.oppAt)||9999);
   $('tourThemSide').classList.toggle('answered',answered);
   $('tourStatus').textContent=answered?'⚠ '+opp+' has answered — your move.':opp+' is thinking…';
-  if(left<=0){ tourStop(); tourSync(); }            // out of time: the server marks it and moves on
+  if(!tourOnScreen()){ tourStop(); return; }
+  if(left<=0){ tourStop(); tourSyncSoon(900); }     // out of time: ask the server once, it moves on
+}
+function tourSyncSoon(ms){
+  if(tourSyncT) return;
+  tourSyncT=setTimeout(()=>{ tourSyncT=null; tourSync(); },ms);
 }
 async function tourSync(){
-  if(!tourView) return;
+  if(!tourView||tourAnswering) return;
+  const key=tourView.id+':'+tourView.round+':'+tourView.i;
   const r=await casRpc('tourney_state',{tid:tourView.id},tourMsg);
-  if(r&&r.ok&&r.t) tourPaint(r.t);
+  if(!(r&&r.ok&&r.t)){ if(tourOnScreen()&&tourSyncTries++<20) tourSyncSoon(2000); return; }
+  const v=r.t, same=v.id+':'+v.round+':'+v.i===key;
+  // still the same question at 0:00 (the clocks are a moment apart): ask again shortly, calmly
+  if(same&&v.status==='active'&&v.phase==='play'&&!(Number(v.secondsLeft)>0)){
+    tourView=v; if(tourOnScreen()&&tourSyncTries++<20) tourSyncSoon(1200); return; }
+  tourSyncTries=0;
+  tourPaint(v);
 }
 async function tourLockIn(){
-  if(!tourView||!tourPicked.size) return;
+  if(!tourView||!tourPicked.size||tourAnswering) return;
+  if(tourElapsedLeft()<=0) return;                  // 0:00: the question is closed
+  tourAnswering=true;
   $('tourLock').classList.add('hidden');
-  const r=await casRpc('tourney_answer',{tid:tourView.id,picks:[...tourPicked]},tourMsg);
+  const q=QS[tourView.question], key=tourKey;
+  let r=null;
+  try{ r=await casRpc('tourney_answer',{tid:tourView.id,picks:[...tourPicked],qi:tourView.i},tourMsg); }
+  finally{ tourAnswering=false; }
+  if(!(r&&r.ok&&r.t)){
+    // it did not go: the picks are still there, so is the way to send them
+    if(key===tourKey&&q&&tourPicked.size===q.a.length&&tourElapsedLeft()>0) $('tourLock').classList.remove('hidden');
+    return;
+  }
   if(r&&r.ok&&r.t){
     const before=(tourView.log||[]).length;
     tourPaint(r.t);
@@ -10749,10 +10785,10 @@ async function tourQuit(){
   if(!tourView) return;
   tourStop();
   const r=await casRpc('tourney_leave',{tid:tourView.id},tourMsg);
-  if(r&&r.ok&&r.t) tourPaint(r.t);
+  if(r&&r.ok&&r.t) tourPaint(r.t); else tourSync();
 }
 $('tourStart').onclick=()=>tourStart();
-$('tourResume').onclick=()=>{ if(tourView) tourPaint(tourView); };
+$('tourResume').onclick=()=>tourLoad();          // what the server has now, not what was cached
 $('tourLock').onclick=()=>tourLockIn();
 $('tourNext').onclick=()=>tourNext();
 $('tourAgain').onclick=()=>{ if(tourView&&tourView.status!=='active') tourView=null; tourShow('Lobby'); renderTourLobby(); };
@@ -10890,6 +10926,8 @@ $('navCasino').onclick=()=>{
   if(sbUser&&!$('casRoul').classList.contains('hidden')) rouStart();
   renderDuelLobby();
   if(duelId||sbUser) duelResume();
+  // the Tourney tab stayed up while you were away, clock stopped: ask the server where it is now
+  if(sbUser&&!$('casTour').classList.contains('hidden')&&typeof tourLoad==='function') tourLoad();
 };
 $('casinoBack').onclick=()=>{ rouStop(); go('homeScreen'); renderHome(); syncNav(); };
 $('casGoAuth').onclick=()=>{ renderAuth(); go('authScreen'); };
@@ -12097,7 +12135,8 @@ if(TEST){
     rpcFile, casRpc, casRefresh, renderCasino, casCard, placeBet, rouRefresh, rouStart, rouStop,
     paintRouTable, rouSetPhase, get rouPhase(){return rouPhase;}, set rouSpinningFor(v){ rouSpinningFor=v; }, bjDeal, bjAct, casTab,
     histAdopt, histRedoRefresh, histCloudPush, histFlushNow, get histTimer(){return histTimer;}, get histDirty(){return histDirty;},
-    tourLoad, tourPaint, tourStart, tourLockIn, tourNext, tourQuit, tourSync, renderTourLobby, tourStop,
+    tourLoad, tourPaint, tourStart, tourLockIn, tourNext, tourQuit, tourSync, renderTourLobby, tourStop, tourReset,
+    get tourTick(){return tourTick;}, get tourAnswering(){return tourAnswering;},
     get tourView(){return tourView;}, set tourBuyin(v){ tourBuyin=v; }, get tourPicked(){return tourPicked;},
     duelFind, duelRefresh, duelLockIn, duelQuit, paintDuel, duelShow, duelWhere, renderDuelLobby,
     botStart, botTick, botPlayerAnswer, get bot(){return bot;}, get duelExam(){return duelExam;},

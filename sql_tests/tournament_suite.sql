@@ -21,7 +21,7 @@ do $$
 declare
   A uuid := '11111111-1111-4111-8111-111111111111';
   B uuid := '22222222-2222-4222-8222-222222222222';
-  r jsonb; v jsonb; tid uuid; k int; chips0 bigint; t public.tournaments;
+  r jsonb; v jsonb; tid uuid; k int; j int; chips0 bigint; t public.tournaments;
 begin
   delete from public.tournaments;
   perform set_chips(A, 1000); perform set_chips(B, 100);
@@ -131,6 +131,53 @@ begin
   perform test_assert(not (r->>'ok')::boolean and r->>'reason' ~ 'five', 'a sixth tournament in a day is refused');
   r := public.tourney_current();
   perform test_assert((r->>'left')::int = 0 and r->'t' = 'null'::jsonb, 'and the lobby is told none are left and none is open');
+
+  -- ---- review fixes
+  delete from public.tournaments; delete from public.casino_log where game = 'tourney';
+  update public.wallets set lifetime_won = 0, lifetime_lost = 0 where user_id = A;
+  perform set_chips(A, 1000);
+  r := public.tourney_start(25); tid := (r->'t'->>'id')::uuid;
+  perform test_assert((select lifetime_lost from public.wallets where user_id = A) = 0,
+                      'nothing is booked as lost just for starting');
+  -- an answer for a question that has closed does not become the next one's
+  perform tt_bots(tid, array[false,false,false,false,false]);
+  r := tt_answer(tid, true);
+  r := public.tourney_answer(tid, array['A'], 0);                    -- a second tap, for question 0
+  perform test_assert((r->>'stale')::boolean and jsonb_array_length(r->'t'->'log') = 1,
+                      'a late answer for question 1 is turned away, not given to question 2');
+  r := public.tourney_answer(tid, public.duel_answers((select m_q[2] from public.tournaments where id = tid)), 1);
+  perform test_assert(jsonb_array_length(r->'t'->'log') = 2 and (r->'t'->'log'->1->>'ok')::boolean,
+                      'the answer that names the open question counts');
+  for k in 1..3 loop r := tt_answer(tid, true); end loop;
+  -- walking out between rounds: a clean 0-1, not the match already won
+  r := public.tourney_leave(tid); v := r->'t';
+  perform test_assert((v->'results'->4->>'sa')::int = 0 and (v->'results'->4->>'sb')::int = 1
+                      and (v->'results'->4->>'round')::int = 2,
+                      'leaving between rounds concedes the next match 0-1');
+  perform test_assert((select lifetime_lost from public.wallets where user_id = A) = 25,
+                      'the lost buy-in is booked once, when it is lost');
+  -- a win books the net, and the log adds up to what the wallet did
+  delete from public.tournaments where user_id = A;
+  chips0 := (select chips from public.wallets where user_id = A);
+  r := public.tourney_start(10); tid := (r->'t'->>'id')::uuid;
+  for k in 1..3 loop
+    perform tt_bots(tid, array[false,false,false,false,false]);
+    for j in 1..5 loop r := tt_answer(tid, true); end loop;
+    if k < 3 then r := public.tourney_next(tid); end if;
+  end loop;
+  perform test_assert((r->'t'->>'status') = 'won', '(a won tournament)');
+  perform test_assert((select chips from public.wallets where user_id = A) = chips0 + 70, 'the wallet gains seven buy-ins net');
+  perform test_assert((select lifetime_won from public.wallets where user_id = A) = 70, 'booked as 70 won');
+  perform test_assert((select sum(delta) from public.casino_log where user_id = A and game = 'tourney') = 70 - 25,
+                      'and the log adds up to what the wallet did (+70 won, -25 lost)');
+  -- one open tournament per player, even past the checks
+  r := public.tourney_start(10);
+  begin
+    insert into public.tournaments (user_id, buyin, players) values (A, 10, '[]'::jsonb);
+    perform test_assert(false, 'a second open tournament is refused by the table itself');
+  exception when unique_violation then
+    perform test_assert(true, 'a second open tournament is refused by the table itself');
+  end;
 
   delete from public.tournaments;
   raise notice 'TOURNAMENT CHECKS PASSED';

@@ -678,6 +678,18 @@ The page draws the server's view: lobby (resume if one is open), the duel's boar
 a reveal after each answer, and the bracket between rounds / at the end.
 `sql_tests/tournament_suite.sql` (38), `tournamentChecks` (40) against a JS fake of the rules.
 
+**Reviewed** (four lenses + verifier): 17 findings, 16 confirmed, 11 distinct, all fixed. The one
+that mattered: parallel `tourney_start` calls all read "none open, fewer than five today" before
+any committed — ten at once opened ten tournaments, and with the answers in the page a script
+wins ~94%, so the pot was farmable. `tourney_start` now takes the wallet row `FOR UPDATE` first,
+and a partial unique index (`tournaments_one_active`) allows one open per player. `run.sh` fires
+four starts at the same instant and expects one tournament and one buy-in (the old SQL gave 3
+and 750). Also: `tourney_answer(tid, picks, qi)` turns away an answer for a question that has
+closed (a tap at 0:00 used to become the next, unseen question's answer); `tourney_state` times
+out at 120 s, grace only on answers; nothing is booked at the start (a loss books the buy-in, a
+win the net); the Tourney clock only runs on screen and resyncs on entering the casino;
+`tourney_current` is not a droppable poll. `tournamentReviewChecks` (15).
+
 ## The weekly leaderboard (2026-09-26)
 
 Home → "This week" → 🏆 Top this week: every player, by correct answers this week.

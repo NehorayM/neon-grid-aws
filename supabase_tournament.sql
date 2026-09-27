@@ -37,6 +37,8 @@ create table if not exists public.tournaments (
   updated_at timestamptz not null default now()
 );
 create index if not exists tournaments_user_idx on public.tournaments (user_id, created_at desc);
+-- one open tournament per player, whatever races past the checks
+create unique index if not exists tournaments_one_active on public.tournaments (user_id) where status = 'active';
 alter table public.tournaments enable row level security;
 -- No policies on purpose: the bots' answers are in the row, so only the functions below read it.
 
@@ -160,6 +162,14 @@ begin
   return t;
 end $$;
 
+-- a lost tournament: the buy-in is booked as lost, once
+create or replace function public.tourney_book_loss(t public.tournaments)
+returns void language sql security definer set search_path = public as $$
+  update public.wallets set lifetime_lost = lifetime_lost + t.buyin, updated_at = now() where user_id = t.user_id;
+  insert into public.casino_log (user_id, game, bet, delta, detail)
+       values (t.user_id, 'tourney', t.buyin, -t.buyin, jsonb_build_object('lost', true, 'round', t.round));
+$$;
+
 -- After an answered (or timed-out) question: the next one, sudden death, or the end of the match.
 create or replace function public.tourney_after(t public.tournaments)
 returns public.tournaments language plpgsql security definer set search_path = public as $$
@@ -181,6 +191,7 @@ begin
                  'sa', you, 'sb', them, 'w', case when won then 0 else t.opp end, 'you', true));
   if not won then
     t.status := 'lost'; t.phase := 'between'; t.m_start := null;
+    perform public.tourney_book_loss(t);
     t := public.tourney_rest(t, 1, true);                          -- the bracket still finishes
     return t;
   end if;
@@ -208,6 +219,9 @@ declare w public.wallets; t public.tournaments; ex int; nm text; names text[]; p
         'Oren','Leah','Sam','Dana','Eitan','Roni','Itai','Shira','Gal','Ben','Adi','Tom'];
 begin
   w := public.wallet_row();
+  -- Take the wallet row first. Starts fired at once all read "none open, fewer than five today"
+  -- before any had committed; holding the row makes the next one wait and then see this one.
+  select * into w from public.wallets where user_id = auth.uid() for update;
   -- one at a time: an open tournament comes back instead of a second
   select * into t from public.tournaments where user_id = auth.uid() and status = 'active'
    order by created_at desc limit 1;
@@ -226,11 +240,9 @@ begin
   if ex < 0 or ex > public.duel_exam_count() then ex := 0; end if;
   select username into nm from public.profiles where id = auth.uid();
   select array_agg(x) into names from (select x from unnest(pool) x order by random() limit 7) s;
-  update public.wallets set chips = chips - tourney_start.buyin,
-         lifetime_lost = lifetime_lost + tourney_start.buyin, updated_at = now()
+  -- the buy-in leaves the wallet now; it is booked as won or lost when the tournament ends
+  update public.wallets set chips = chips - tourney_start.buyin, updated_at = now()
    where user_id = auth.uid();
-  insert into public.casino_log (user_id, game, bet, delta, detail)
-       values (auth.uid(), 'tourney', tourney_start.buyin, -tourney_start.buyin, jsonb_build_object('start', true));
   delete from public.tournaments where user_id = auth.uid() and created_at < now() - interval '7 days';
   insert into public.tournaments (user_id, buyin, exam, players, opp)
        values (auth.uid(), tourney_start.buyin, ex,
@@ -272,9 +284,11 @@ begin
   w := public.wallet_row();
   select * into t from public.tournaments where id = tid and user_id = auth.uid() for update;
   if t.id is null then return jsonb_build_object('ok', false, 'reason', 'no such tournament'); end if;
+  -- out of time at the clock's own two minutes: the page shows 0:00 then, and asks. (The two
+  -- seconds of grace are for an answer already on its way, in tourney_answer.)
   if t.status = 'active' and t.phase = 'play' and t.m_start is not null
      and jsonb_array_length(t.m_log) < coalesce(array_length(t.m_q, 1), 0)
-     and now() - t.m_start > ((public.tourney_seconds() + 2) || ' seconds')::interval then
+     and now() - t.m_start >= (public.tourney_seconds() || ' seconds')::interval then
     t := public.tourney_timeout(t);
     perform public.tourney_save(t);
   end if;
@@ -282,7 +296,10 @@ begin
   return jsonb_build_object('ok', true, 't', public.tourney_view(t), 'chips', w.chips);
 end $$;
 
-create or replace function public.tourney_answer(tid uuid, picks text[])
+-- The one-argument-less version is dropped rather than overloaded: PostgREST picks a function by
+-- its argument names, and two candidates would make every call ambiguous.
+drop function if exists public.tourney_answer(uuid, text[]);
+create or replace function public.tourney_answer(tid uuid, picks text[], qi int default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare t public.tournaments; w public.wallets; i int; q int; correct text[]; ok boolean;
 begin
@@ -292,6 +309,11 @@ begin
   i := jsonb_array_length(t.m_log);
   if t.status <> 'active' or t.phase <> 'play' or i >= coalesce(array_length(t.m_q, 1), 0) then
     return jsonb_build_object('ok', true, 't', public.tourney_view(t), 'chips', w.chips);
+  end if;
+  -- an answer is for the question it was given on: one that arrives after that question has
+  -- closed (0:00, a second tap) must not become the answer to the next, unseen one
+  if qi is not null and qi <> i then
+    return jsonb_build_object('ok', true, 'stale', true, 't', public.tourney_view(t), 'chips', w.chips);
   end if;
   if now() - t.m_start > ((public.tourney_seconds() + 2) || ' seconds')::interval then
     t := public.tourney_timeout(t);                               -- too late: it counts as unanswered
@@ -335,9 +357,12 @@ begin
   if t.status = 'active' then
     you  := (select count(*) from jsonb_array_elements(t.m_log) e where (e ->> 'ok')::boolean);
     them := (select count(*) from jsonb_array_elements(t.m_log) e where (e ->> 'bot')::boolean);
+    -- between rounds m_log is the match already won, not the one being walked out of
+    if t.phase = 'between' then you := 0; them := 0; end if;
     t.results := t.results || jsonb_build_array(jsonb_build_object('round', t.round, 'a', 0, 'b', t.opp,
                    'sa', you, 'sb', greatest(them, you + 1), 'w', t.opp, 'you', true, 'left', true));
     t.status := 'lost'; t.phase := 'between'; t.m_start := null;
+    perform public.tourney_book_loss(t);
     t := public.tourney_rest(t, 1, true);
     perform public.tourney_save(t);
   end if;
@@ -361,7 +386,7 @@ end $$;
 do $$
 declare f text;
 begin
-  foreach f in array array['tourney_start(bigint,int)','tourney_state(uuid)','tourney_answer(uuid,text[])',
+  foreach f in array array['tourney_start(bigint,int)','tourney_state(uuid)','tourney_answer(uuid,text[],int)',
                            'tourney_next(uuid)','tourney_leave(uuid)','tourney_current()']
   loop
     execute format('revoke all on function public.%s from public, anon;', f);
@@ -370,7 +395,8 @@ begin
   foreach f in array array['tourney_pick(int,int[],int)','tourney_rest(public.tournaments,int,boolean)',
                            'tourney_new_match(public.tournaments)','tourney_after(public.tournaments)',
                            'tourney_save(public.tournaments)','tourney_timeout(public.tournaments)',
-                           'tourney_view(public.tournaments)','tourney_bot_answer()','tourney_botmatch()']
+                           'tourney_view(public.tournaments)','tourney_bot_answer()','tourney_botmatch()',
+                           'tourney_book_loss(public.tournaments)']
   loop
     execute format('revoke all on function public.%s from public, anon, authenticated;', f);
   end loop;

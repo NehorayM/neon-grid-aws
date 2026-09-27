@@ -40,3 +40,12 @@ docker exec $NAME psql -U postgres -d neon -f /tmp/leaderboard_suite.sql 2>&1 \
 echo "--- tournament"
 docker exec $NAME psql -U postgres -d neon -f /tmp/tournament_suite.sql 2>&1 \
   | grep -E "PASS|FAIL|ERROR" | sed 's/^psql:[^ ]* //;s/^NOTICE:  //'
+echo "--- tournament: two starts at the same instant"
+docker exec $NAME psql -U postgres -d neon -qAt -c "delete from public.tournaments; insert into public.wallets (user_id, chips) values ('11111111-1111-4111-8111-111111111111', 1000) on conflict (user_id) do update set chips = 1000;" >/dev/null
+for n in 1 2 3 4; do
+  docker exec $NAME psql -U postgres -d neon -qAt -c "select set_config('test.uid','11111111-1111-4111-8111-111111111111',false); select pg_sleep(0.3); select public.tourney_start(250)->>'ok';" >/dev/null 2>&1 &
+done
+wait
+OPEN=$(docker exec $NAME psql -U postgres -d neon -qAt -c "select count(*) from public.tournaments where status='active';")
+CHIPS=$(docker exec $NAME psql -U postgres -d neon -qAt -c "select chips from public.wallets where user_id='11111111-1111-4111-8111-111111111111';")
+if [ "$OPEN" = "1" ] && [ "$CHIPS" = "750" ]; then echo "PASS  four starts at once: one tournament, one buy-in taken"; else echo "FAIL  four starts at once: $OPEN open, $CHIPS chips left"; fi

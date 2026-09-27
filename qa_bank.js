@@ -2182,6 +2182,10 @@ function tourFake(t,opts){
   };
   const client={rpc(fn,args){ st.calls.push(fn);
     if(st.missing) return Promise.resolve({data:null,error:{message:'Could not find the function public.'+fn+' in the schema cache'}});
+    if(st.missingDep&&fn==='tourney_start') return Promise.resolve({data:null,error:{message:'function public.duel_exam_count() does not exist'}});
+    if(st.fail&&st.fail(fn)) return Promise.resolve({data:null,error:{message:'network down'}});
+    if(st.delay&&st.delay[fn]) return new Promise(r=>setTimeout(()=>r(client._do(fn,args)),st.delay[fn]));
+    return client._do(fn,args); }, _do(fn,args){
     let data=null; const x=st.t;
     if(fn==='tourney_current') data={ok:true,t:view(),chips:st.chips,left:st.left};
     else if(fn==='tourney_start'){
@@ -2190,6 +2194,7 @@ function tourFake(t,opts){
       else { st.chips-=args.buyin; st.left--; st.t={id:'t'+Date.now(),status:'active',phase:'play',round:1,buyin:args.buyin,payout:0,alive:[0,1,2,3,4,5,6,7],results:[],opp:1};
         newMatch(st.t); data={ok:true,t:view(),chips:st.chips}; } }
     else if(fn==='tourney_answer'){
+      if(args.qi!=null&&args.qi!==x.log.length) return Promise.resolve({data:{ok:true,stale:true,t:view(),chips:st.chips},error:null});
       const i=x.log.length, q=t.QS[x.q[i]], ok=args.picks.length===q.a.length&&q.a.every(l=>args.picks.includes(l));
       x.log.push({q:x.q[i],ans:q.a.slice(),pick:args.picks,ok,bot:x.bot[i].ok}); after(x); data={ok:true,t:view(),chips:st.chips}; }
     else if(fn==='tourney_state'){
@@ -2288,6 +2293,72 @@ async function tournamentChecks(){
     ok(/supabase_tournament\.sql/.test($('tourMsg').textContent),'without the SQL it says what to run');
     F.missing=false; await t.tourLoad(); await sleep(20);
     eq($('tourMsg').textContent,'','once it is installed, the message goes');
+  } finally { t.cloudForTest(was[0],was[1]); t.tourStop(); t.casTab('Roul'); t.rouStop(); t.go('homeScreen'); await sleep(10); }
+}
+// What the four-lens review of the tournament confirmed, on the page side, replayed.
+async function tournamentReviewChecks(){
+  const t=T(), $=id=>document.getElementById(id);
+  const vis=id=>!$(id).classList.contains('hidden');
+  const F=tourFake(t), was=t.cloudForTest(F.client,{id:'u-tr'});
+  const pickRight=()=>{ const q=t.QS[t.tourView.question]; q.a.forEach(l=>[...$('tourOpts').children].find(b=>b.dataset.ltr===l).click()); };
+  try{
+    t.go('casinoScreen'); $('casGuest').classList.add('hidden'); $('casMain').classList.remove('hidden');
+    t.casTab('Tour'); await sleep(30);
+    t.tourBuyin=10; t.renderTourLobby();
+    $('tourStart').click(); await sleep(40);
+    ok(vis('tourPlay'),'(a match is on)');
+    // ---- 2. two taps, one answer
+    pickRight(); F.calls.length=0; F.delay={tourney_answer:120};
+    $('tourLock').click(); $('tourLock').click(); t.tourLockIn(); await sleep(250);
+    eq(F.calls.filter(c=>c==='tourney_answer').length,1,'Lock in tapped twice sends one answer');
+    eq(t.tourView.i,1,'which lands on the question it was for');
+    F.delay=null;
+    // ---- 10. at 0:00 nothing can be sent, and the server is asked once, not in a burst
+    F.age(119); await t.tourSync(); await sleep(20);
+    F.age(2); F.calls.length=0; await sleep(1100);
+    pickRight(); $('tourLock').click(); await sleep(20);
+    eq(F.calls.filter(c=>c==='tourney_answer').length,0,'at 0:00 an answer is not sent');
+    ok(F.calls.filter(c=>c==='tourney_state').length<=2,'and the server is asked calmly, not in a burst ('+F.calls.filter(c=>c==='tourney_state').length+')');
+    await sleep(1400);
+    eq(t.tourView.i,2,'the server times the question out and the match moves on');
+    // ---- 10. a failed Lock in gives the button back
+    pickRight(); F.fail=fn=>fn==='tourney_answer';
+    $('tourLock').click(); await sleep(40);
+    ok(vis('tourLock'),'a Lock in that fails shows the button again');
+    // ---- 11. and says so where you are looking
+    ok(/network down/.test($('tourPlayMsg').textContent),'the error shows on the match, not the hidden lobby');
+    F.fail=null; t.tourMsg&&0;
+    // ---- 9. a response that lands after you left does not start the clock out of sight
+    F.delay={tourney_state:120};
+    const p=t.tourSync(); t.go('homeScreen'); t.tourStop(); await p; await sleep(160);
+    eq(t.tourTick,null,'a late response does not restart the clock on another screen');
+    F.delay=null;
+    // ---- 6. coming back through the bottom bar asks the server
+    F.calls.length=0;
+    $('navCasino').click(); await sleep(500);        // it queues behind the casino's own balance calls
+    ok(F.calls.includes('tourney_current'),'entering the casino with the Tourney tab up fetches the tournament');
+    ok(t.tourTick!==null,'and the clock runs again');
+    // ---- 8. Resume fetches instead of repainting what was cached
+    $('tourAgain').click&&0;
+    t.tourStop(); t.tourShow&&0;
+    F.calls.length=0; $('tourResume').click(); await sleep(40);
+    ok(F.calls.includes('tourney_current'),'"Back to your tournament" asks the server');
+    // ---- 7. opening the tab while a roulette poll is in flight is not dropped
+    F.delay={roulette_table:150}; F.calls.length=0;
+    const poll=t.casRpc('roulette_table'); await sleep(10);
+    await t.tourLoad(); await poll;
+    ok(F.calls.includes('tourney_current'),'opening the tab during a poll waits for it, not dropped');
+    F.delay=null;
+    // ---- a different user: nothing of the last one's tournament stays
+    t.tourReset();
+    ok(vis('tourLobby')&&!t.tourView,'a change of user clears the tournament from the screen');
+    // ---- 11. a missing duel function names the duel files, not the tournament's
+    await t.tourLoad(); await sleep(20);
+    if(t.tourView&&t.tourView.status==='active'){ await t.tourQuit(); await sleep(20); $('tourAgain').click(); await sleep(10); }
+    F.missingDep=true;
+    $('tourStart').click(); await sleep(40);
+    ok(/supabase_duel/.test($('tourMsg').textContent)&&!/supabase_tournament/.test($('tourMsg').textContent),
+       'a missing duel function says to run the duel files, not the tournament one');
   } finally { t.cloudForTest(was[0],was[1]); t.tourStop(); t.casTab('Roul'); t.rouStop(); t.go('homeScreen'); await sleep(10); }
 }
 // The pause bar stayed up over a question in progress: a resume cleared the pause without
@@ -4052,7 +4123,7 @@ window.QA_BANK=async function(opts){
   hebrewChecks();
   if(opts.app!==false) await appChecks();
   if(opts.study!==false){ await studyChecks(); await retiredDrillChecks(); }
-  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); await studyReadChecks(); await studyReadReviewChecks(); await tournamentChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
+  if(opts.extras!==false){ whyChecks(); whyQualityChecks(); cueChecks(); sriChecks(); arithmeticChecks(); await gameLifetimeChecks(); await refreshChecks(); await breakChecks(); await modeChecks(); await dialogChecks(); await saveFlushChecks(); await pickCapChecks(); await oneClockChecks(); await continueChecks(); await saaChecks(); await multiDeviceChecks(); await hunt9Checks(); await readTaperChecks(); await histChecks(); await histSyncChecks(); await pauseBarChecks(); await redoSyncChecks(); await hunt10Checks(); await svcBlockChecks(); await storyChecks(); await exReadChecks(); await redoCsvChecks(); await mistakesChecks(); await mistakesReviewChecks(); await leaderboardChecks(); await leaderboardReviewChecks(); await studyReadChecks(); await studyReadReviewChecks(); await tournamentChecks(); await tournamentReviewChecks(); mergeLossChecks(); await duelChecks(); await xssChecks(); await paperRowChecks(); await voiceChecks(); await hardeningChecks(); await deviceChecks(); await qClockChecks(); await resumeChecks(); await ttsChecks(); await briefChecks();
     await freeChecks(); await feedbackChecks(); await cheerChecks(); await qToolChecks();
     await statsChecks(); await weightChecks(); }
   if(opts.quick!==true){
